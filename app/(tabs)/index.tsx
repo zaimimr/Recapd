@@ -1,24 +1,11 @@
 import { StyleSheet, TouchableOpacity, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAuthStore } from '@/store/authStore';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useEffect } from 'react';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const user = useAuthStore((state) => state.user);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-
-  useEffect(() => {
-    if (!user) {
-      router.replace('/onboarding');
-    }
-  }, [user]);
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -26,12 +13,6 @@ export default function HomeScreen() {
         <Text style={[styles.logo, isDark && styles.textDark]}>Between</Text>
         <Text style={[styles.tagline, isDark && styles.textMuted]}>
           See the night from everyone's eyes
-        </Text>
-      </View>
-
-      <View style={styles.greeting}>
-        <Text style={[styles.greetingText, isDark && styles.textMuted]}>
-          Hey, {user.display_name}!
         </Text>
       </View>
 
@@ -85,14 +66,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     marginTop: 8,
-  },
-  greeting: {
-    marginTop: 48,
-    alignItems: 'center',
-  },
-  greetingText: {
-    fontSize: 18,
-    color: '#666',
   },
   actions: {
     flex: 1,

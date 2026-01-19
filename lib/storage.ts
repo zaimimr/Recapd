@@ -4,9 +4,22 @@ import {
   cacheDirectory,
   EncodingType,
 } from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 import { MediaItemInsert, MediaItemUpdate } from '@/types/database';
+
+async function getReadableUri(uri: string): Promise<string> {
+  if (uri.startsWith('ph://') || uri.startsWith('assets-library://') || !uri.includes('/')) {
+    const assetId = uri.replace('ph://', '').split('/')[0];
+    const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId);
+    if (assetInfo?.localUri) {
+      return assetInfo.localUri;
+    }
+    throw new Error(`Unable to get local URI for asset: ${uri}`);
+  }
+  return uri;
+}
 
 export interface UploadResult {
   success: boolean;
@@ -30,13 +43,14 @@ export async function uploadPhoto(
   fileSize?: number
 ): Promise<UploadResult> {
   try {
-    const base64 = await readAsStringAsync(uri, {
+    const readableUri = await getReadableUri(uri);
+    const base64 = await readAsStringAsync(readableUri, {
       encoding: EncodingType.Base64,
     });
 
     const arrayBuffer = decode(base64);
     const timestamp = Date.now();
-    const extension = uri.split('.').pop()?.toLowerCase() || 'jpg';
+    const extension = readableUri.split('.').pop()?.toLowerCase() || 'jpg';
     const fileName = `${eventId}/${userId}/${timestamp}.${extension}`;
 
     const contentType = extension === 'png' ? 'image/png' : 'image/jpeg';

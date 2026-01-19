@@ -38,16 +38,23 @@ export async function getPhotosInTimeRange(
     return created >= startTimestamp && created <= endTimestamp;
   });
 
-  return filtered.map((asset) => ({
-    id: asset.id,
-    uri: asset.uri,
-    filename: asset.filename,
-    creationTime: asset.creationTime,
-    width: asset.width,
-    height: asset.height,
-    duration: asset.duration,
-    mediaType: asset.mediaType === 'photo' ? 'photo' : 'video',
-  }));
+  const photosWithLocalUri = await Promise.all(
+    filtered.map(async (asset) => {
+      const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id);
+      return {
+        id: asset.id,
+        uri: assetInfo?.localUri || asset.uri,
+        filename: asset.filename,
+        creationTime: asset.creationTime,
+        width: asset.width,
+        height: asset.height,
+        duration: asset.duration,
+        mediaType: asset.mediaType === 'photo' ? 'photo' : 'video' as 'photo' | 'video',
+      };
+    })
+  );
+
+  return photosWithLocalUri;
 }
 
 export async function getAssetInfo(assetId: string): Promise<MediaLibrary.AssetInfo | null> {

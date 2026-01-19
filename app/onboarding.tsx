@@ -9,12 +9,13 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useColorScheme } from '@/components/useColorScheme';
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const createUser = useAuthStore((state) => state.createUser);
   const isLoading = useAuthStore((state) => state.isLoading);
   const colorScheme = useColorScheme();
@@ -40,7 +41,7 @@ export default function OnboardingScreen() {
     const user = await createUser(trimmedName);
 
     if (user) {
-      router.replace('/(tabs)');
+      router.replace((returnTo || '/(tabs)') as any);
     } else {
       setError('Failed to create profile. Please try again.');
     }

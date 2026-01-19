@@ -11,24 +11,25 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a2e"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.between.app",
+      "bundleIdentifier": "com.zaimimran.between",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Between needs access to your photos to share them with your event group.",
         "NSPhotoLibraryAddUsageDescription": "Between needs permission to save photos to your camera roll.",
-        "NSCameraUsageDescription": "Between needs camera access to scan QR codes."
+        "NSCameraUsageDescription": "Between needs camera access to scan QR codes.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a1a2e"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.between.app",
+      "package": "com.zaimimran.between",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",

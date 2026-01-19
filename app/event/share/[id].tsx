@@ -91,7 +91,7 @@ export default function ShareEventScreen() {
         <View style={styles.codeSection}>
           <Text style={[styles.codeLabel, isDark && styles.textMuted]}>Join Code</Text>
           <TouchableOpacity style={styles.codeButton} onPress={handleCopyCode}>
-            <Text style={styles.codeText}>{currentEvent.join_code}</Text>
+            <Text style={[styles.codeText, isDark && styles.textDark]}>{currentEvent.join_code}</Text>
             <Text style={styles.copyHint}>
               {copied ? 'Copied!' : 'Tap to copy'}
             </Text>

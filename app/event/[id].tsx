@@ -163,6 +163,8 @@ export default function EventScreen() {
 
   const [selectedPhoto, setSelectedPhoto] = useState<MediaItem | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
 
   const loadData = useCallback(async () => {
     if (id) {
@@ -198,6 +200,35 @@ export default function EventScreen() {
 
   function handleShare() {
     router.push(`/event/share/${id}`);
+  }
+
+  async function handleDownloadAll() {
+    if (mediaItems.length === 0 || downloadingAll) return;
+
+    setDownloadingAll(true);
+    setDownloadProgress({ current: 0, total: mediaItems.length });
+
+    let successCount = 0;
+    for (let i = 0; i < mediaItems.length; i++) {
+      const photo = mediaItems[i];
+      setDownloadProgress({ current: i + 1, total: mediaItems.length });
+
+      try {
+        const localUri = await downloadPhoto(photo.storage_path, `between_${photo.id}.jpg`);
+        if (localUri) {
+          const asset = await saveToLibrary(localUri);
+          if (asset) successCount++;
+        }
+      } catch (error) {
+        // Continue with next photo
+      }
+    }
+
+    setDownloadingAll(false);
+    Alert.alert(
+      'Download Complete',
+      `Saved ${successCount} of ${mediaItems.length} photos to your camera roll`
+    );
   }
 
   if (isLoading && !currentEvent) {
@@ -265,14 +296,14 @@ export default function EventScreen() {
                 </View>
               )}
 
-              <View style={styles.stats}>
+              <View style={[styles.stats, isDark && styles.statsDark]}>
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, isDark && styles.textDark]}>
                     {mediaItems.length}
                   </Text>
                   <Text style={[styles.statLabel, isDark && styles.textMuted]}>Photos</Text>
                 </View>
-                <View style={styles.statDivider} />
+                <View style={[styles.statDivider, isDark && styles.statDividerDark]} />
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, isDark && styles.textDark]}>
                     {currentEvent.participant_count || 0}
@@ -281,10 +312,32 @@ export default function EventScreen() {
                 </View>
               </View>
 
-              {isEnded && (
-                <TouchableOpacity style={styles.contributeButton} onPress={handleContribute}>
-                  <FontAwesome name="plus" size={16} color="#fff" />
-                  <Text style={styles.contributeButtonText}>Add Your Photos</Text>
+              <TouchableOpacity style={styles.contributeButton} onPress={handleContribute}>
+                <FontAwesome name="plus" size={16} color="#fff" />
+                <Text style={styles.contributeButtonText}>Add Your Photos</Text>
+              </TouchableOpacity>
+
+              {mediaItems.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.downloadAllButton, isDark && styles.downloadAllButtonDark]}
+                  onPress={handleDownloadAll}
+                  disabled={downloadingAll}
+                >
+                  {downloadingAll ? (
+                    <>
+                      <ActivityIndicator size="small" color={isDark ? '#fff' : '#000'} />
+                      <Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
+                        Downloading {downloadProgress.current}/{downloadProgress.total}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <FontAwesome name="download" size={16} color={isDark ? '#fff' : '#000'} />
+                      <Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
+                        Download All Photos
+                      </Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               )}
 
@@ -298,15 +351,11 @@ export default function EventScreen() {
               <FontAwesome name="camera" size={48} color={isDark ? '#444' : '#ccc'} />
               <Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Photos Yet</Text>
               <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-                {isEnded
-                  ? "Photos from the event will appear here after they're uploaded"
-                  : 'Photos will be shared after the event ends'}
+                Photos from the event will appear here after they're uploaded
               </Text>
-              {isEnded && (
-                <TouchableOpacity style={styles.emptyButton} onPress={handleContribute}>
-                  <Text style={styles.emptyButtonText}>Add Photos</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity style={styles.emptyButton} onPress={handleContribute}>
+                <Text style={styles.emptyButtonText}>Add Photos</Text>
+              </TouchableOpacity>
             </View>
           }
           contentContainerStyle={styles.listContent}
@@ -377,6 +426,9 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
+  statsDark: {
+    backgroundColor: '#1a1a1a',
+  },
   stat: {
     flex: 1,
     alignItems: 'center',
@@ -385,6 +437,9 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: '#e5e5e5',
     marginHorizontal: 16,
+  },
+  statDividerDark: {
+    backgroundColor: '#333',
   },
   statValue: {
     fontSize: 24,
@@ -408,6 +463,24 @@ const styles = StyleSheet.create({
   },
   contributeButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  downloadAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 24,
+  },
+  downloadAllButtonDark: {
+    backgroundColor: '#1a1a1a',
+  },
+  downloadAllButtonText: {
+    color: '#000',
     fontSize: 16,
     fontWeight: '600',
   },

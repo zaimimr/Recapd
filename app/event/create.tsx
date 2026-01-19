@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -20,9 +20,24 @@ import { useColorScheme } from '@/components/useColorScheme';
 export default function CreateEventScreen() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
   const { createEvent, isLoading } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  useEffect(() => {
+    if (isInitialized && !user) {
+      router.replace('/onboarding?returnTo=/event/create');
+    }
+  }, [isInitialized, user]);
+
+  if (!isInitialized || !user) {
+    return (
+      <View style={[styles.container, isDark && styles.containerDark, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />
+      </View>
+    );
+  }
 
   const now = new Date();
   const defaultStart = setMinutes(setHours(now, now.getHours() + 1), 0);
@@ -104,11 +119,6 @@ export default function CreateEventScreen() {
       return;
     }
 
-    if (!user) {
-      setError('You must be signed in to create an event');
-      return;
-    }
-
     setError('');
 
     const event = await createEvent(
@@ -118,7 +128,7 @@ export default function CreateEventScreen() {
         ends_at: endDate.toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
-      user.id
+      user!.id
     );
 
     if (event) {
@@ -205,9 +215,8 @@ export default function CreateEventScreen() {
         <DateTimePicker
           value={startDate}
           mode={Platform.OS === 'ios' ? 'datetime' : startPickerMode}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="default"
           onChange={handleStartDateChange}
-          minimumDate={new Date()}
         />
       )}
 
@@ -215,7 +224,7 @@ export default function CreateEventScreen() {
         <DateTimePicker
           value={endDate}
           mode={Platform.OS === 'ios' ? 'datetime' : endPickerMode}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="default"
           onChange={handleEndDateChange}
           minimumDate={startDate}
         />
@@ -231,6 +240,10 @@ const styles = StyleSheet.create({
   },
   containerDark: {
     backgroundColor: '#000',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     padding: 24,

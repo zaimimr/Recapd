@@ -24,6 +24,8 @@ interface EventPreview extends Event {
 export default function JoinEventScreen() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const createUser = useAuthStore((state) => state.createUser);
+  const authLoading = useAuthStore((state) => state.isLoading);
   const { fetchEventByCode, joinEvent, isLoading, error, clearError } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -31,6 +33,8 @@ export default function JoinEventScreen() {
   const [code, setCode] = useState('');
   const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
   const [step, setStep] = useState<'code' | 'preview'>('code');
+  const [displayName, setDisplayName] = useState('');
+  const [nameError, setNameError] = useState('');
 
   async function handleLookup() {
     const trimmedCode = code.trim().toUpperCase();
@@ -50,9 +54,33 @@ export default function JoinEventScreen() {
   }
 
   async function handleJoin() {
-    if (!eventPreview || !user) return;
+    if (!eventPreview) return;
 
-    const success = await joinEvent(eventPreview.id, user.id);
+    let currentUser = user;
+
+    if (!currentUser) {
+      const trimmedName = displayName.trim();
+
+      if (trimmedName.length < 2) {
+        setNameError('Name must be at least 2 characters');
+        return;
+      }
+
+      if (trimmedName.length > 30) {
+        setNameError('Name must be 30 characters or less');
+        return;
+      }
+
+      setNameError('');
+      currentUser = await createUser(trimmedName);
+
+      if (!currentUser) {
+        Alert.alert('Error', 'Failed to create profile. Please try again.');
+        return;
+      }
+    }
+
+    const success = await joinEvent(eventPreview.id, currentUser.id);
 
     if (success) {
       router.replace(`/event/${eventPreview.id}`);
@@ -64,6 +92,8 @@ export default function JoinEventScreen() {
   function handleBack() {
     setStep('code');
     setEventPreview(null);
+    setDisplayName('');
+    setNameError('');
     clearError();
   }
 
@@ -71,11 +101,17 @@ export default function JoinEventScreen() {
     return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   }
 
+  const isJoining = isLoading || authLoading;
+  const canJoin = user || displayName.trim().length >= 2;
+
   if (step === 'preview' && eventPreview) {
     return (
-      <View style={[styles.container, isDark && styles.containerDark]}>
+      <KeyboardAvoidingView
+        style={[styles.container, isDark && styles.containerDark]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.content}>
-          <View style={styles.previewCard}>
+          <View style={[styles.previewCard, isDark && styles.previewCardDark]}>
             <Text style={[styles.previewTitle, isDark && styles.textDark]}>
               {eventPreview.title}
             </Text>
@@ -92,13 +128,42 @@ export default function JoinEventScreen() {
             </View>
           </View>
 
+          {!user && (
+            <View style={styles.nameSection}>
+              <Text style={[styles.nameLabel, isDark && styles.textDark]}>
+                What should we call you?
+              </Text>
+              <TextInput
+                style={[
+                  styles.nameInput,
+                  isDark && styles.nameInputDark,
+                  nameError ? styles.inputError : null,
+                ]}
+                placeholder="Enter your name"
+                placeholderTextColor={isDark ? '#666' : '#999'}
+                value={displayName}
+                onChangeText={(text) => {
+                  setDisplayName(text);
+                  setNameError('');
+                }}
+                autoCapitalize="words"
+                autoCorrect={false}
+                maxLength={30}
+              />
+              {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
+              <Text style={[styles.nameHint, isDark && styles.textMuted]}>
+                This is how you'll appear to others
+              </Text>
+            </View>
+          )}
+
           <View style={styles.actions}>
             <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
+              style={[styles.button, (!canJoin || isJoining) && styles.buttonDisabled]}
               onPress={handleJoin}
-              disabled={isLoading}
+              disabled={!canJoin || isJoining}
             >
-              {isLoading ? (
+              {isJoining ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.buttonText}>Join Event</Text>
@@ -112,7 +177,7 @@ export default function JoinEventScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -234,7 +299,41 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  previewCardDark: {
+    backgroundColor: '#1a1a1a',
+  },
+  nameSection: {
+    marginBottom: 24,
+  },
+  nameLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  nameInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    fontSize: 18,
+    color: '#000',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  nameInputDark: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+  },
+  inputError: {
+    borderColor: '#ef4444',
+  },
+  nameHint: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
   },
   previewTitle: {
     fontSize: 24,
