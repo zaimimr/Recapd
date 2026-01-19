@@ -1,14 +1,63 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TouchableOpacity, View, Text } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAuthStore } from '@/store/authStore';
+import { useColorScheme } from '@/components/useColorScheme';
+import { useEffect } from 'react';
 
-import EditScreenInfo from '@/components/EditScreenInfo';
-import { Text, View } from '@/components/Themed';
+export default function HomeScreen() {
+  const router = useRouter();
+  const user = useAuthStore((state) => state.user);
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
-export default function TabOneScreen() {
+  useEffect(() => {
+    if (!user) {
+      router.replace('/onboarding');
+    }
+  }, [user]);
+
+  if (!user) {
+    return null;
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab One</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/index.tsx" />
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <View style={styles.header}>
+        <Text style={[styles.logo, isDark && styles.textDark]}>Between</Text>
+        <Text style={[styles.tagline, isDark && styles.textMuted]}>
+          See the night from everyone's eyes
+        </Text>
+      </View>
+
+      <View style={styles.greeting}>
+        <Text style={[styles.greetingText, isDark && styles.textMuted]}>
+          Hey, {user.display_name}!
+        </Text>
+      </View>
+
+      <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => router.push('/event/join')}
+        >
+          <Text style={styles.primaryButtonText}>Join Event</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton, isDark && styles.secondaryButtonDark]}
+          onPress={() => router.push('/event/create')}
+        >
+          <Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>
+            Create Event
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={[styles.footerText, isDark && styles.textMuted]}>
+          Create an event to share photos with your group
+        </Text>
+      </View>
     </View>
   );
 }
@@ -16,16 +65,78 @@ export default function TabOneScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
+    padding: 24,
+  },
+  containerDark: {
+    backgroundColor: '#000',
+  },
+  header: {
+    marginTop: 60,
     alignItems: 'center',
+  },
+  logo: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: '#000',
+    letterSpacing: -1,
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 8,
+  },
+  greeting: {
+    marginTop: 48,
+    alignItems: 'center',
+  },
+  greetingText: {
+    fontSize: 18,
+    color: '#666',
+  },
+  actions: {
+    flex: 1,
     justifyContent: 'center',
+    gap: 16,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  button: {
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+    borderRadius: 14,
+    alignItems: 'center',
   },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
+  primaryButton: {
+    backgroundColor: '#000',
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: '#f5f5f5',
+  },
+  secondaryButtonDark: {
+    backgroundColor: '#1a1a1a',
+  },
+  secondaryButtonText: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  footer: {
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+  },
+  textDark: {
+    color: '#fff',
+  },
+  textMuted: {
+    color: '#888',
   },
 });

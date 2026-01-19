@@ -7,18 +7,14 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { useAuthStore } from '@/store/authStore';
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: '(tabs)',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -26,19 +22,24 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
+  const isInitialized = useAuthStore((state) => state.isInitialized);
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
+    initializeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (loaded && isInitialized) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, isInitialized]);
 
-  if (!loaded) {
+  if (!loaded || !isInitialized) {
     return null;
   }
 
@@ -52,7 +53,49 @@ function RootLayoutNav() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        <Stack.Screen
+          name="event/create"
+          options={{
+            title: 'Create Event',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="event/join"
+          options={{
+            title: 'Join Event',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="event/[id]"
+          options={{
+            title: 'Event',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
+          name="event/share/[id]"
+          options={{
+            title: 'Share Event',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="contribute/[eventId]"
+          options={{
+            title: 'Add Photos',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="onboarding"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+            gestureEnabled: false,
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
