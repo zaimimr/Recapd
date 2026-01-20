@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useColorScheme } from "@/components/useColorScheme";
+import { useAuthStore } from "@/store/authStore";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
-  View,
   Text,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useAuthStore } from '@/store/authStore';
-import { useColorScheme } from '@/components/useColorScheme';
+  View,
+} from "react-native";
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -19,49 +19,51 @@ export default function OnboardingScreen() {
   const createUser = useAuthStore((state) => state.createUser);
   const isLoading = useAuthStore((state) => state.isLoading);
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = colorScheme === "dark";
 
-  const [displayName, setDisplayName] = useState('');
-  const [error, setError] = useState('');
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState("");
 
   async function handleContinue() {
     const trimmedName = displayName.trim();
 
     if (trimmedName.length < 2) {
-      setError('Name must be at least 2 characters');
+      setError("Name must be at least 2 characters");
       return;
     }
 
     if (trimmedName.length > 30) {
-      setError('Name must be 30 characters or less');
+      setError("Name must be 30 characters or less");
       return;
     }
 
-    setError('');
+    setError("");
     const user = await createUser(trimmedName);
 
     if (user) {
-      router.replace((returnTo || '/(tabs)') as any);
+      router.replace((returnTo || "/(tabs)") as any);
     } else {
-      setError('Failed to create profile. Please try again.');
+      setError("Failed to create profile. Please try again.");
     }
   }
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, isDark && styles.containerDark]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={[styles.logo, isDark && styles.textDark]}>Between</Text>
+          <Text style={[styles.logo, isDark && styles.textDark]}>Recapd</Text>
           <Text style={[styles.tagline, isDark && styles.textMuted]}>
             See the night from everyone's eyes
           </Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={[styles.label, isDark && styles.textDark]}>What should we call you?</Text>
+          <Text style={[styles.label, isDark && styles.textDark]}>
+            What should we call you?
+          </Text>
           <TextInput
             style={[
               styles.input,
@@ -69,11 +71,11 @@ export default function OnboardingScreen() {
               error ? styles.inputError : null,
             ]}
             placeholder="Enter your name"
-            placeholderTextColor={isDark ? '#666' : '#999'}
+            placeholderTextColor={isDark ? "#666" : "#999"}
             value={displayName}
             onChangeText={(text) => {
               setDisplayName(text);
-              setError('');
+              setError("");
             }}
             autoCapitalize="words"
             autoCorrect={false}
@@ -109,29 +111,29 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   containerDark: {
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   content: {
     flex: 1,
     padding: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 48,
   },
   logo: {
     fontSize: 42,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     letterSpacing: -1,
   },
   tagline: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
     marginTop: 8,
   },
   form: {
@@ -139,55 +141,55 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 12,
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 20,
     fontSize: 18,
-    color: '#000',
+    color: "#000",
     borderWidth: 2,
-    borderColor: 'transparent',
+    borderColor: "transparent",
   },
   inputDark: {
-    backgroundColor: '#1a1a1a',
-    color: '#fff',
+    backgroundColor: "#1a1a1a",
+    color: "#fff",
   },
   inputError: {
-    borderColor: '#ef4444',
+    borderColor: "#ef4444",
   },
   errorText: {
-    color: '#ef4444',
+    color: "#ef4444",
     fontSize: 14,
     marginTop: 8,
   },
   hint: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
     marginTop: 8,
   },
   button: {
-    backgroundColor: '#000',
+    backgroundColor: "#000",
     paddingVertical: 18,
     borderRadius: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   buttonDisabled: {
     opacity: 0.5,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   textDark: {
-    color: '#fff',
+    color: "#fff",
   },
   textMuted: {
-    color: '#888',
+    color: "#888",
   },
 });

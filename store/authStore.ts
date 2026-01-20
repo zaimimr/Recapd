@@ -1,9 +1,9 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/supabase';
-import { User, UserInsert, UserUpdate } from '@/types/database';
-import * as Crypto from 'expo-crypto';
+import { supabase } from "@/lib/supabase";
+import { User, UserInsert, UserUpdate } from "@/types/database";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Crypto from "expo-crypto";
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 interface AuthState {
   user: User | null;
@@ -19,8 +19,8 @@ interface AuthState {
 async function generateDeviceId(): Promise<string> {
   const randomBytes = await Crypto.getRandomBytesAsync(16);
   return Array.from(randomBytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -42,24 +42,30 @@ export const useAuthStore = create<AuthState>()(
           }
 
           const { data: existingUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('device_id', deviceId)
+            .from("users")
+            .select("*")
+            .eq("device_id", deviceId)
             .single();
 
           if (existingUser) {
-            const updateData: UserUpdate = { last_seen_at: new Date().toISOString() };
+            const updateData: UserUpdate = {
+              last_seen_at: new Date().toISOString(),
+            };
             await supabase
-              .from('users')
+              .from("users")
               .update(updateData)
-              .eq('id', existingUser.id);
+              .eq("id", existingUser.id);
 
-            set({ user: existingUser as User, isLoading: false, isInitialized: true });
+            set({
+              user: existingUser as User,
+              isLoading: false,
+              isInitialized: true,
+            });
           } else {
             set({ isLoading: false, isInitialized: true });
           }
         } catch (error) {
-          console.error('Auth initialization error:', error);
+          console.error("Auth initialization error:", error);
           set({ isLoading: false, isInitialized: true });
         }
       },
@@ -80,7 +86,7 @@ export const useAuthStore = create<AuthState>()(
           };
 
           const { data, error } = await supabase
-            .from('users')
+            .from("users")
             .insert(insertData)
             .select()
             .single();
@@ -90,7 +96,7 @@ export const useAuthStore = create<AuthState>()(
           set({ user: data as User, isLoading: false });
           return data as User;
         } catch (error) {
-          console.error('Create user error:', error);
+          console.error("Create user error:", error);
           set({ isLoading: false });
           return null;
         }
@@ -103,15 +109,15 @@ export const useAuthStore = create<AuthState>()(
         try {
           const updateData: UserUpdate = { display_name: displayName };
           const { error } = await supabase
-            .from('users')
+            .from("users")
             .update(updateData)
-            .eq('id', user.id);
+            .eq("id", user.id);
 
           if (error) throw error;
 
           set({ user: { ...user, display_name: displayName } });
         } catch (error) {
-          console.error('Update display name error:', error);
+          console.error("Update display name error:", error);
         }
       },
 
@@ -120,9 +126,9 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'between-auth',
+      name: "recapd-auth",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ deviceId: state.deviceId }),
-    }
-  )
+    },
+  ),
 );

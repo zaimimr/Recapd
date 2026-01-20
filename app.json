@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Between",
-    "slug": "between",
+    "name": "Recapd",
+    "slug": "recapd",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "between",
+    "scheme": "recapd",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,11 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.zaimimran.between",
+      "bundleIdentifier": "com.zaimimran.recapd",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Between needs access to your photos to share them with your event group.",
-        "NSPhotoLibraryAddUsageDescription": "Between needs permission to save photos to your camera roll.",
-        "NSCameraUsageDescription": "Between needs camera access to scan QR codes.",
+        "NSPhotoLibraryUsageDescription": "Recapd needs access to your photos to share them with your event group.",
+        "NSPhotoLibraryAddUsageDescription": "Recapd needs permission to save photos to your camera roll.",
+        "NSCameraUsageDescription": "Recapd needs camera access to scan QR codes.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -29,7 +29,7 @@
         "backgroundColor": "#1a1a2e"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.zaimimran.between",
+      "package": "com.zaimimran.recapd",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
@@ -55,15 +55,15 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow Between to access your photos to share them with your event group.",
-          "savePhotosPermission": "Allow Between to save photos to your camera roll.",
+          "photosPermission": "Allow Recapd to access your photos to share them with your event group.",
+          "savePhotosPermission": "Allow Recapd to save photos to your camera roll.",
           "isAccessMediaLocationEnabled": true
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Between to use your camera to scan QR codes."
+          "cameraPermission": "Allow Recapd to use your camera to scan QR codes."
         }
       ],
       [

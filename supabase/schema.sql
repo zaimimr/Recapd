@@ -1,4 +1,4 @@
--- Between App Database Schema
+-- Recapd App Database Schema
 -- Run this in Supabase SQL Editor
 
 -- Users (lightweight, anonymous-first)
