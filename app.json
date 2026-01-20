@@ -65,7 +65,8 @@
         {
           "cameraPermission": "Allow Between to use your camera to scan QR codes."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
