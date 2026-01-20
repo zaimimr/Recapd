@@ -20,18 +20,19 @@ import { useEventStore } from '@/store/eventStore';
 import { useColorScheme } from '@/components/useColorScheme';
 import { getPhotoUrl, downloadPhoto } from '@/lib/storage';
 import { saveToLibrary } from '@/lib/mediaLibrary';
-import { MediaItem } from '@/types/database';
+import { sendReminderToParticipants } from '@/lib/notifications';
+import { MediaItemWithUser } from '@/types/database';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PHOTO_SIZE = (SCREEN_WIDTH - 48 - 8) / 3;
 
 interface TimelineSection {
   hour: string;
-  photos: MediaItem[];
+  photos: MediaItemWithUser[];
 }
 
-function groupPhotosByHour(photos: MediaItem[]): TimelineSection[] {
-  const groups: { [key: string]: MediaItem[] } = {};
+function groupPhotosByHour(photos: MediaItemWithUser[]): TimelineSection[] {
+  const groups: { [key: string]: MediaItemWithUser[] } = {};
 
   photos.forEach((photo) => {
     const hour = format(new Date(photo.captured_at), 'ha');
@@ -53,7 +54,7 @@ function PhotoViewer({
   onClose,
   isDark,
 }: {
-  photo: MediaItem | null;
+  photo: MediaItemWithUser | null;
   visible: boolean;
   onClose: () => void;
   isDark: boolean;
@@ -97,9 +98,16 @@ function PhotoViewer({
           resizeMode="contain"
         />
         <View style={styles.viewerFooter}>
-          <Text style={styles.viewerTime}>
-            {format(new Date(photo.captured_at), 'h:mm a')}
-          </Text>
+          <View style={styles.viewerInfo}>
+            {photo.uploader?.display_name && (
+              <Text style={styles.viewerUploader}>
+                {photo.uploader.display_name}
+              </Text>
+            )}
+            <Text style={styles.viewerTime}>
+              {format(new Date(photo.captured_at), 'h:mm a')}
+            </Text>
+          </View>
           <TouchableOpacity
             style={styles.viewerDownload}
             onPress={handleDownload}
@@ -124,8 +132,8 @@ function PhotoGrid({
   photos,
   onPhotoPress,
 }: {
-  photos: MediaItem[];
-  onPhotoPress: (photo: MediaItem) => void;
+  photos: MediaItemWithUser[];
+  onPhotoPress: (photo: MediaItemWithUser) => void;
 }) {
   return (
     <View style={styles.photoGrid}>
@@ -161,10 +169,11 @@ export default function EventScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [selectedPhoto, setSelectedPhoto] = useState<MediaItem | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<MediaItemWithUser | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+  const [sendingReminder, setSendingReminder] = useState(false);
 
   const loadData = useCallback(async () => {
     if (id) {
@@ -184,7 +193,7 @@ export default function EventScreen() {
     }
   }, [id, subscribeToMediaItems]);
 
-  function handlePhotoPress(photo: MediaItem) {
+  function handlePhotoPress(photo: MediaItemWithUser) {
     setSelectedPhoto(photo);
     setViewerVisible(true);
   }
@@ -231,6 +240,28 @@ export default function EventScreen() {
     );
   }
 
+  async function handleRemindGuests() {
+    if (!currentEvent || !user || sendingReminder) return;
+
+    setSendingReminder(true);
+    const { success, sentCount } = await sendReminderToParticipants(
+      currentEvent.id,
+      currentEvent.title,
+      user.id
+    );
+    setSendingReminder(false);
+
+    if (success) {
+      if (sentCount > 0) {
+        Alert.alert('Reminder Sent', `Notification sent to ${sentCount} guest${sentCount !== 1 ? 's' : ''}`);
+      } else {
+        Alert.alert('No Guests to Notify', 'No guests have push notifications enabled');
+      }
+    } else {
+      Alert.alert('Error', 'Failed to send reminder');
+    }
+  }
+
   if (isLoading && !currentEvent) {
     return (
       <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
@@ -250,6 +281,9 @@ export default function EventScreen() {
   const isEnded = isPast(new Date(currentEvent.ends_at));
   const daysUntilExpiry = differenceInDays(new Date(currentEvent.expires_at), new Date());
   const sections = groupPhotosByHour(mediaItems);
+  const isHost = currentEvent.participants?.some(
+    (p) => p.user_id === user?.id && p.role === 'host'
+  );
 
   return (
     <>
@@ -338,6 +372,23 @@ export default function EventScreen() {
                       </Text>
                     </>
                   )}
+                </TouchableOpacity>
+              )}
+
+              {isHost && (
+                <TouchableOpacity
+                  style={styles.remindButton}
+                  onPress={handleRemindGuests}
+                  disabled={sendingReminder}
+                >
+                  {sendingReminder ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <FontAwesome name="bell" size={16} color="#fff" />
+                  )}
+                  <Text style={styles.remindButtonText}>
+                    {sendingReminder ? 'Sending...' : 'Remind Guests to Upload'}
+                  </Text>
                 </TouchableOpacity>
               )}
 
@@ -484,6 +535,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  remindButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7c3aed',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 24,
+  },
+  remindButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   timelineTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -561,9 +627,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
-  viewerTime: {
+  viewerInfo: {
+    alignItems: 'center',
+  },
+  viewerUploader: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  viewerTime: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
   },
   viewerDownload: {
     padding: 12,

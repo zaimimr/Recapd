@@ -5,19 +5,20 @@ import {
   EventInsert,
   EventParticipant,
   EventParticipantInsert,
-  MediaItem,
+  MediaItemWithUser,
 } from '@/types/database';
 import { addDays } from 'date-fns';
 
-interface EventWithParticipants extends Event {
+export interface EventWithParticipants extends Event {
   participants?: EventParticipant[];
   participant_count?: number;
+  userRole?: 'host' | 'guest';
 }
 
 interface EventState {
   events: EventWithParticipants[];
   currentEvent: EventWithParticipants | null;
-  mediaItems: MediaItem[];
+  mediaItems: MediaItemWithUser[];
   isLoading: boolean;
   error: string | null;
   fetchUserEvents: (userId: string) => Promise<void>;
@@ -53,7 +54,7 @@ export const useEventStore = create<EventState>((set, get) => ({
 
       const { data: participations, error: partError } = await supabase
         .from('event_participants')
-        .select('event_id')
+        .select('event_id, role')
         .eq('user_id', userId);
 
       if (partError) throw partError;
@@ -64,6 +65,7 @@ export const useEventStore = create<EventState>((set, get) => ({
       }
 
       const eventIds = participations.map((p) => p.event_id);
+      const roleMap = new Map(participations.map((p) => [p.event_id, p.role]));
 
       const { data: events, error: eventsError } = await supabase
         .from('events')
@@ -80,7 +82,11 @@ export const useEventStore = create<EventState>((set, get) => ({
             .select('*', { count: 'exact', head: true })
             .eq('event_id', event.id);
 
-          return { ...(event as Event), participant_count: count || 0 };
+          return {
+            ...(event as Event),
+            participant_count: count || 0,
+            userRole: roleMap.get(event.id) as 'host' | 'guest',
+          };
         })
       );
 
@@ -240,14 +246,14 @@ export const useEventStore = create<EventState>((set, get) => ({
 
       const { data, error } = await supabase
         .from('media_items')
-        .select('*')
+        .select('*, uploader:users!uploaded_by_user_id(display_name)')
         .eq('event_id', eventId)
         .eq('visibility', 'shared')
         .order('captured_at', { ascending: true });
 
       if (error) throw error;
 
-      set({ mediaItems: (data || []) as MediaItem[], isLoading: false });
+      set({ mediaItems: (data || []) as MediaItemWithUser[], isLoading: false });
     } catch (error) {
       console.error('Fetch media items error:', error);
       set({ error: 'Failed to load photos', isLoading: false });
@@ -265,12 +271,20 @@ export const useEventStore = create<EventState>((set, get) => ({
           table: 'media_items',
           filter: `event_id=eq.${eventId}`,
         },
-        (payload) => {
+        async (payload) => {
           const { mediaItems } = get();
 
           if (payload.eventType === 'INSERT') {
-            const newItem = payload.new as MediaItem;
+            const newItem = payload.new as MediaItemWithUser;
             if (newItem.visibility === 'shared') {
+              if (newItem.uploaded_by_user_id) {
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('display_name')
+                  .eq('id', newItem.uploaded_by_user_id)
+                  .single();
+                newItem.uploader = userData;
+              }
               set({
                 mediaItems: [...mediaItems, newItem].sort(
                   (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
@@ -281,10 +295,12 @@ export const useEventStore = create<EventState>((set, get) => ({
             const oldItem = payload.old as { id: string };
             set({ mediaItems: mediaItems.filter((item) => item.id !== oldItem.id) });
           } else if (payload.eventType === 'UPDATE') {
-            const updatedItem = payload.new as MediaItem;
+            const updatedItem = payload.new as MediaItemWithUser;
             if (updatedItem.visibility !== 'shared') {
               set({ mediaItems: mediaItems.filter((item) => item.id !== updatedItem.id) });
             } else {
+              const existingItem = mediaItems.find((item) => item.id === updatedItem.id);
+              updatedItem.uploader = existingItem?.uploader;
               set({
                 mediaItems: mediaItems.map((item) =>
                   item.id === updatedItem.id ? updatedItem : item

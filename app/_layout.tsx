@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthStore } from '@/store/authStore';
+import { registerForPushNotifications, savePushToken } from '@/lib/notifications';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -48,6 +49,17 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const user = useAuthStore((state) => state.user);
+
+  useEffect(() => {
+    if (user?.id) {
+      registerForPushNotifications().then((token) => {
+        if (token && user.push_token !== token) {
+          savePushToken(user.id, token);
+        }
+      });
+    }
+  }, [user?.id]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

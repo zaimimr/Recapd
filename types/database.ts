@@ -216,3 +216,9 @@ export type UserUpdate = Database['public']['Tables']['users']['Update'];
 export type EventUpdate = Database['public']['Tables']['events']['Update'];
 export type EventParticipantUpdate = Database['public']['Tables']['event_participants']['Update'];
 export type MediaItemUpdate = Database['public']['Tables']['media_items']['Update'];
+
+export interface MediaItemWithUser extends MediaItem {
+  uploader?: {
+    display_name: string;
+  } | null;
+}

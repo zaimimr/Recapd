@@ -11,13 +11,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useCallback } from 'react';
 import { format, isPast, isFuture, isWithinInterval } from 'date-fns';
 import { useAuthStore } from '@/store/authStore';
-import { useEventStore } from '@/store/eventStore';
+import { useEventStore, EventWithParticipants } from '@/store/eventStore';
 import { useColorScheme } from '@/components/useColorScheme';
 import { Event } from '@/types/database';
-
-interface EventWithCount extends Event {
-  participant_count?: number;
-}
 
 function getEventStatus(event: Event): { label: string; color: string } {
   const now = new Date();
@@ -39,8 +35,9 @@ function getEventStatus(event: Event): { label: string; color: string } {
   return { label: 'Unknown', color: '#999' };
 }
 
-function EventCard({ event, onPress, isDark }: { event: EventWithCount; onPress: () => void; isDark: boolean }) {
+function EventCard({ event, onPress, isDark }: { event: EventWithParticipants; onPress: () => void; isDark: boolean }) {
   const status = getEventStatus(event);
+  const isHost = event.userRole === 'host';
 
   return (
     <TouchableOpacity
@@ -49,9 +46,16 @@ function EventCard({ event, onPress, isDark }: { event: EventWithCount; onPress:
       activeOpacity={0.7}
     >
       <View style={styles.cardHeader}>
-        <Text style={[styles.eventTitle, isDark && styles.textDark]} numberOfLines={1}>
-          {event.title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text style={[styles.eventTitle, isDark && styles.textDark]} numberOfLines={1}>
+            {event.title}
+          </Text>
+          {isHost && (
+            <View style={styles.hostBadge}>
+              <Text style={styles.hostBadgeText}>Host</Text>
+            </View>
+          )}
+        </View>
         <View style={[styles.statusBadge, { backgroundColor: status.color + '20' }]}>
           <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
         </View>
@@ -184,12 +188,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+    gap: 8,
+  },
   eventTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#000',
-    flex: 1,
-    marginRight: 12,
+    flexShrink: 1,
+  },
+  hostBadge: {
+    backgroundColor: '#7c3aed',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  hostBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
   },
   statusBadge: {
     paddingHorizontal: 10,

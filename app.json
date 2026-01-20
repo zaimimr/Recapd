@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "between",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -64,6 +64,13 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Between to use your camera to scan QR codes."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#7c3aed"
         }
       ],
       "@react-native-community/datetimepicker"
