@@ -4,7 +4,6 @@ import {
   LocalPhoto,
   requestMediaPermissions,
 } from "@/lib/mediaLibrary";
-import { uploadPhotoBatch, UploadProgress } from "@/lib/storage";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -19,34 +18,66 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
+  Pressable,
 } from "react-native";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const PHOTO_SIZE = (SCREEN_WIDTH - 32 - 8) / 3;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const NUM_COLUMNS = 3;
+const GRID_PADDING = 8;
+const GRID_GAP = 2;
+const PHOTO_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
-type Step = "loading" | "found" | "select" | "uploading" | "done" | "error";
+type Step = "loading" | "found" | "select" | "error";
+
+interface PhotoPreviewProps {
+  photo: LocalPhoto | null;
+  visible: boolean;
+  onClose: () => void;
+}
+
+function PhotoPreview({ photo, visible, onClose }: PhotoPreviewProps) {
+  if (!photo) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.previewContainer} onPress={onClose}>
+        <View style={styles.previewHeader}>
+          <TouchableOpacity style={styles.previewCloseButton} onPress={onClose}>
+            <FontAwesome name="times" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.previewImageContainer}>
+          <Image
+            source={{ uri: photo.uri }}
+            style={styles.previewImage}
+            resizeMode="contain"
+          />
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
 
 export default function ContributeScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const { currentEvent, fetchEventById } = useEventStore();
+  const { currentEvent, fetchEventById, addPendingUploads } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
   const [step, setStep] = useState<Step>("loading");
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
-    current: 0,
-    total: 0,
-    percentage: 0,
-  });
-  const [uploadResult, setUploadResult] = useState<{
-    successful: number;
-    failed: number;
-  } | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<LocalPhoto | null>(null);
 
   const loadPhotos = useCallback(async () => {
     if (!eventId) return;
@@ -84,27 +115,10 @@ export default function ContributeScreen() {
     loadPhotos();
   }, [loadPhotos]);
 
-  async function handleShareAll() {
+  function handleShareAll() {
     if (!user || !eventId || photos.length === 0) return;
-
-    setStep("uploading");
-
-    const allPhotos = photos.map((p) => ({
-      uri: p.uri,
-      capturedAt: new Date(p.creationTime),
-      width: p.width,
-      height: p.height,
-    }));
-
-    const result = await uploadPhotoBatch(
-      allPhotos,
-      eventId,
-      user.id,
-      (progress) => setUploadProgress(progress),
-    );
-
-    setUploadResult(result);
-    setStep("done");
+    addPendingUploads(photos, eventId, user.id);
+    router.replace(`/event/${eventId}`);
   }
 
   function handleReviewFirst() {
@@ -133,44 +147,16 @@ export default function ContributeScreen() {
     setSelectedIds(new Set());
   }
 
-  async function handleUpload() {
+  function handleUpload() {
     if (!user || !eventId || selectedIds.size === 0) return;
-
-    setStep("uploading");
-
-    const selectedPhotos = photos
-      .filter((p) => selectedIds.has(p.id))
-      .map((p) => ({
-        uri: p.uri,
-        capturedAt: new Date(p.creationTime),
-        width: p.width,
-        height: p.height,
-      }));
-
-    const result = await uploadPhotoBatch(
-      selectedPhotos,
-      eventId,
-      user.id,
-      (progress) => setUploadProgress(progress),
-    );
-
-    setUploadResult(result);
-    setStep("done");
-  }
-
-  function handleDone() {
+    const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
+    addPendingUploads(selectedPhotos, eventId, user.id);
     router.replace(`/event/${eventId}`);
   }
 
   if (step === "loading") {
     return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          isDark && styles.containerDark,
-        ]}
-      >
+      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
         <ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
         <Text style={[styles.loadingText, isDark && styles.textMuted]}>
           Scanning your photos...
@@ -181,13 +167,7 @@ export default function ContributeScreen() {
 
   if (step === "error") {
     return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          isDark && styles.containerDark,
-        ]}
-      >
+      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
         <FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
         <Text style={[styles.errorTitle, isDark && styles.textDark]}>
           {permissionDenied ? "Permission Required" : "Something went wrong"}
@@ -212,22 +192,12 @@ export default function ContributeScreen() {
             title: "",
             headerRight: () => (
               <TouchableOpacity onPress={handleSkip} style={{ padding: 8 }}>
-                <FontAwesome
-                  name="times"
-                  size={22}
-                  color={isDark ? "#fff" : "#000"}
-                />
+                <FontAwesome name="times" size={22} color={isDark ? "#fff" : "#000"} />
               </TouchableOpacity>
             ),
           }}
         />
-        <View
-          style={[
-            styles.container,
-            styles.centered,
-            isDark && styles.containerDark,
-          ]}
-        >
+        <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
           <View style={styles.foundContent}>
             <View style={styles.foundIcon}>
               <FontAwesome name="camera" size={32} color="#000" />
@@ -238,27 +208,15 @@ export default function ContributeScreen() {
             <Text style={[styles.foundText, isDark && styles.textMuted]}>
               from the event time window
             </Text>
-
             <View style={styles.foundActions}>
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={handleReviewFirst}
-              >
+              <TouchableOpacity style={styles.primaryButton} onPress={handleReviewFirst}>
                 <Text style={styles.primaryButtonText}>Review First</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.secondaryButton,
-                  isDark && styles.secondaryButtonDark,
-                ]}
+                style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}
                 onPress={handleShareAll}
               >
-                <Text
-                  style={[
-                    styles.secondaryButtonText,
-                    isDark && styles.textDark,
-                  ]}
-                >
+                <Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>
                   Share All
                 </Text>
               </TouchableOpacity>
@@ -269,68 +227,9 @@ export default function ContributeScreen() {
     );
   }
 
-  if (step === "uploading") {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          isDark && styles.containerDark,
-        ]}
-      >
-        <ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-        <Text style={[styles.uploadingTitle, isDark && styles.textDark]}>
-          Uploading...
-        </Text>
-        <Text style={[styles.uploadingProgress, isDark && styles.textMuted]}>
-          {uploadProgress.current} of {uploadProgress.total}
-        </Text>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${uploadProgress.percentage}%` },
-            ]}
-          />
-        </View>
-      </View>
-    );
-  }
-
-  if (step === "done") {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centered,
-          isDark && styles.containerDark,
-        ]}
-      >
-        <View style={styles.doneIcon}>
-          <FontAwesome name="check" size={32} color="#22c55e" />
-        </View>
-        <Text style={[styles.doneTitle, isDark && styles.textDark]}>
-          All Done!
-        </Text>
-        <Text style={[styles.doneText, isDark && styles.textMuted]}>
-          {uploadResult?.successful || 0} photo
-          {uploadResult?.successful !== 1 ? "s" : ""} uploaded
-          {uploadResult?.failed ? ` (${uploadResult.failed} failed)` : ""}
-        </Text>
-        <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
-          <Text style={styles.doneButtonText}>View Timeline</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: `Select Photos (${selectedIds.size})`,
-        }}
-      />
+      <Stack.Screen options={{ title: `Select Photos (${selectedIds.size})` }} />
 
       <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.selectHeader}>
@@ -341,9 +240,7 @@ export default function ContributeScreen() {
             <TouchableOpacity onPress={selectAll}>
               <Text style={styles.selectAction}>Select All</Text>
             </TouchableOpacity>
-            <Text style={[styles.selectDivider, isDark && styles.textMuted]}>
-              |
-            </Text>
+            <Text style={[styles.selectDivider, isDark && styles.textMuted]}>|</Text>
             <TouchableOpacity onPress={deselectAll}>
               <Text style={styles.selectAction}>Clear</Text>
             </TouchableOpacity>
@@ -353,24 +250,18 @@ export default function ContributeScreen() {
         <FlatList
           data={photos}
           keyExtractor={(item) => item.id}
-          numColumns={3}
+          numColumns={NUM_COLUMNS}
           renderItem={({ item }) => {
             const isSelected = selectedIds.has(item.id);
             return (
               <TouchableOpacity
                 style={styles.selectPhotoItem}
                 onPress={() => togglePhotoSelection(item.id)}
+                onLongPress={() => setPreviewPhoto(item)}
+                delayLongPress={200}
               >
-                <Image
-                  source={{ uri: item.uri }}
-                  style={styles.selectPhotoImage}
-                />
-                <View
-                  style={[
-                    styles.selectOverlay,
-                    isSelected && styles.selectOverlaySelected,
-                  ]}
-                >
+                <Image source={{ uri: item.uri }} style={styles.selectPhotoImage} />
+                <View style={[styles.selectOverlay, isSelected && styles.selectOverlaySelected]}>
                   {isSelected && (
                     <View style={styles.selectCheckmark}>
                       <FontAwesome name="check" size={12} color="#fff" />
@@ -383,20 +274,30 @@ export default function ContributeScreen() {
           contentContainerStyle={styles.selectGrid}
         />
 
-        {selectedIds.size > 0 && (
-          <View style={styles.selectFooter}>
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={handleUpload}
-            >
-              <Text style={styles.uploadButtonText}>
-                Upload {selectedIds.size} Photo
-                {selectedIds.size !== 1 ? "s" : ""}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <View style={[styles.selectFooter, isDark && styles.selectFooterDark]}>
+          <TouchableOpacity
+            style={[
+              styles.uploadButton,
+              selectedIds.size === 0 && styles.uploadButtonDisabled,
+            ]}
+            onPress={handleUpload}
+            disabled={selectedIds.size === 0}
+          >
+            <FontAwesome name="cloud-upload" size={20} color="#fff" style={styles.uploadIcon} />
+            <Text style={styles.uploadButtonText}>
+              {selectedIds.size > 0
+                ? `Share ${selectedIds.size} Photo${selectedIds.size !== 1 ? "s" : ""}`
+                : "Select photos to share"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <PhotoPreview
+        photo={previewPhoto}
+        visible={previewPhoto !== null}
+        onClose={() => setPreviewPhoto(null)}
+      />
     </>
   );
 }
@@ -491,61 +392,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
   },
-  uploadingTitle: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "#000",
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  uploadingProgress: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 16,
-  },
-  progressBar: {
-    width: "100%",
-    height: 8,
-    backgroundColor: "#e5e5e5",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#000",
-    borderRadius: 4,
-  },
-  doneIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#dcfce7",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  doneTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#000",
-    marginBottom: 8,
-  },
-  doneText: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 32,
-  },
-  doneButton: {
-    backgroundColor: "#000",
-    paddingVertical: 18,
-    paddingHorizontal: 48,
-    borderRadius: 14,
-  },
-  doneButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
   selectHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -572,12 +418,12 @@ const styles = StyleSheet.create({
     color: "#e5e5e5",
   },
   selectGrid: {
-    padding: 12,
+    padding: GRID_PADDING,
   },
   selectPhotoItem: {
     width: PHOTO_SIZE,
     height: PHOTO_SIZE,
-    margin: 2,
+    margin: GRID_GAP / 2,
     borderRadius: 6,
     overflow: "hidden",
   },
@@ -608,24 +454,72 @@ const styles = StyleSheet.create({
   },
   selectFooter: {
     padding: 16,
+    paddingBottom: 32,
+    backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#e5e5e5",
   },
-  uploadButton: {
+  selectFooterDark: {
     backgroundColor: "#000",
-    paddingVertical: 16,
-    borderRadius: 12,
+    borderTopColor: "#333",
+  },
+  uploadButton: {
+    backgroundColor: "#007AFF",
+    paddingVertical: 18,
+    borderRadius: 14,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  uploadButtonDisabled: {
+    backgroundColor: "#c7c7cc",
+    shadowOpacity: 0,
+  },
+  uploadIcon: {
+    marginRight: 10,
   },
   uploadButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
+    letterSpacing: -0.4,
   },
   textDark: {
     color: "#fff",
   },
   textMuted: {
     color: "#888",
+  },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+  },
+  previewHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    zIndex: 10,
+  },
+  previewCloseButton: {
+    padding: 8,
+    alignSelf: "flex-start",
+  },
+  previewImageContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.8,
   },
 });

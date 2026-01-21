@@ -1,27 +1,36 @@
-import 'react-native-url-polyfill/auto';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import { useFonts } from "expo-font";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
+import { StatusBar } from "react-native";
+import "react-native-reanimated";
+import "react-native-url-polyfill/auto";
 
-import { useColorScheme } from '@/components/useColorScheme';
-import { useAuthStore } from '@/store/authStore';
-import { registerForPushNotifications, savePushToken } from '@/lib/notifications';
+import { useColorScheme } from "@/components/useColorScheme";
+import {
+  registerForPushNotifications,
+  savePushToken,
+  setupNotificationHandler,
+} from "@/lib/notifications";
+import { useAuthStore } from "@/store/authStore";
 
-export { ErrorBoundary } from 'expo-router';
+export { ErrorBoundary } from "expo-router";
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: "(tabs)",
 };
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
     ...FontAwesome.font,
   });
   const initializeAuth = useAuthStore((state) => state.initializeAuth);
@@ -53,6 +62,10 @@ function RootLayoutNav() {
   const user = useAuthStore((state) => state.user);
 
   useEffect(() => {
+    setupNotificationHandler();
+  }, []);
+
+  useEffect(() => {
     if (user?.id) {
       registerForPushNotifications().then((token) => {
         if (token && user.push_token !== token) {
@@ -63,49 +76,50 @@ function RootLayoutNav() {
   }, [user?.id]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <StatusBar hidden />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="event/create"
           options={{
-            title: 'Create Event',
-            presentation: 'modal',
+            title: "Create Event",
+            presentation: "modal",
           }}
         />
         <Stack.Screen
           name="event/join"
           options={{
-            title: 'Join Event',
-            presentation: 'modal',
+            title: "Join Event",
+            presentation: "modal",
           }}
         />
         <Stack.Screen
           name="event/[id]"
           options={{
-            title: 'Event',
-            headerBackTitle: 'Back',
+            title: "Event",
+            headerBackTitle: "Back",
           }}
         />
         <Stack.Screen
           name="event/share/[id]"
           options={{
-            title: 'Share Event',
-            presentation: 'modal',
+            title: "Share Event",
+            presentation: "modal",
           }}
         />
         <Stack.Screen
           name="contribute/[eventId]"
           options={{
-            title: 'Add Photos',
-            presentation: 'modal',
+            title: "Add Photos",
+            presentation: "modal",
           }}
         />
         <Stack.Screen
           name="onboarding"
           options={{
             headerShown: false,
-            presentation: 'modal',
+            presentation: "modal",
             gestureEnabled: false,
           }}
         />

@@ -40,3 +40,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# ios
+credentials.json
+android/keystores/release.keystore
+ios/certs/*

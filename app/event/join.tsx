@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,9 +9,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAuthStore } from '@/store/authStore';
 import { useEventStore } from '@/store/eventStore';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -35,9 +38,12 @@ export default function JoinEventScreen() {
   const [step, setStep] = useState<'code' | 'preview'>('code');
   const [displayName, setDisplayName] = useState('');
   const [nameError, setNameError] = useState('');
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const hasScanned = useRef(false);
 
-  async function handleLookup() {
-    const trimmedCode = code.trim().toUpperCase();
+  async function handleLookup(eventCode?: string) {
+    const trimmedCode = (eventCode || code).trim().toUpperCase();
 
     if (trimmedCode.length !== 6) {
       Alert.alert('Invalid Code', 'Please enter a 6-character code');
@@ -99,6 +105,59 @@ export default function JoinEventScreen() {
 
   function formatCode(text: string) {
     return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  }
+
+  async function handleOpenScanner() {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert(
+          'Camera Permission Required',
+          'Please allow camera access to scan QR codes',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
+    hasScanned.current = false;
+    setScannerVisible(true);
+  }
+
+  function handleBarCodeScanned({ data }: { data: string }) {
+    if (hasScanned.current) return;
+    hasScanned.current = true;
+
+    // Extract event code from QR data
+    // Could be just the code, or a URL like recapd://join/ABC123 or https://recapd.app/join/ABC123
+    let eventCode = data;
+
+    // Try to extract code from URL patterns
+    const urlPatterns = [
+      /\/join\/([A-Z0-9]{6})/i,
+      /code=([A-Z0-9]{6})/i,
+      /^([A-Z0-9]{6})$/i,
+    ];
+
+    for (const pattern of urlPatterns) {
+      const match = data.match(pattern);
+      if (match) {
+        eventCode = match[1].toUpperCase();
+        break;
+      }
+    }
+
+    // Validate it looks like a code
+    const cleanCode = eventCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+
+    if (cleanCode.length === 6) {
+      setScannerVisible(false);
+      setCode(cleanCode);
+      // Auto-lookup after scanning
+      setTimeout(() => handleLookup(cleanCode), 300);
+    } else {
+      Alert.alert('Invalid QR Code', 'This QR code doesn\'t contain a valid event code');
+      hasScanned.current = false;
+    }
   }
 
   const isJoining = isLoading || authLoading;
@@ -206,14 +265,14 @@ export default function JoinEventScreen() {
             maxLength={6}
             keyboardType="default"
             returnKeyType="go"
-            onSubmitEditing={handleLookup}
+            onSubmitEditing={() => handleLookup()}
           />
           {error && <Text style={styles.errorText}>{error}</Text>}
         </View>
 
         <TouchableOpacity
           style={[styles.button, (code.length !== 6 || isLoading) && styles.buttonDisabled]}
-          onPress={handleLookup}
+          onPress={() => handleLookup()}
           disabled={code.length !== 6 || isLoading}
         >
           {isLoading ? (
@@ -222,7 +281,62 @@ export default function JoinEventScreen() {
             <Text style={styles.buttonText}>Find Event</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.divider}>
+          <View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
+          <Text style={[styles.dividerText, isDark && styles.textMuted]}>or</Text>
+          <View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.scanButton, isDark && styles.scanButtonDark]}
+          onPress={handleOpenScanner}
+        >
+          <FontAwesome name="qrcode" size={22} color={isDark ? '#fff' : '#000'} />
+          <Text style={[styles.scanButtonText, isDark && styles.textDark]}>
+            Scan QR Code
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={scannerVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setScannerVisible(false)}
+      >
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+            onBarcodeScanned={handleBarCodeScanned}
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerHeader}>
+              <TouchableOpacity
+                style={styles.scannerCloseButton}
+                onPress={() => setScannerVisible(false)}
+              >
+                <FontAwesome name="times" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.scannerContent}>
+              <View style={styles.scannerFrame}>
+                <View style={[styles.cornerTL, styles.corner]} />
+                <View style={[styles.cornerTR, styles.corner]} />
+                <View style={[styles.cornerBL, styles.corner]} />
+                <View style={[styles.cornerBR, styles.corner]} />
+              </View>
+              <Text style={styles.scannerHint}>
+                Point camera at QR code
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -293,6 +407,42 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e5e5',
+  },
+  dividerLineDark: {
+    backgroundColor: '#333',
+  },
+  dividerText: {
+    paddingHorizontal: 16,
+    fontSize: 14,
+    color: '#999',
+  },
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#000',
+    gap: 12,
+  },
+  scanButtonDark: {
+    borderColor: '#fff',
+  },
+  scanButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
   },
   previewCard: {
     backgroundColor: '#f5f5f5',
@@ -380,5 +530,77 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: '#888',
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  scannerHeader: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+  scannerCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    borderColor: '#fff',
+  },
+  cornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 12,
+  },
+  cornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 12,
+  },
+  cornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 12,
+  },
+  cornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 12,
+  },
+  scannerHint: {
+    color: '#fff',
+    fontSize: 16,
+    marginTop: 32,
+    textAlign: 'center',
   },
 });

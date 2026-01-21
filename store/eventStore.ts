@@ -3,11 +3,19 @@ import { supabase } from '@/lib/supabase';
 import {
   Event,
   EventInsert,
+  EventUpdate,
   EventParticipant,
   EventParticipantInsert,
   MediaItemWithUser,
 } from '@/types/database';
 import { addDays } from 'date-fns';
+import {
+  PendingUpload,
+  generateUploadId,
+  processUploadQueue,
+  setUploadCallbacks,
+} from '@/lib/uploadQueue';
+import { LocalPhoto } from '@/lib/mediaLibrary';
 
 export interface EventWithParticipants extends Event {
   participants?: EventParticipant[];
@@ -15,21 +23,38 @@ export interface EventWithParticipants extends Event {
   userRole?: 'host' | 'guest';
 }
 
+export interface ParticipantWithStats {
+  userId: string;
+  displayName: string;
+  role: 'host' | 'guest';
+  photoCount: number;
+  joinedAt: string;
+}
+
 interface EventState {
   events: EventWithParticipants[];
   currentEvent: EventWithParticipants | null;
   mediaItems: MediaItemWithUser[];
+  pendingUploads: PendingUpload[];
   isLoading: boolean;
   error: string | null;
   fetchUserEvents: (userId: string) => Promise<void>;
   fetchEventByCode: (joinCode: string) => Promise<EventWithParticipants | null>;
   fetchEventById: (eventId: string) => Promise<EventWithParticipants | null>;
   createEvent: (event: Omit<EventInsert, 'join_code' | 'expires_at'>, userId: string) => Promise<Event | null>;
+  updateEvent: (eventId: string, updates: Partial<EventUpdate>) => Promise<boolean>;
   joinEvent: (eventId: string, userId: string, nickname?: string) => Promise<boolean>;
   fetchMediaItems: (eventId: string) => Promise<void>;
   subscribeToMediaItems: (eventId: string) => () => void;
   setCurrentEvent: (event: EventWithParticipants | null) => void;
   clearError: () => void;
+  addPendingUploads: (photos: LocalPhoto[], eventId: string, userId: string) => void;
+  processPendingUploads: () => Promise<void>;
+  retryFailedUpload: (id: string) => void;
+  removePendingUpload: (id: string) => void;
+  deletePhoto: (mediaItemId: string, eventId: string) => Promise<boolean>;
+  fetchParticipantStats: (eventId: string) => Promise<ParticipantWithStats[]>;
+  getMergedTimeline: (eventId: string) => (MediaItemWithUser & { isPending?: boolean; localUri?: string; syncStatus?: string })[];
 }
 
 function generateJoinCode(): string {
@@ -41,10 +66,34 @@ function generateJoinCode(): string {
   return code;
 }
 
-export const useEventStore = create<EventState>((set, get) => ({
+export const useEventStore = create<EventState>((set, get) => {
+  setUploadCallbacks({
+    onComplete: (id, _storagePath) => {
+      set((state) => ({
+        pendingUploads: state.pendingUploads.filter((u) => u.id !== id),
+      }));
+    },
+    onFailed: (id, error) => {
+      set((state) => ({
+        pendingUploads: state.pendingUploads.map((u) =>
+          u.id === id ? { ...u, status: 'failed' as const, error } : u
+        ),
+      }));
+    },
+    onStatusChange: (id, status) => {
+      set((state) => ({
+        pendingUploads: state.pendingUploads.map((u) =>
+          u.id === id ? { ...u, status } : u
+        ),
+      }));
+    },
+  });
+
+  return {
   events: [],
   currentEvent: null,
   mediaItems: [],
+  pendingUploads: [],
   isLoading: false,
   error: null,
 
@@ -204,6 +253,32 @@ export const useEventStore = create<EventState>((set, get) => ({
     }
   },
 
+  updateEvent: async (eventId: string, updates: Partial<EventUpdate>) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const updateData: EventUpdate = { ...updates };
+      if (updates.ends_at) {
+        updateData.expires_at = addDays(new Date(updates.ends_at), 14).toISOString();
+      }
+
+      const { error } = await supabase
+        .from('events')
+        .update(updateData)
+        .eq('id', eventId);
+
+      if (error) throw error;
+
+      await get().fetchEventById(eventId);
+      set({ isLoading: false });
+      return true;
+    } catch (error) {
+      console.error('Update event error:', error);
+      set({ error: 'Failed to update event', isLoading: false });
+      return false;
+    }
+  },
+
   joinEvent: async (eventId: string, userId: string, nickname?: string) => {
     try {
       set({ isLoading: true, error: null });
@@ -324,4 +399,142 @@ export const useEventStore = create<EventState>((set, get) => ({
   clearError: () => {
     set({ error: null });
   },
-}));
+
+  addPendingUploads: (photos: LocalPhoto[], eventId: string, userId: string) => {
+    const newUploads: PendingUpload[] = photos.map((photo) => ({
+      id: generateUploadId(),
+      localUri: photo.uri,
+      eventId,
+      userId,
+      capturedAt: new Date(photo.creationTime),
+      width: photo.width,
+      height: photo.height,
+      status: 'pending' as const,
+      retryCount: 0,
+    }));
+
+    set((state) => ({
+      pendingUploads: [...state.pendingUploads, ...newUploads],
+    }));
+
+    get().processPendingUploads();
+  },
+
+  processPendingUploads: async () => {
+    const { pendingUploads } = get();
+    await processUploadQueue(
+      pendingUploads,
+      () => get().pendingUploads,
+      (id, updates) => {
+        set((state) => ({
+          pendingUploads: state.pendingUploads.map((u) =>
+            u.id === id ? { ...u, ...updates } : u
+          ),
+        }));
+      }
+    );
+  },
+
+  retryFailedUpload: (id: string) => {
+    set((state) => ({
+      pendingUploads: state.pendingUploads.map((u) =>
+        u.id === id ? { ...u, status: 'pending' as const } : u
+      ),
+    }));
+    get().processPendingUploads();
+  },
+
+  removePendingUpload: (id: string) => {
+    set((state) => ({
+      pendingUploads: state.pendingUploads.filter((u) => u.id !== id),
+    }));
+  },
+
+  deletePhoto: async (mediaItemId: string, _eventId: string) => {
+    const { mediaItems } = get();
+    const photoToDelete = mediaItems.find((m) => m.id === mediaItemId);
+
+    set((state) => ({
+      mediaItems: state.mediaItems.filter((m) => m.id !== mediaItemId),
+    }));
+
+    const { error } = await supabase
+      .from('media_items')
+      .update({ visibility: 'deleted', deleted_at: new Date().toISOString() })
+      .eq('id', mediaItemId);
+
+    if (error) {
+      if (photoToDelete) {
+        set((state) => ({
+          mediaItems: [...state.mediaItems, photoToDelete].sort(
+            (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+          ),
+        }));
+      }
+      return false;
+    }
+    return true;
+  },
+
+  fetchParticipantStats: async (eventId: string) => {
+    const { data: participants, error: partError } = await supabase
+      .from('event_participants')
+      .select('*, user:users(id, display_name)')
+      .eq('event_id', eventId);
+
+    if (partError || !participants) return [];
+
+    const { data: photoCounts } = await supabase
+      .from('media_items')
+      .select('uploaded_by_user_id')
+      .eq('event_id', eventId)
+      .eq('visibility', 'shared');
+
+    const countMap: Record<string, number> = {};
+    photoCounts?.forEach((item) => {
+      if (item.uploaded_by_user_id) {
+        countMap[item.uploaded_by_user_id] = (countMap[item.uploaded_by_user_id] || 0) + 1;
+      }
+    });
+
+    return participants.map((p) => ({
+      userId: p.user_id,
+      displayName: (p.user as { display_name: string })?.display_name || 'Unknown',
+      role: p.role as 'host' | 'guest',
+      photoCount: countMap[p.user_id] || 0,
+      joinedAt: p.joined_at,
+    }));
+  },
+
+  getMergedTimeline: (eventId: string) => {
+    const { mediaItems, pendingUploads } = get();
+
+    const pending = pendingUploads
+      .filter((p) => p.eventId === eventId)
+      .map((p) => ({
+        id: p.id,
+        event_id: p.eventId,
+        uploaded_by_user_id: p.userId,
+        captured_at: p.capturedAt.toISOString(),
+        uploaded_at: new Date().toISOString(),
+        media_type: 'photo' as const,
+        width: p.width,
+        height: p.height,
+        duration_seconds: null,
+        file_size_bytes: null,
+        storage_path: '',
+        thumbnail_path: null,
+        visibility: 'shared' as const,
+        deleted_at: null,
+        uploader: null,
+        isPending: true,
+        localUri: p.localUri,
+        syncStatus: p.status,
+      }));
+
+    return [...mediaItems.map((m) => ({ ...m, isPending: false, localUri: undefined, syncStatus: undefined })), ...pending].sort(
+      (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+    );
+  },
+};
+});

@@ -73,7 +73,8 @@
           "color": "#7c3aed"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
@@ -81,7 +82,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "fc9aee3d-7354-43b8-acee-c3f49fdac65e"
+        "projectId": "3dae7426-c7d6-4c8d-b234-a28f7402db0b"
       }
     }
   }

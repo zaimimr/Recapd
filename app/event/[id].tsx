@@ -1,158 +1,27 @@
-import { useEffect, useState, useCallback } from 'react';
+import GuestSheet from "@/components/GuestSheet";
+import MasonryGrid from "@/components/MasonryGrid";
+import { MergedMediaItem } from "@/components/MomentCluster";
+import PhotoViewer from "@/components/PhotoViewer";
+import { useColorScheme } from "@/components/useColorScheme";
+import { saveToLibrary } from "@/lib/mediaLibrary";
+import { sendReminderToParticipants } from "@/lib/notifications";
+import { downloadPhoto, getPhotoUrl } from "@/lib/storage";
+import { useAuthStore } from "@/store/authStore";
+import { ParticipantWithStats, useEventStore } from "@/store/eventStore";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { differenceInDays, differenceInHours, format, isPast } from "date-fns";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  StyleSheet,
-  View,
-  Text,
-  FlatList,
-  Image,
-  TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
-  Dimensions,
-  Modal,
   Alert,
-} from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { format, isPast, differenceInDays } from 'date-fns';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useAuthStore } from '@/store/authStore';
-import { useEventStore } from '@/store/eventStore';
-import { useColorScheme } from '@/components/useColorScheme';
-import { getPhotoUrl, downloadPhoto } from '@/lib/storage';
-import { saveToLibrary } from '@/lib/mediaLibrary';
-import { sendReminderToParticipants } from '@/lib/notifications';
-import { MediaItemWithUser } from '@/types/database';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const PHOTO_SIZE = (SCREEN_WIDTH - 48 - 8) / 3;
-
-interface TimelineSection {
-  hour: string;
-  photos: MediaItemWithUser[];
-}
-
-function groupPhotosByHour(photos: MediaItemWithUser[]): TimelineSection[] {
-  const groups: { [key: string]: MediaItemWithUser[] } = {};
-
-  photos.forEach((photo) => {
-    const hour = format(new Date(photo.captured_at), 'ha');
-    if (!groups[hour]) {
-      groups[hour] = [];
-    }
-    groups[hour].push(photo);
-  });
-
-  return Object.entries(groups).map(([hour, photos]) => ({
-    hour,
-    photos,
-  }));
-}
-
-function PhotoViewer({
-  photo,
-  visible,
-  onClose,
-  isDark,
-}: {
-  photo: MediaItemWithUser | null;
-  visible: boolean;
-  onClose: () => void;
-  isDark: boolean;
-}) {
-  const [saving, setSaving] = useState(false);
-
-  async function handleDownload() {
-    if (!photo) return;
-
-    setSaving(true);
-    try {
-      const localUri = await downloadPhoto(photo.storage_path, `between_${photo.id}.jpg`);
-      if (localUri) {
-        const asset = await saveToLibrary(localUri);
-        if (asset) {
-          Alert.alert('Saved', 'Photo saved to your camera roll');
-        } else {
-          Alert.alert('Error', 'Failed to save photo');
-        }
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to download photo');
-    }
-    setSaving(false);
-  }
-
-  if (!photo) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.viewerContainer}>
-        <TouchableOpacity style={styles.viewerCloseArea} onPress={onClose} />
-        <Image
-          source={{ uri: getPhotoUrl(photo.storage_path) }}
-          style={styles.viewerImage}
-          resizeMode="contain"
-        />
-        <View style={styles.viewerFooter}>
-          <View style={styles.viewerInfo}>
-            {photo.uploader?.display_name && (
-              <Text style={styles.viewerUploader}>
-                {photo.uploader.display_name}
-              </Text>
-            )}
-            <Text style={styles.viewerTime}>
-              {format(new Date(photo.captured_at), 'h:mm a')}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.viewerDownload}
-            onPress={handleDownload}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <FontAwesome name="download" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity style={styles.viewerClose} onPress={onClose}>
-          <FontAwesome name="times" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
-}
-
-function PhotoGrid({
-  photos,
-  onPhotoPress,
-}: {
-  photos: MediaItemWithUser[];
-  onPhotoPress: (photo: MediaItemWithUser) => void;
-}) {
-  return (
-    <View style={styles.photoGrid}>
-      {photos.map((photo) => (
-        <TouchableOpacity
-          key={photo.id}
-          style={styles.photoItem}
-          onPress={() => onPhotoPress(photo)}
-        >
-          <Image
-            source={{ uri: getPhotoUrl(photo.storage_path) }}
-            style={styles.photoImage}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function EventScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -165,22 +34,37 @@ export default function EventScreen() {
     fetchEventById,
     fetchMediaItems,
     subscribeToMediaItems,
+    getMergedTimeline,
+    retryFailedUpload,
+    deletePhoto,
+    fetchParticipantStats,
   } = useEventStore();
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const isDark = colorScheme === "dark";
 
-  const [selectedPhoto, setSelectedPhoto] = useState<MediaItemWithUser | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<
+    string | undefined
+  >();
   const [downloadingAll, setDownloadingAll] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+  const [downloadProgress, setDownloadProgress] = useState({
+    current: 0,
+    total: 0,
+  });
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [guestSheetVisible, setGuestSheetVisible] = useState(false);
+  const [participants, setParticipants] = useState<ParticipantWithStats[]>([]);
 
   const loadData = useCallback(async () => {
     if (id) {
       await fetchEventById(id);
       await fetchMediaItems(id);
+      // Pre-fetch participants so guest sheet opens instantly
+      const stats = await fetchParticipantStats(id);
+      setParticipants(stats);
     }
-  }, [id, fetchEventById, fetchMediaItems]);
+  }, [id, fetchEventById, fetchMediaItems, fetchParticipantStats]);
 
   useEffect(() => {
     loadData();
@@ -193,14 +77,31 @@ export default function EventScreen() {
     }
   }, [id, subscribeToMediaItems]);
 
-  function handlePhotoPress(photo: MediaItemWithUser) {
-    setSelectedPhoto(photo);
+  const mergedPhotos = id ? getMergedTimeline(id) : [];
+
+  function handlePhotoPress(photo: MergedMediaItem, index: number) {
+    // Store the thumbnail URI for instant preview in viewer
+    const thumbnailUri =
+      photo.isPending && photo.localUri
+        ? photo.localUri
+        : getPhotoUrl(photo.storage_path);
+    setSelectedThumbnailUri(thumbnailUri);
+    setSelectedPhotoIndex(index);
     setViewerVisible(true);
   }
 
   function handleCloseViewer() {
     setViewerVisible(false);
-    setSelectedPhoto(null);
+    setSelectedThumbnailUri(undefined);
+  }
+
+  async function handleDeletePhoto(photoId: string): Promise<boolean> {
+    if (!id) return false;
+    return deletePhoto(photoId, id);
+  }
+
+  function handleOpenGuestSheet() {
+    setGuestSheetVisible(true);
   }
 
   function handleContribute() {
@@ -223,7 +124,10 @@ export default function EventScreen() {
       setDownloadProgress({ current: i + 1, total: mediaItems.length });
 
       try {
-        const localUri = await downloadPhoto(photo.storage_path, `between_${photo.id}.jpg`);
+        const localUri = await downloadPhoto(
+          photo.storage_path,
+          `between_${photo.id}.jpg`,
+        );
         if (localUri) {
           const asset = await saveToLibrary(localUri);
           if (asset) successCount++;
@@ -235,8 +139,8 @@ export default function EventScreen() {
 
     setDownloadingAll(false);
     Alert.alert(
-      'Download Complete',
-      `Saved ${successCount} of ${mediaItems.length} photos to your camera roll`
+      "Download Complete",
+      `Saved ${successCount} of ${mediaItems.length} photos to your camera roll`,
     );
   }
 
@@ -247,43 +151,78 @@ export default function EventScreen() {
     const { success, sentCount } = await sendReminderToParticipants(
       currentEvent.id,
       currentEvent.title,
-      user.id
+      user.id,
     );
     setSendingReminder(false);
 
     if (success) {
       if (sentCount > 0) {
-        Alert.alert('Reminder Sent', `Notification sent to ${sentCount} guest${sentCount !== 1 ? 's' : ''}`);
+        Alert.alert(
+          "Reminder Sent",
+          `Notification sent to ${sentCount} guest${sentCount !== 1 ? "s" : ""}`,
+        );
       } else {
-        Alert.alert('No Guests to Notify', 'No guests have push notifications enabled');
+        Alert.alert(
+          "No Guests to Notify",
+          "No guests have push notifications enabled",
+        );
       }
     } else {
-      Alert.alert('Error', 'Failed to send reminder');
+      Alert.alert("Error", "Failed to send reminder");
     }
   }
 
   if (isLoading && !currentEvent) {
     return (
-      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-        <ActivityIndicator size="large" color={isDark ? '#fff' : '#000'} />
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          isDark && styles.containerDark,
+        ]}
+      >
+        <ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
       </View>
     );
   }
 
   if (!currentEvent) {
     return (
-      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-        <Text style={[styles.errorText, isDark && styles.textDark]}>Event not found</Text>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          isDark && styles.containerDark,
+        ]}
+      >
+        <Text style={[styles.errorText, isDark && styles.textDark]}>
+          Event not found
+        </Text>
       </View>
     );
   }
 
   const isEnded = isPast(new Date(currentEvent.ends_at));
-  const daysUntilExpiry = differenceInDays(new Date(currentEvent.expires_at), new Date());
-  const sections = groupPhotosByHour(mediaItems);
-  const isHost = currentEvent.participants?.some(
-    (p) => p.user_id === user?.id && p.role === 'host'
+  const daysUntilExpiry = differenceInDays(
+    new Date(currentEvent.expires_at),
+    new Date(),
   );
+  const hoursUntilExpiry = differenceInHours(
+    new Date(currentEvent.expires_at),
+    new Date(),
+  );
+  const expiryProgress = isEnded
+    ? Math.max(0, Math.min(100, ((14 - daysUntilExpiry) / 14) * 100))
+    : 0;
+  const isHost = currentEvent.participants?.some(
+    (p) => p.user_id === user?.id && p.role === "host",
+  );
+
+  const getExpiryColor = () => {
+    if (daysUntilExpiry <= 1) return "#ef4444";
+    if (daysUntilExpiry <= 3) return "#f59e0b";
+    return "#22c55e";
+  };
 
   return (
     <>
@@ -291,134 +230,228 @@ export default function EventScreen() {
         options={{
           title: currentEvent.title,
           headerRight: () => (
-            <TouchableOpacity onPress={handleShare} style={{ marginRight: 8 }}>
-              <FontAwesome name="share-alt" size={20} color={isDark ? '#fff' : '#000'} />
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              {isHost && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/event/edit/${id}`)}
+                  style={styles.headerButton}
+                >
+                  <FontAwesome
+                    name="pencil"
+                    size={18}
+                    color={isDark ? "#fff" : "#000"}
+                  />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={handleShare}
+                style={styles.headerButton}
+              >
+                <FontAwesome
+                  name="share-alt"
+                  size={20}
+                  color={isDark ? "#fff" : "#000"}
+                />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
 
       <View style={[styles.container, isDark && styles.containerDark]}>
-        <FlatList
-          data={sections}
-          keyExtractor={(item) => item.hour}
-          renderItem={({ item }) => (
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, isDark && styles.textMuted]}>
-                {item.hour}
-              </Text>
-              <PhotoGrid photos={item.photos} onPhotoPress={handlePhotoPress} />
-            </View>
-          )}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <View style={styles.eventInfo}>
-                <Text style={[styles.eventDate, isDark && styles.textMuted]}>
-                  {format(new Date(currentEvent.starts_at), 'EEEE, MMMM d, yyyy')}
-                </Text>
-                <Text style={[styles.eventTime, isDark && styles.textMuted]}>
-                  {format(new Date(currentEvent.starts_at), 'h:mm a')} - {format(new Date(currentEvent.ends_at), 'h:mm a')}
-                </Text>
-              </View>
-
-              {isEnded && daysUntilExpiry > 0 && (
-                <View style={styles.expiryBanner}>
-                  <FontAwesome name="clock-o" size={14} color="#f59e0b" />
-                  <Text style={styles.expiryText}>
-                    Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
-                  </Text>
-                </View>
-              )}
-
-              <View style={[styles.stats, isDark && styles.statsDark]}>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, isDark && styles.textDark]}>
-                    {mediaItems.length}
-                  </Text>
-                  <Text style={[styles.statLabel, isDark && styles.textMuted]}>Photos</Text>
-                </View>
-                <View style={[styles.statDivider, isDark && styles.statDividerDark]} />
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, isDark && styles.textDark]}>
-                    {currentEvent.participant_count || 0}
-                  </Text>
-                  <Text style={[styles.statLabel, isDark && styles.textMuted]}>Guests</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.contributeButton} onPress={handleContribute}>
-                <FontAwesome name="plus" size={16} color="#fff" />
-                <Text style={styles.contributeButtonText}>Add Your Photos</Text>
-              </TouchableOpacity>
-
-              {mediaItems.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.downloadAllButton, isDark && styles.downloadAllButtonDark]}
-                  onPress={handleDownloadAll}
-                  disabled={downloadingAll}
-                >
-                  {downloadingAll ? (
-                    <>
-                      <ActivityIndicator size="small" color={isDark ? '#fff' : '#000'} />
-                      <Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
-                        Downloading {downloadProgress.current}/{downloadProgress.total}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <FontAwesome name="download" size={16} color={isDark ? '#fff' : '#000'} />
-                      <Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
-                        Download All Photos
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-
-              {isHost && (
-                <TouchableOpacity
-                  style={styles.remindButton}
-                  onPress={handleRemindGuests}
-                  disabled={sendingReminder}
-                >
-                  {sendingReminder ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <FontAwesome name="bell" size={16} color="#fff" />
-                  )}
-                  <Text style={styles.remindButtonText}>
-                    {sendingReminder ? 'Sending...' : 'Remind Guests to Upload'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {sections.length > 0 && (
-                <Text style={[styles.timelineTitle, isDark && styles.textDark]}>Timeline</Text>
-              )}
-            </View>
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <FontAwesome name="camera" size={48} color={isDark ? '#444' : '#ccc'} />
-              <Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Photos Yet</Text>
-              <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-                Photos from the event will appear here after they're uploaded
-              </Text>
-              <TouchableOpacity style={styles.emptyButton} onPress={handleContribute}>
-                <Text style={styles.emptyButtonText}>Add Photos</Text>
-              </TouchableOpacity>
-            </View>
-          }
-          contentContainerStyle={styles.listContent}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl refreshing={isLoading} onRefresh={loadData} />
           }
-        />
+        >
+          <View style={styles.header}>
+            <View style={styles.eventInfo}>
+              <Text style={[styles.eventDate, isDark && styles.textMuted]}>
+                {format(new Date(currentEvent.starts_at), "EEEE, MMMM d, yyyy")}
+              </Text>
+              <Text style={[styles.eventTime, isDark && styles.textMuted]}>
+                {format(new Date(currentEvent.starts_at), "h:mm a")} -{" "}
+                {format(new Date(currentEvent.ends_at), "h:mm a")}
+              </Text>
+            </View>
+
+            {isEnded && daysUntilExpiry > 0 && (
+              <View
+                style={[styles.expiryBanner, isDark && styles.expiryBannerDark]}
+              >
+                <View
+                  style={[
+                    styles.expiryIconContainer,
+                    { backgroundColor: getExpiryColor() },
+                  ]}
+                >
+                  <FontAwesome name="clock-o" size={16} color="#fff" />
+                </View>
+                <View style={styles.expiryContent}>
+                  <Text
+                    style={[styles.expiryLabel, isDark && styles.textMuted]}
+                  >
+                    Photos expire in
+                  </Text>
+                  <Text
+                    style={[styles.expiryValue, { color: getExpiryColor() }]}
+                  >
+                    {daysUntilExpiry <= 1
+                      ? `${hoursUntilExpiry} hours`
+                      : `${daysUntilExpiry} days`}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.stats, isDark && styles.statsDark]}>
+              <View style={styles.stat}>
+                <Text style={[styles.statValue, isDark && styles.textDark]}>
+                  {mergedPhotos.length}
+                </Text>
+                <Text style={[styles.statLabel, isDark && styles.textMuted]}>
+                  Photos
+                </Text>
+              </View>
+              <View
+                style={[styles.statDivider, isDark && styles.statDividerDark]}
+              />
+              <TouchableOpacity
+                style={styles.stat}
+                onPress={handleOpenGuestSheet}
+              >
+                <Text style={[styles.statValue, isDark && styles.textDark]}>
+                  {currentEvent.participant_count || 0}
+                </Text>
+                <Text style={[styles.statLabel, isDark && styles.textMuted]}>
+                  Guests
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.contributeButton}
+              onPress={handleContribute}
+            >
+              <FontAwesome name="plus" size={16} color="#fff" />
+              <Text style={styles.contributeButtonText}>Add Your Photos</Text>
+            </TouchableOpacity>
+
+            {mediaItems.length > 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.downloadAllButton,
+                  isDark && styles.downloadAllButtonDark,
+                ]}
+                onPress={handleDownloadAll}
+                disabled={downloadingAll}
+              >
+                {downloadingAll ? (
+                  <>
+                    <ActivityIndicator
+                      size="small"
+                      color={isDark ? "#fff" : "#000"}
+                    />
+                    <Text
+                      style={[
+                        styles.downloadAllButtonText,
+                        isDark && styles.textDark,
+                      ]}
+                    >
+                      Downloading {downloadProgress.current}/
+                      {downloadProgress.total}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <FontAwesome
+                      name="download"
+                      size={16}
+                      color={isDark ? "#fff" : "#000"}
+                    />
+                    <Text
+                      style={[
+                        styles.downloadAllButtonText,
+                        isDark && styles.textDark,
+                      ]}
+                    >
+                      Download All Photos
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isHost && (
+              <TouchableOpacity
+                style={styles.remindButton}
+                onPress={handleRemindGuests}
+                disabled={sendingReminder}
+              >
+                {sendingReminder ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <FontAwesome name="bell" size={16} color="#fff" />
+                )}
+                <Text style={styles.remindButtonText}>
+                  {sendingReminder ? "Sending..." : "Remind Guests to Upload"}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {mergedPhotos.length > 0 && (
+              <Text style={[styles.timelineTitle, isDark && styles.textDark]}>
+                Timeline
+              </Text>
+            )}
+          </View>
+
+          {mergedPhotos.length === 0 ? (
+            <View style={styles.emptyState}>
+              <FontAwesome
+                name="camera"
+                size={48}
+                color={isDark ? "#444" : "#ccc"}
+              />
+              <Text style={[styles.emptyTitle, isDark && styles.textDark]}>
+                No Photos Yet
+              </Text>
+              <Text style={[styles.emptyText, isDark && styles.textMuted]}>
+                Photos from the event will appear here after they're uploaded
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={handleContribute}
+              >
+                <Text style={styles.emptyButtonText}>Add Photos</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <MasonryGrid
+              photos={mergedPhotos}
+              onPhotoPress={handlePhotoPress}
+              onRetry={retryFailedUpload}
+              isDark={isDark}
+            />
+          )}
+        </ScrollView>
 
         <PhotoViewer
-          photo={selectedPhoto}
+          photos={mergedPhotos}
+          initialIndex={selectedPhotoIndex}
           visible={viewerVisible}
           onClose={handleCloseViewer}
+          onDelete={handleDeletePhoto}
+          currentUserId={user?.id}
+          isDark={isDark}
+          initialThumbnailUri={selectedThumbnailUri}
+        />
+
+        <GuestSheet
+          visible={guestSheetVisible}
+          onClose={() => setGuestSheetVisible(false)}
+          participants={participants}
           isDark={isDark}
         />
       </View>
@@ -429,17 +462,25 @@ export default function EventScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   containerDark: {
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   centered: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
-  listContent: {
+  scrollContent: {
     padding: 24,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerButton: {
+    padding: 8,
   },
   header: {
     marginBottom: 24,
@@ -449,216 +490,165 @@ const styles = StyleSheet.create({
   },
   eventDate: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
     marginBottom: 4,
   },
   eventTime: {
     fontSize: 14,
-    color: '#999',
+    color: "#999",
   },
   expiryBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fef3c7',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
-    gap: 8,
+    gap: 12,
   },
-  expiryText: {
-    color: '#92400e',
-    fontSize: 14,
-    fontWeight: '500',
+  expiryBannerDark: {
+    backgroundColor: "#1a1a1a",
+  },
+  expiryIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  expiryContent: {
+    flex: 1,
+  },
+  expiryLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 2,
+  },
+  expiryValue: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   stats: {
-    flexDirection: 'row',
-    backgroundColor: '#f5f5f5',
+    flexDirection: "row",
+    backgroundColor: "#f5f5f5",
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
   },
   statsDark: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: "#1a1a1a",
   },
   stat: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#e5e5e5',
+    backgroundColor: "#e5e5e5",
     marginHorizontal: 16,
   },
   statDividerDark: {
-    backgroundColor: '#333',
+    backgroundColor: "#333",
   },
   statValue: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
   },
   statLabel: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
     marginTop: 4,
   },
   contributeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
     marginBottom: 24,
   },
   contributeButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   downloadAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f5f5f5",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
     marginBottom: 24,
   },
   downloadAllButtonDark: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: "#1a1a1a",
   },
   downloadAllButtonText: {
-    color: '#000',
+    color: "#000",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   remindButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7c3aed',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#7c3aed",
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
     marginBottom: 24,
   },
   remindButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   timelineTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
-  },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  photoItem: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  photoImage: {
-    width: '100%',
-    height: '100%',
+    fontWeight: "600",
+    color: "#000",
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 48,
   },
   emptyTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginTop: 16,
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
     marginBottom: 24,
   },
   emptyButton: {
-    backgroundColor: '#000',
+    backgroundColor: "#000",
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
   },
   emptyButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
-  },
-  viewerContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewerCloseArea: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  viewerImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH,
-  },
-  viewerFooter: {
-    position: 'absolute',
-    bottom: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  viewerInfo: {
-    alignItems: 'center',
-  },
-  viewerUploader: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  viewerTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 14,
-  },
-  viewerDownload: {
-    padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 24,
-  },
-  viewerClose: {
-    position: 'absolute',
-    top: 60,
-    right: 24,
-    padding: 12,
+    fontWeight: "600",
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   textDark: {
-    color: '#fff',
+    color: "#fff",
   },
   textMuted: {
-    color: '#888',
+    color: "#888",
   },
 });

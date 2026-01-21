@@ -1,9 +1,20 @@
 import { supabase } from "@/lib/supabase";
 import { User, UserInsert, UserUpdate } from "@/types/database";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Application from "expo-application";
 import * as Crypto from "expo-crypto";
+import { Platform } from "react-native";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+
+const DEVICE_ID_KEY = "recapd_device_id";
+
+let SecureStore: typeof import("expo-secure-store") | null = null;
+try {
+  SecureStore = require("expo-secure-store");
+} catch {
+  // SecureStore not available (dev client without native module)
+}
 
 interface AuthState {
   user: User | null;
@@ -16,11 +27,71 @@ interface AuthState {
   logout: () => Promise<void>;
 }
 
-async function generateDeviceId(): Promise<string> {
-  const randomBytes = await Crypto.getRandomBytesAsync(16);
-  return Array.from(randomBytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+async function getOrCreateDeviceId(): Promise<string> {
+  // Try to get from SecureStore first (survives reinstall)
+  if (SecureStore) {
+    try {
+      const existingId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+      if (existingId) {
+        return existingId;
+      }
+    } catch {
+      // SecureStore might not be available
+    }
+  }
+
+  // Try AsyncStorage as fallback
+  try {
+    const existingId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (existingId) {
+      return existingId;
+    }
+  } catch {
+    // AsyncStorage might fail
+  }
+
+  // Generate new device ID
+  let deviceId: string;
+
+  if (Platform.OS === "ios") {
+    const iosId = await Application.getIosIdForVendorAsync();
+    if (iosId) {
+      deviceId = iosId;
+    } else {
+      const randomBytes = await Crypto.getRandomBytesAsync(16);
+      deviceId = Array.from(randomBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  } else {
+    const androidId = Application.getAndroidId();
+    if (androidId) {
+      deviceId = androidId;
+    } else {
+      const randomBytes = await Crypto.getRandomBytesAsync(16);
+      deviceId = Array.from(randomBytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  }
+
+  // Save to SecureStore if available
+  if (SecureStore) {
+    try {
+      await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId);
+    } catch {
+      // SecureStore might fail
+    }
+  }
+
+  // Also save to AsyncStorage as backup
+  try {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+  } catch {
+    // AsyncStorage might fail
+  }
+
+  return deviceId;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -34,12 +105,9 @@ export const useAuthStore = create<AuthState>()(
       initializeAuth: async () => {
         try {
           set({ isLoading: true });
-          let { deviceId } = get();
 
-          if (!deviceId) {
-            deviceId = await generateDeviceId();
-            set({ deviceId });
-          }
+          const deviceId = await getOrCreateDeviceId();
+          set({ deviceId });
 
           const { data: existingUser } = await supabase
             .from("users")
@@ -73,12 +141,9 @@ export const useAuthStore = create<AuthState>()(
       createUser: async (displayName: string) => {
         try {
           set({ isLoading: true });
-          let { deviceId } = get();
 
-          if (!deviceId) {
-            deviceId = await generateDeviceId();
-            set({ deviceId });
-          }
+          const deviceId = await getOrCreateDeviceId();
+          set({ deviceId });
 
           const insertData: UserInsert = {
             display_name: displayName,
@@ -122,7 +187,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        set({ user: null, deviceId: null, isInitialized: false });
+        set({ user: null, isInitialized: false });
       },
     }),
     {

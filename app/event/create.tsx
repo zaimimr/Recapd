@@ -9,6 +9,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -46,64 +48,59 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
-  const [startPickerMode, setStartPickerMode] = useState<'date' | 'time'>('date');
-  const [endPickerMode, setEndPickerMode] = useState<'date' | 'time'>('date');
+  const [activePicker, setActivePicker] = useState<'start' | 'end' | null>(null);
+  const [tempDate, setTempDate] = useState<Date>(defaultStart);
+  const [androidPickerMode, setAndroidPickerMode] = useState<'date' | 'time'>('date');
   const [error, setError] = useState('');
 
-  function handleStartDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
-    if (Platform.OS === 'android') {
-      setShowStartPicker(false);
-      if (event.type === 'set' && selectedDate) {
-        if (startPickerMode === 'date') {
-          setStartDate(selectedDate);
-          setStartPickerMode('time');
-          setShowStartPicker(true);
-        } else {
-          setStartDate(selectedDate);
-          if (isBefore(endDate, selectedDate)) {
-            setEndDate(addHours(selectedDate, 4));
-          }
-        }
-      }
-    } else {
-      if (selectedDate) {
-        setStartDate(selectedDate);
-        if (isBefore(endDate, selectedDate)) {
-          setEndDate(addHours(selectedDate, 4));
-        }
-      }
-    }
-  }
-
-  function handleEndDateChange(event: DateTimePickerEvent, selectedDate?: Date) {
-    if (Platform.OS === 'android') {
-      setShowEndPicker(false);
-      if (event.type === 'set' && selectedDate) {
-        if (endPickerMode === 'date') {
-          setEndDate(selectedDate);
-          setEndPickerMode('time');
-          setShowEndPicker(true);
-        } else {
-          setEndDate(selectedDate);
-        }
-      }
-    } else {
-      if (selectedDate) {
-        setEndDate(selectedDate);
-      }
-    }
-  }
-
   function openStartPicker() {
-    setStartPickerMode('date');
-    setShowStartPicker(true);
+    setTempDate(startDate);
+    setAndroidPickerMode('date');
+    setActivePicker('start');
   }
 
   function openEndPicker() {
-    setEndPickerMode('date');
-    setShowEndPicker(true);
+    setTempDate(endDate);
+    setAndroidPickerMode('date');
+    setActivePicker('end');
+  }
+
+  function handlePickerChange(event: DateTimePickerEvent, selectedDate?: Date) {
+    if (Platform.OS === 'android') {
+      if (event.type === 'dismissed') {
+        setActivePicker(null);
+        return;
+      }
+      if (event.type === 'set' && selectedDate) {
+        if (androidPickerMode === 'date') {
+          setTempDate(selectedDate);
+          setAndroidPickerMode('time');
+        } else {
+          confirmSelection(selectedDate);
+        }
+      }
+    } else {
+      if (selectedDate) {
+        setTempDate(selectedDate);
+      }
+    }
+  }
+
+  function confirmSelection(dateToConfirm?: Date) {
+    const finalDate = dateToConfirm || tempDate;
+    if (activePicker === 'start') {
+      setStartDate(finalDate);
+      if (isBefore(endDate, finalDate)) {
+        setEndDate(addHours(finalDate, 4));
+      }
+    } else if (activePicker === 'end') {
+      setEndDate(finalDate);
+    }
+    setActivePicker(null);
+  }
+
+  function cancelSelection() {
+    setActivePicker(null);
   }
 
   async function handleCreate() {
@@ -211,22 +208,47 @@ export default function CreateEventScreen() {
         )}
       </TouchableOpacity>
 
-      {showStartPicker && (
-        <DateTimePicker
-          value={startDate}
-          mode={Platform.OS === 'ios' ? 'datetime' : startPickerMode}
-          display="default"
-          onChange={handleStartDateChange}
-        />
+      {Platform.OS === 'ios' && activePicker && (
+        <Modal
+          visible={true}
+          transparent
+          animationType="slide"
+          onRequestClose={cancelSelection}
+        >
+          <Pressable style={styles.modalOverlay} onPress={cancelSelection}>
+            <Pressable style={[styles.pickerSheet, isDark && styles.pickerSheetDark]}>
+              <View style={[styles.pickerHeader, isDark && styles.pickerHeaderDark]}>
+                <TouchableOpacity onPress={cancelSelection} style={styles.pickerHeaderButton}>
+                  <Text style={styles.pickerCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={[styles.pickerTitle, isDark && styles.textDark]}>
+                  {activePicker === 'start' ? 'Start Time' : 'End Time'}
+                </Text>
+                <TouchableOpacity onPress={() => confirmSelection()} style={styles.pickerHeaderButton}>
+                  <Text style={styles.pickerDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={tempDate}
+                mode="datetime"
+                display="spinner"
+                onChange={handlePickerChange}
+                minimumDate={activePicker === 'end' ? startDate : undefined}
+                textColor={isDark ? '#fff' : '#000'}
+                style={styles.picker}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
       )}
 
-      {showEndPicker && (
+      {Platform.OS === 'android' && activePicker && (
         <DateTimePicker
-          value={endDate}
-          mode={Platform.OS === 'ios' ? 'datetime' : endPickerMode}
+          value={tempDate}
+          mode={androidPickerMode}
           display="default"
-          onChange={handleEndDateChange}
-          minimumDate={startDate}
+          onChange={handlePickerChange}
+          minimumDate={activePicker === 'end' && androidPickerMode === 'date' ? startDate : undefined}
         />
       )}
     </ScrollView>
@@ -326,5 +348,54 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: '#888',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#f8f8f8',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+  },
+  pickerSheetDark: {
+    backgroundColor: '#1c1c1e',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  pickerHeaderDark: {
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  pickerHeaderButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 60,
+  },
+  pickerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  pickerCancelText: {
+    fontSize: 17,
+    color: '#007AFF',
+  },
+  pickerDoneText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#007AFF',
+    textAlign: 'right',
+  },
+  picker: {
+    height: 216,
   },
 });
