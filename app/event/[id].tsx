@@ -55,6 +55,7 @@ export default function EventScreen() {
   const [sendingReminder, setSendingReminder] = useState(false);
   const [guestSheetVisible, setGuestSheetVisible] = useState(false);
   const [participants, setParticipants] = useState<ParticipantWithStats[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     if (id) {
@@ -78,6 +79,12 @@ export default function EventScreen() {
   }, [id, subscribeToMediaItems]);
 
   const mergedPhotos = id ? getMergedTimeline(id) : [];
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
+  }, [loadData]);
 
   function handlePhotoPress(photo: MergedMediaItem, index: number) {
     // Store the thumbnail URI for instant preview in viewer
@@ -262,7 +269,10 @@ export default function EventScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={loadData} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+            />
           }
         >
           <View style={styles.header}>
