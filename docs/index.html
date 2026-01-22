@@ -242,8 +242,8 @@
 
     .steps {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 48px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
     }
 
     .step {
@@ -265,10 +265,10 @@
     }
 
     .step-phone {
-      width: 200px;
+      width: 180px;
       background: var(--phone-bg);
-      border-radius: 28px;
-      padding: 8px;
+      border-radius: 24px;
+      padding: 6px;
       margin: 0 auto 24px;
       box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
     }
@@ -449,8 +449,8 @@
       }
 
       .steps {
-        grid-template-columns: 1fr;
-        gap: 64px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 48px;
       }
 
       .feature-grid {
@@ -495,6 +495,11 @@
 
       .phone-mockup {
         width: 240px;
+      }
+
+      .steps {
+        grid-template-columns: 1fr;
+        gap: 48px;
       }
 
       .footer-content {
@@ -566,7 +571,7 @@
             </div>
           </div>
           <h3>Create</h3>
-          <p>Set your event's time window. Recapd will only look for photos taken during your event.</p>
+          <p>Before your event, set the time window. Recapd will know exactly when to look for photos.</p>
         </div>
         <div class="step">
           <div class="step-number">2</div>
@@ -576,17 +581,27 @@
             </div>
           </div>
           <h3>Share</h3>
-          <p>Send guests a QR code or link. They can join in seconds without creating an account.</p>
+          <p>Send guests a QR code or link to join. No account needed — just scan and go.</p>
         </div>
         <div class="step">
           <div class="step-number">3</div>
+          <div class="step-phone">
+            <div class="step-screen">
+              <img src="screenshots/found-photos.png" alt="Photos automatically found after event">
+            </div>
+          </div>
+          <h3>Upload</h3>
+          <p>After the party, everyone gets reminded. Photos are pre-selected automatically — just tap to share.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
           <div class="step-phone">
             <div class="step-screen">
               <img src="screenshots/timeline.png" alt="Event timeline with photos">
             </div>
           </div>
           <h3>Relive</h3>
-          <p>Everyone's photos, one timeline. See the event from every perspective.</p>
+          <p>See the night from everyone's eyes. All photos in one beautiful timeline.</p>
         </div>
       </div>
     </div>
