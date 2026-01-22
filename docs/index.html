@@ -3,81 +3,630 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recapd</title>
+  <title>Recapd - See the night from everyone's eyes</title>
+  <meta name="description" content="Collect everyone's photos from your event into one beautiful timeline. Group photo sharing for weddings, birthdays, concerts, and more.">
+  <link rel="icon" type="image/png" href="icon.png">
   <style>
+    :root {
+      --bg: #ffffff;
+      --bg-alt: #f8f9fa;
+      --text: #111111;
+      --text-muted: #666666;
+      --accent: #22c55e;
+      --accent-hover: #16a34a;
+      --border: #e5e5e5;
+      --card-bg: #ffffff;
+      --phone-bg: #1a1a1a;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a;
+        --bg-alt: #111111;
+        --text: #ffffff;
+        --text-muted: #888888;
+        --border: #222222;
+        --card-bg: #1a1a1a;
+        --phone-bg: #000000;
+      }
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       line-height: 1.6;
-      color: #333;
-      background: #fff;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section {
+      padding: 80px 0;
+    }
+
+    h1, h2, h3 {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    /* Hero Section */
+    .hero {
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
       align-items: center;
+      padding: 120px 0 80px;
+    }
+
+    .hero-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+
+    .hero-text {
+      max-width: 540px;
+    }
+
+    .app-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 18px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    }
+
+    .hero h1 {
+      font-size: 3.5rem;
+      line-height: 1.1;
+      margin-bottom: 24px;
+    }
+
+    .hero-subtitle {
+      font-size: 1.25rem;
+      color: var(--text-muted);
+      margin-bottom: 40px;
+    }
+
+    .cta-buttons {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 28px;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--text);
+      color: var(--bg);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .btn-label {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.2;
+    }
+
+    .btn-label small {
+      font-size: 0.7rem;
+      font-weight: 400;
+      opacity: 0.8;
+    }
+
+    .hero-visual {
+      display: flex;
       justify-content: center;
-      padding: 24px;
+    }
+
+    /* Phone Mockup */
+    .phone-mockup {
+      position: relative;
+      width: 280px;
+      background: var(--phone-bg);
+      border-radius: 40px;
+      padding: 12px;
+      box-shadow: 0 32px 64px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    }
+
+    .phone-screen {
+      width: 100%;
+      border-radius: 30px;
+      overflow: hidden;
+      display: block;
+    }
+
+    .phone-screen img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Problem Section */
+    .problem {
+      background: var(--bg-alt);
       text-align: center;
     }
-    h1 {
-      font-size: 3rem;
-      font-weight: 700;
-      letter-spacing: -1px;
-      margin-bottom: 8px;
+
+    .problem h2 {
+      font-size: 2.5rem;
+      margin-bottom: 24px;
     }
-    .tagline {
+
+    .problem p {
       font-size: 1.125rem;
-      color: #666;
-      margin-bottom: 3rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto;
     }
-    .links {
+
+    /* How It Works */
+    .how-it-works h2 {
+      font-size: 2.5rem;
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 48px;
+    }
+
+    .step {
+      text-align: center;
+    }
+
+    .step-number {
+      width: 48px;
+      height: 48px;
+      background: var(--accent);
+      color: white;
+      border-radius: 50%;
       display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0 auto 24px;
+    }
+
+    .step-phone {
+      width: 200px;
+      background: var(--phone-bg);
+      border-radius: 28px;
+      padding: 8px;
+      margin: 0 auto 24px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+    }
+
+    .step-screen {
+      width: 100%;
+      border-radius: 22px;
+      overflow: hidden;
+    }
+
+    .step-screen img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .step h3 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+    }
+
+    .step p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    /* Features */
+    .features {
+      background: var(--bg-alt);
+    }
+
+    .features h2 {
+      font-size: 2.5rem;
+      text-align: center;
+      margin-bottom: 64px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border-radius: 20px;
+      padding: 40px;
+      border: 1px solid var(--border);
+    }
+
+    .feature-card.with-screenshot {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .feature-card.with-screenshot .feature-text {
+      order: 1;
+    }
+
+    .feature-card.with-screenshot .feature-screenshot {
+      order: 2;
+    }
+
+    .feature-screenshot {
+      width: 140px;
+      background: var(--phone-bg);
+      border-radius: 20px;
+      padding: 6px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    .feature-screenshot img {
+      width: 100%;
+      height: auto;
+      border-radius: 16px;
+      display: block;
+    }
+
+    .feature-icon {
+      width: 56px;
+      height: 56px;
+      background: var(--accent);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .feature-icon svg {
+      width: 28px;
+      height: 28px;
+      color: white;
+    }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    /* Final CTA */
+    .final-cta {
+      text-align: center;
+      padding: 120px 0;
+    }
+
+    .final-cta h2 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+    }
+
+    .final-cta p {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      margin-bottom: 40px;
+    }
+
+    .final-cta .cta-buttons {
       justify-content: center;
     }
-    a {
-      color: #000;
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+    }
+
+    .footer-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 32px;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
       text-decoration: none;
-      padding: 12px 24px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      transition: background 0.2s;
+      font-size: 0.9rem;
+      transition: color 0.2s;
     }
-    a:hover {
-      background: #f5f5f5;
+
+    .footer-links a:hover {
+      color: var(--text);
     }
-    @media (prefers-color-scheme: dark) {
-      body {
-        background: #000;
-        color: #fff;
+
+    .copyright {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .hero-content {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: 48px;
       }
-      h1 {
-        color: #fff;
+
+      .hero-text {
+        max-width: 100%;
       }
-      .tagline {
-        color: #888;
+
+      .cta-buttons {
+        justify-content: center;
       }
-      a {
-        color: #fff;
-        border-color: #333;
+
+      .steps {
+        grid-template-columns: 1fr;
+        gap: 64px;
       }
-      a:hover {
-        background: #1a1a1a;
+
+      .feature-grid {
+        grid-template-columns: 1fr;
       }
+
+      .feature-card.with-screenshot {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+
+      .feature-card.with-screenshot .feature-text {
+        order: 2;
+      }
+
+      .feature-card.with-screenshot .feature-screenshot {
+        order: 1;
+        margin: 0 auto;
+      }
+    }
+
+    @media (max-width: 768px) {
+      section {
+        padding: 60px 0;
+      }
+
+      .hero {
+        min-height: auto;
+        padding: 100px 0 60px;
+      }
+
+      .hero h1 {
+        font-size: 2.5rem;
+      }
+
+      .problem h2,
+      .how-it-works h2,
+      .features h2,
+      .final-cta h2 {
+        font-size: 2rem;
+      }
+
+      .phone-mockup {
+        width: 240px;
+      }
+
+      .footer-content {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
+
+    /* Animations */
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .hero-visual .phone-mockup {
+      animation: float 6s ease-in-out infinite;
     }
   </style>
 </head>
 <body>
-  <h1>Recapd</h1>
-  <p class="tagline">See the night from everyone's eyes</p>
-  <div class="links">
-    <a href="privacy.html">Privacy Policy</a>
-    <a href="support.html">Support</a>
-  </div>
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-text">
+          <img src="icon.png" alt="Recapd" class="app-icon">
+          <h1>See the night from everyone's eyes</h1>
+          <p class="hero-subtitle">Collect everyone's photos from your event into one beautiful timeline. Set it and forget it.</p>
+          <div class="cta-buttons">
+            <a href="#" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+              <span class="btn-label"><small>Coming Soon on</small>App Store</span>
+            </a>
+            <a href="#" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35m13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27m3.35-4.31c.34.27.59.69.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31M6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
+              <span class="btn-label"><small>Coming Soon on</small>Google Play</span>
+            </a>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="phone-mockup">
+            <div class="phone-screen">
+              <img src="screenshots/home.png" alt="Recapd home screen with Create and Join Event buttons">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem Section -->
+  <section class="problem">
+    <div class="container">
+      <h2>Group photos scattered across 10 different phones?</h2>
+      <p>Forget the chaos of group chats, AirDrop requests, and "can you send me that photo?" texts. Recapd automatically collects everyone's event photos into one shared timeline.</p>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-it-works">
+    <div class="container">
+      <h2>How It Works</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-phone">
+            <div class="step-screen">
+              <img src="screenshots/create.png" alt="Create event screen">
+            </div>
+          </div>
+          <h3>Create</h3>
+          <p>Set your event's time window. Recapd will only look for photos taken during your event.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-phone">
+            <div class="step-screen">
+              <img src="screenshots/share.png" alt="Share event with QR code">
+            </div>
+          </div>
+          <h3>Share</h3>
+          <p>Send guests a QR code or link. They can join in seconds without creating an account.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-phone">
+            <div class="step-screen">
+              <img src="screenshots/timeline.png" alt="Event timeline with photos">
+            </div>
+          </div>
+          <h3>Relive</h3>
+          <p>Everyone's photos, one timeline. See the event from every perspective.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="container">
+      <h2>Why Recapd?</h2>
+      <div class="feature-grid">
+        <div class="feature-card with-screenshot">
+          <div class="feature-text">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <h3>Auto-Magic Selection</h3>
+            <p>Recapd automatically finds photos taken during your event's time window. No manual sorting required.</p>
+          </div>
+          <div class="feature-screenshot">
+            <img src="screenshots/found-photos.png" alt="We found 6 photos from the event">
+          </div>
+        </div>
+        <div class="feature-card with-screenshot">
+          <div class="feature-text">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </div>
+            <h3>Unified Timeline</h3>
+            <p>See the entire event unfold from everyone's perspective in one beautiful, chronological timeline.</p>
+          </div>
+          <div class="feature-screenshot">
+            <img src="screenshots/select-photos.png" alt="Photo selection grid">
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </div>
+          <h3>One-Tap Download</h3>
+          <p>Save all the photos you want to your camera roll instantly. No compression, full quality.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>No Storage Bloat</h3>
+          <p>Shared photos expire after 2 weeks. Your photos stay on your device, but shared links clean themselves up.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final-cta">
+    <div class="container">
+      <h2>Ready to capture memories together?</h2>
+      <p>Join the waitlist and be the first to know when Recapd launches.</p>
+      <div class="cta-buttons">
+        <a href="#" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          <span class="btn-label"><small>Coming Soon on</small>App Store</span>
+        </a>
+        <a href="#" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35m13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27m3.35-4.31c.34.27.59.69.59 1.19s-.22.9-.57 1.18l-2.29 1.32-2.5-2.5 2.5-2.5 2.27 1.31M6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/></svg>
+          <span class="btn-label"><small>Coming Soon on</small>Google Play</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-links">
+          <a href="privacy.html">Privacy Policy</a>
+          <a href="support.html">Support</a>
+        </div>
+        <p class="copyright">&copy; 2025 Recapd. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>
