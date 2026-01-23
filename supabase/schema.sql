@@ -139,6 +139,12 @@ CREATE POLICY "Users can update their own media"
   ON media_items FOR UPDATE
   USING (true);
 
+CREATE POLICY "Users can delete their own media"
+  ON media_items FOR DELETE
+  USING (uploaded_by_user_id = auth.uid() OR uploaded_by_user_id IN (
+    SELECT id FROM users WHERE device_id IS NOT NULL
+  ));
+
 -- Storage bucket policies (run after creating buckets)
 -- Create buckets: 'event-photos' and 'thumbnails'
 

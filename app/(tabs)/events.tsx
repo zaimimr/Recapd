@@ -96,7 +96,8 @@ function EventCard({
 export default function EventsScreen() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const { events, isLoading, fetchUserEvents } = useEventStore();
+  const { events, isLoading, fetchUserEvents, subscribeToUserEvents } =
+    useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -116,6 +117,14 @@ export default function EventsScreen() {
   useEffect(() => {
     loadEvents();
   }, [loadEvents]);
+
+  // Subscribe to real-time updates for user's events
+  useEffect(() => {
+    if (user?.id) {
+      const unsubscribe = subscribeToUserEvents(user.id);
+      return unsubscribe;
+    }
+  }, [user?.id, subscribeToUserEvents]);
 
   if (!user) {
     return (

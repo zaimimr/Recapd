@@ -5,7 +5,12 @@ import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { sendReminderToParticipants } from "@/lib/notifications";
-import { downloadPhoto, getPhotoUrl } from "@/lib/storage";
+import {
+  downloadPhoto,
+  getDownloadedPhotoIds,
+  getPhotoUrl,
+  markPhotoDownloaded,
+} from "@/lib/storage";
 import { useAuthStore } from "@/store/authStore";
 import { ParticipantWithStats, useEventStore } from "@/store/eventStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
@@ -34,6 +39,8 @@ export default function EventScreen() {
     fetchEventById,
     fetchMediaItems,
     subscribeToMediaItems,
+    subscribeToParticipants,
+    subscribeToEvent,
     getMergedTimeline,
     retryFailedUpload,
     deletePhoto,
@@ -71,12 +78,33 @@ export default function EventScreen() {
     loadData();
   }, [loadData]);
 
+  // Refresh participant stats when currentEvent participants change (real-time updates)
+  useEffect(() => {
+    if (id && currentEvent?.participants) {
+      fetchParticipantStats(id).then(setParticipants);
+    }
+  }, [id, currentEvent?.participant_count, fetchParticipantStats]);
+
   useEffect(() => {
     if (id) {
       const unsubscribe = subscribeToMediaItems(id);
       return unsubscribe;
     }
   }, [id, subscribeToMediaItems]);
+
+  useEffect(() => {
+    if (id) {
+      const unsubscribe = subscribeToParticipants(id);
+      return unsubscribe;
+    }
+  }, [id, subscribeToParticipants]);
+
+  useEffect(() => {
+    if (id) {
+      const unsubscribe = subscribeToEvent(id);
+      return unsubscribe;
+    }
+  }, [id, subscribeToEvent]);
 
   const mergedPhotos = id ? getMergedTimeline(id) : [];
 
@@ -123,32 +151,68 @@ export default function EventScreen() {
     if (mediaItems.length === 0 || downloadingAll) return;
 
     setDownloadingAll(true);
-    setDownloadProgress({ current: 0, total: mediaItems.length });
+
+    // Only download photos from other users (not my own uploads)
+    const othersPhotos = mediaItems.filter(
+      (p) => p.uploaded_by_user_id !== user?.id,
+    );
+
+    if (othersPhotos.length === 0) {
+      setDownloadingAll(false);
+      Alert.alert(
+        "No Photos to Download",
+        "There are no photos from other guests to download",
+      );
+      return;
+    }
+
+    const downloadedIds = await getDownloadedPhotoIds();
+    const photosToDownload = othersPhotos.filter(
+      (p) => !downloadedIds.has(p.id),
+    );
+    const skippedCount = othersPhotos.length - photosToDownload.length;
+
+    if (photosToDownload.length === 0) {
+      setDownloadingAll(false);
+      Alert.alert(
+        "Already Downloaded",
+        `All ${othersPhotos.length} photos from other guests are already in your camera roll`,
+      );
+      return;
+    }
+
+    setDownloadProgress({ current: 0, total: photosToDownload.length });
 
     let successCount = 0;
-    for (let i = 0; i < mediaItems.length; i++) {
-      const photo = mediaItems[i];
-      setDownloadProgress({ current: i + 1, total: mediaItems.length });
+    for (let i = 0; i < photosToDownload.length; i++) {
+      const photo = photosToDownload[i];
+      setDownloadProgress({ current: i + 1, total: photosToDownload.length });
 
       try {
         const localUri = await downloadPhoto(
           photo.storage_path,
-          `between_${photo.id}.jpg`,
+          `recapd_${photo.id}.jpg`,
         );
         if (localUri) {
           const asset = await saveToLibrary(localUri);
-          if (asset) successCount++;
+          if (asset) {
+            await markPhotoDownloaded(photo.id);
+            successCount++;
+          }
         }
-      } catch (error) {
+      } catch {
         // Continue with next photo
       }
     }
 
     setDownloadingAll(false);
-    Alert.alert(
-      "Download Complete",
-      `Saved ${successCount} of ${mediaItems.length} photos to your camera roll`,
-    );
+
+    const message =
+      skippedCount > 0
+        ? `Saved ${successCount} new photos. ${skippedCount} already in your camera roll.`
+        : `Saved ${successCount} of ${photosToDownload.length} photos to your camera roll`;
+
+    Alert.alert("Download Complete", message);
   }
 
   async function handleRemindGuests() {

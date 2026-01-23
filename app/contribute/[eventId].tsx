@@ -14,21 +14,23 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Modal,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Modal,
-  Pressable,
 } from "react-native";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
-const PHOTO_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+const PHOTO_SIZE =
+  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) /
+  NUM_COLUMNS;
 
-type Step = "loading" | "found" | "select" | "error";
+type Step = "loading" | "found" | "select" | "empty" | "error";
 
 interface PhotoPreviewProps {
   photo: LocalPhoto | null;
@@ -69,13 +71,19 @@ export default function ContributeScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
-  const { currentEvent, fetchEventById, addPendingUploads } = useEventStore();
+  const {
+    currentEvent,
+    fetchEventById,
+    addPendingUploads,
+    getUploadedPhotoIdsForEvent,
+  } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
   const [step, setStep] = useState<Step>("loading");
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [uploadedIds, setUploadedIds] = useState<Set<string>>(new Set());
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<LocalPhoto | null>(null);
 
@@ -101,15 +109,27 @@ export default function ContributeScreen() {
     const endTime = new Date(event.ends_at);
 
     const foundPhotos = await getPhotosInTimeRange(startTime, endTime);
+
+    // Get uploaded photo IDs by comparing with Supabase data
+    const alreadyUploaded = user
+      ? await getUploadedPhotoIdsForEvent(eventId, user.id, foundPhotos)
+      : new Set<string>();
+
     setPhotos(foundPhotos);
-    setSelectedIds(new Set(foundPhotos.map((p) => p.id)));
+    setUploadedIds(alreadyUploaded);
+
+    const newPhotoIds = foundPhotos
+      .filter((p) => !alreadyUploaded.has(p.id))
+      .map((p) => p.id);
+    setSelectedIds(new Set(newPhotoIds));
 
     if (foundPhotos.length > 0) {
-      setStep("found");
-    } else {
+      // Go directly to select screen to show all photos
       setStep("select");
+    } else {
+      setStep("empty");
     }
-  }, [eventId, currentEvent, fetchEventById]);
+  }, [eventId, currentEvent, fetchEventById, getUploadedPhotoIdsForEvent]);
 
   useEffect(() => {
     loadPhotos();
@@ -130,6 +150,7 @@ export default function ContributeScreen() {
   }
 
   function togglePhotoSelection(id: string) {
+    if (uploadedIds.has(id)) return;
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
       newSelected.delete(id);
@@ -140,12 +161,21 @@ export default function ContributeScreen() {
   }
 
   function selectAll() {
-    setSelectedIds(new Set(photos.map((p) => p.id)));
+    const selectableIds = photos
+      .filter((p) => !uploadedIds.has(p.id))
+      .map((p) => p.id);
+    setSelectedIds(new Set(selectableIds));
   }
 
   function deselectAll() {
     setSelectedIds(new Set());
   }
+
+  const newPhotosCount = photos.filter((p) => !uploadedIds.has(p.id)).length;
+  const alreadyUploadedCount =
+    uploadedIds.size > 0
+      ? photos.filter((p) => uploadedIds.has(p.id)).length
+      : 0;
 
   function handleUpload() {
     if (!user || !eventId || selectedIds.size === 0) return;
@@ -156,7 +186,13 @@ export default function ContributeScreen() {
 
   if (step === "loading") {
     return (
-      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          isDark && styles.containerDark,
+        ]}
+      >
         <ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
         <Text style={[styles.loadingText, isDark && styles.textMuted]}>
           Scanning your photos...
@@ -167,7 +203,13 @@ export default function ContributeScreen() {
 
   if (step === "error") {
     return (
-      <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
+      <View
+        style={[
+          styles.container,
+          styles.centered,
+          isDark && styles.containerDark,
+        ]}
+      >
         <FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
         <Text style={[styles.errorTitle, isDark && styles.textDark]}>
           {permissionDenied ? "Permission Required" : "Something went wrong"}
@@ -184,7 +226,7 @@ export default function ContributeScreen() {
     );
   }
 
-  if (step === "found") {
+  if (step === "empty") {
     return (
       <>
         <Stack.Screen
@@ -192,34 +234,123 @@ export default function ContributeScreen() {
             title: "",
             headerRight: () => (
               <TouchableOpacity onPress={handleSkip} style={{ padding: 8 }}>
-                <FontAwesome name="times" size={22} color={isDark ? "#fff" : "#000"} />
+                <FontAwesome
+                  name="times"
+                  size={22}
+                  color={isDark ? "#fff" : "#000"}
+                />
               </TouchableOpacity>
             ),
           }}
         />
-        <View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
+        <View
+          style={[
+            styles.container,
+            styles.centered,
+            isDark && styles.containerDark,
+          ]}
+        >
+          <View style={styles.emptyContent}>
+            <View style={[styles.emptyIcon, isDark && styles.emptyIconDark]}>
+              <FontAwesome
+                name="camera"
+                size={32}
+                color={isDark ? "#888" : "#666"}
+              />
+            </View>
+            <Text style={[styles.emptyTitle, isDark && styles.textDark]}>
+              No Photos Found
+            </Text>
+            <Text style={[styles.emptyText, isDark && styles.textMuted]}>
+              We couldn't find any photos from the event time window.
+            </Text>
+            <Text style={[styles.emptyHint, isDark && styles.textMuted]}>
+              Take some photos during the event and come back to share them!
+            </Text>
+            <TouchableOpacity style={styles.emptyButton} onPress={handleSkip}>
+              <Text style={styles.emptyButtonText}>Got It</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  if (step === "found") {
+    const hasNewPhotos = newPhotosCount > 0;
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            title: "",
+            headerRight: () => (
+              <TouchableOpacity onPress={handleSkip} style={{ padding: 8 }}>
+                <FontAwesome
+                  name="times"
+                  size={22}
+                  color={isDark ? "#fff" : "#000"}
+                />
+              </TouchableOpacity>
+            ),
+          }}
+        />
+        <View
+          style={[
+            styles.container,
+            styles.centered,
+            isDark && styles.containerDark,
+          ]}
+        >
           <View style={styles.foundContent}>
             <View style={styles.foundIcon}>
               <FontAwesome name="camera" size={32} color="#000" />
             </View>
             <Text style={[styles.foundTitle, isDark && styles.textDark]}>
-              We found {photos.length} photo{photos.length !== 1 ? "s" : ""}
+              {hasNewPhotos
+                ? `We found ${newPhotosCount} new photo${newPhotosCount !== 1 ? "s" : ""}`
+                : "All photos already uploaded"}
             </Text>
             <Text style={[styles.foundText, isDark && styles.textMuted]}>
-              from the event time window
+              {alreadyUploadedCount > 0 && hasNewPhotos
+                ? `${alreadyUploadedCount} already uploaded`
+                : hasNewPhotos
+                  ? "from the event time window"
+                  : `${photos.length} photo${photos.length !== 1 ? "s" : ""} from this event`}
             </Text>
             <View style={styles.foundActions}>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleReviewFirst}>
-                <Text style={styles.primaryButtonText}>Review First</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}
-                onPress={handleShareAll}
-              >
-                <Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>
-                  Share All
-                </Text>
-              </TouchableOpacity>
+              {hasNewPhotos ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={handleReviewFirst}
+                  >
+                    <Text style={styles.primaryButtonText}>Review First</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.secondaryButton,
+                      isDark && styles.secondaryButtonDark,
+                    ]}
+                    onPress={handleShareAll}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryButtonText,
+                        isDark && styles.textDark,
+                      ]}
+                    >
+                      Share All New
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={handleSkip}
+                >
+                  <Text style={styles.primaryButtonText}>Go Back</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -229,18 +360,29 @@ export default function ContributeScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: `Select Photos (${selectedIds.size})` }} />
+      <Stack.Screen
+        options={{ title: `Select Photos (${selectedIds.size})` }}
+      />
 
       <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.selectHeader}>
-          <Text style={[styles.selectCount, isDark && styles.textMuted]}>
-            {photos.length} photo{photos.length !== 1 ? "s" : ""} from the event
-          </Text>
+          <View>
+            <Text style={[styles.selectCount, isDark && styles.textMuted]}>
+              {newPhotosCount} new photo{newPhotosCount !== 1 ? "s" : ""}
+            </Text>
+            {alreadyUploadedCount > 0 && (
+              <Text style={[styles.uploadedCount, isDark && styles.textMuted]}>
+                {alreadyUploadedCount} already uploaded
+              </Text>
+            )}
+          </View>
           <View style={styles.selectActions}>
             <TouchableOpacity onPress={selectAll}>
               <Text style={styles.selectAction}>Select All</Text>
             </TouchableOpacity>
-            <Text style={[styles.selectDivider, isDark && styles.textMuted]}>|</Text>
+            <Text style={[styles.selectDivider, isDark && styles.textMuted]}>
+              |
+            </Text>
             <TouchableOpacity onPress={deselectAll}>
               <Text style={styles.selectAction}>Clear</Text>
             </TouchableOpacity>
@@ -253,21 +395,39 @@ export default function ContributeScreen() {
           numColumns={NUM_COLUMNS}
           renderItem={({ item }) => {
             const isSelected = selectedIds.has(item.id);
+            const isUploaded = uploadedIds.has(item.id);
             return (
               <TouchableOpacity
                 style={styles.selectPhotoItem}
                 onPress={() => togglePhotoSelection(item.id)}
                 onLongPress={() => setPreviewPhoto(item)}
                 delayLongPress={200}
+                disabled={isUploaded}
               >
-                <Image source={{ uri: item.uri }} style={styles.selectPhotoImage} />
-                <View style={[styles.selectOverlay, isSelected && styles.selectOverlaySelected]}>
-                  {isSelected && (
-                    <View style={styles.selectCheckmark}>
-                      <FontAwesome name="check" size={12} color="#fff" />
+                <Image
+                  source={{ uri: item.uri }}
+                  style={styles.selectPhotoImage}
+                />
+                {isUploaded ? (
+                  <View style={styles.uploadedOverlay}>
+                    <View style={styles.uploadedBadge}>
+                      <FontAwesome name="cloud" size={10} color="#fff" />
                     </View>
-                  )}
-                </View>
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.selectOverlay,
+                      isSelected && styles.selectOverlaySelected,
+                    ]}
+                  >
+                    {isSelected && (
+                      <View style={styles.selectCheckmark}>
+                        <FontAwesome name="check" size={12} color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -283,7 +443,12 @@ export default function ContributeScreen() {
             onPress={handleUpload}
             disabled={selectedIds.size === 0}
           >
-            <FontAwesome name="cloud-upload" size={20} color="#fff" style={styles.uploadIcon} />
+            <FontAwesome
+              name="cloud-upload"
+              size={20}
+              color="#fff"
+              style={styles.uploadIcon}
+            />
             <Text style={styles.uploadButtonText}>
               {selectedIds.size > 0
                 ? `Share ${selectedIds.size} Photo${selectedIds.size !== 1 ? "s" : ""}`
@@ -340,6 +505,52 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   errorButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  emptyContent: {
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#f5f5f5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  emptyIconDark: {
+    backgroundColor: "#1a1a1a",
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#000",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: "#888",
+    textAlign: "center",
+    marginBottom: 32,
+  },
+  emptyButton: {
+    backgroundColor: "#000",
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
@@ -451,6 +662,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#3b82f6",
     justifyContent: "center",
     alignItems: "center",
+  },
+  uploadedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 6,
+  },
+  uploadedBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#22c55e",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  uploadedCount: {
+    fontSize: 12,
+    color: "#22c55e",
+    marginTop: 2,
   },
   selectFooter: {
     padding: 16,

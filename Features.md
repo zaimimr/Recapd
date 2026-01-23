@@ -1,0 +1,10 @@
+- I only want to download photos I have not uploaded
+- I only want to upload photos I have not already uploaded
+- I want to be able to delete an event as the host if I want to, but the delete button in the edit event screen
+- I want to be able to see my active events on the front screen with the join button
+- I want the QR code to be able to scan the QR code and allow me to join the event. If I do not have the app I want to be redirected to the appstore "https://apps.apple.com/no/app/recapd/id6758083751" if I am on iPhone and to https://recapd.app if I am on android
+- I want the view my events page to be able to reload if i swipe the page down
+- When I upload a photo I can see the local state being uploaded, but when its done uploading it must refetch the main photo or atleast not make my temporary photo not disapear cause now i just see an empty screen and I have to manually update to see new photos. I also want to pool the database to get real time uploads so that I can see when other people join the event and upload photos
+- I want to be able to create a feedback button where users can upload their feedback, suggestions and issues they have seen.
+- I as the host want to be able to remind everyone to take photos during the event.
+- In the upload picture screen, if I have not taken any photos I want a text that reminds users to take photos using their normal camera

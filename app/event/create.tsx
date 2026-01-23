@@ -146,7 +146,7 @@ export default function CreateEventScreen() {
           <Text style={[styles.label, isDark && styles.textDark]}>Event Name</Text>
           <TextInput
             style={[styles.input, isDark && styles.inputDark]}
-            placeholder="e.g., Sarah's Wedding"
+            placeholder="e.g., Zaim's Wedding"
             placeholderTextColor={isDark ? '#666' : '#999'}
             value={title}
             onChangeText={(text) => {

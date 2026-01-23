@@ -1,22 +1,23 @@
+import { useColorScheme } from "@/components/useColorScheme";
+import { useAuthStore } from "@/store/authStore";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { Camera } from "expo-camera";
+import * as MediaLibrary from "expo-media-library";
+import * as Notifications from "expo-notifications";
+import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
+  Alert,
+  Keyboard,
+  Linking,
+  Platform,
+  ScrollView,
   StyleSheet,
-  View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  Linking,
-  Platform,
-  Alert,
-  Keyboard,
+  View,
 } from "react-native";
-import { useFocusEffect } from "expo-router";
-import * as MediaLibrary from "expo-media-library";
-import * as Notifications from "expo-notifications";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useColorScheme } from "@/components/useColorScheme";
-import { useAuthStore } from "@/store/authStore";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | "limited";
 
@@ -24,7 +25,7 @@ interface PermissionInfo {
   name: string;
   description: string;
   status: PermissionStatus;
-  icon: "image" | "bell";
+  icon: "image" | "bell" | "camera";
   required: boolean;
 }
 
@@ -47,6 +48,13 @@ export default function SettingsScreen() {
       required: true,
     },
     {
+      name: "Camera",
+      description: "Take photos directly within the app",
+      status: "undetermined",
+      icon: "camera",
+      required: false,
+    },
+    {
       name: "Notifications",
       description: "Get reminded to upload photos after events end",
       status: "undetermined",
@@ -56,20 +64,28 @@ export default function SettingsScreen() {
   ]);
 
   const checkPermissions = useCallback(async () => {
-    const [mediaStatus, notificationStatus] = await Promise.all([
+    const [mediaStatus, cameraStatus, notificationStatus] = await Promise.all([
       MediaLibrary.getPermissionsAsync(),
+      Camera.getCameraPermissionsAsync(),
       Notifications.getPermissionsAsync(),
     ]);
 
-    const mediaPermission = mediaStatus.accessPrivileges === "all"
+    const mediaPermission =
+      mediaStatus.accessPrivileges === "all"
+        ? "granted"
+        : mediaStatus.accessPrivileges === "limited"
+          ? "limited"
+          : mediaStatus.granted
+            ? "granted"
+            : mediaStatus.canAskAgain
+              ? "undetermined"
+              : "denied";
+
+    const cameraPermission = cameraStatus.granted
       ? "granted"
-      : mediaStatus.accessPrivileges === "limited"
-        ? "limited"
-        : mediaStatus.granted
-          ? "granted"
-          : mediaStatus.canAskAgain
-            ? "undetermined"
-            : "denied";
+      : cameraStatus.canAskAgain
+        ? "undetermined"
+        : "denied";
 
     const notificationPermission = notificationStatus.granted
       ? "granted"
@@ -86,6 +102,13 @@ export default function SettingsScreen() {
         required: true,
       },
       {
+        name: "Camera",
+        description: "Take photos directly within the app",
+        status: cameraPermission,
+        icon: "camera",
+        required: false,
+      },
+      {
         name: "Notifications",
         description: "Get reminded to upload photos after events end",
         status: notificationPermission,
@@ -98,11 +121,12 @@ export default function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       checkPermissions();
-    }, [checkPermissions])
+    }, [checkPermissions]),
   );
 
   async function requestPhotoPermission() {
-    const { status, accessPrivileges, canAskAgain } = await MediaLibrary.getPermissionsAsync();
+    const { status, accessPrivileges, canAskAgain } =
+      await MediaLibrary.getPermissionsAsync();
 
     if (accessPrivileges === "all" || status === "granted") {
       return;
@@ -117,7 +141,7 @@ export default function SettingsScreen() {
           [
             { text: "Maybe Later", style: "cancel" },
             { text: "Open Settings", onPress: openSettings },
-          ]
+          ],
         );
       }
       checkPermissions();
@@ -135,6 +159,21 @@ export default function SettingsScreen() {
 
     if (canAskAgain) {
       await Notifications.requestPermissionsAsync();
+      checkPermissions();
+    } else {
+      openSettings();
+    }
+  }
+
+  async function requestCameraPermission() {
+    const { granted, canAskAgain } = await Camera.getCameraPermissionsAsync();
+
+    if (granted) {
+      return;
+    }
+
+    if (canAskAgain) {
+      await Camera.requestCameraPermissionsAsync();
       checkPermissions();
     } else {
       openSettings();
@@ -176,6 +215,8 @@ export default function SettingsScreen() {
 
     if (permission.name === "Photo Library") {
       requestPhotoPermission();
+    } else if (permission.name === "Camera") {
+      requestCameraPermission();
     } else if (permission.name === "Notifications") {
       requestNotificationPermission();
     }
@@ -207,7 +248,9 @@ export default function SettingsScreen() {
     }
   }
 
-  function getStatusIcon(status: PermissionStatus): "check-circle" | "exclamation-circle" | "times-circle" {
+  function getStatusIcon(
+    status: PermissionStatus,
+  ): "check-circle" | "exclamation-circle" | "times-circle" {
     switch (status) {
       case "granted":
         return "check-circle";
@@ -221,7 +264,7 @@ export default function SettingsScreen() {
   }
 
   const allPermissionsGranted = permissions.every(
-    (p) => p.status === "granted"
+    (p) => p.status === "granted",
   );
 
   return (
@@ -237,7 +280,9 @@ export default function SettingsScreen() {
           <View style={styles.profileRow}>
             <View style={[styles.avatar, isDark && styles.avatarDark]}>
               <Text style={[styles.avatarText, isDark && styles.textDark]}>
-                {(isEditingName ? editedName : user.display_name)?.charAt(0).toUpperCase() || "?"}
+                {(isEditingName ? editedName : user.display_name)
+                  ?.charAt(0)
+                  .toUpperCase() || "?"}
               </Text>
             </View>
             <View style={styles.profileInfo}>
@@ -269,10 +314,17 @@ export default function SettingsScreen() {
                   onPress={handleCancelEdit}
                   disabled={isSaving}
                 >
-                  <FontAwesome name="times" size={18} color={isDark ? "#888" : "#666"} />
+                  <FontAwesome
+                    name="times"
+                    size={18}
+                    color={isDark ? "#888" : "#666"}
+                  />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+                  style={[
+                    styles.saveButton,
+                    isSaving && styles.saveButtonDisabled,
+                  ]}
                   onPress={handleSaveName}
                   disabled={isSaving}
                 >
@@ -287,12 +339,38 @@ export default function SettingsScreen() {
                   setIsEditingName(true);
                 }}
               >
-                <FontAwesome name="pencil" size={14} color={isDark ? "#fff" : "#000"} />
+                <FontAwesome
+                  name="pencil"
+                  size={14}
+                  color={isDark ? "#fff" : "#000"}
+                />
               </TouchableOpacity>
             )}
           </View>
         </View>
       )}
+
+      <View style={[styles.section, isDark && styles.sectionDark]}>
+        <Text style={[styles.sectionTitle, isDark && styles.textDark]}>
+          Feedback
+        </Text>
+        <TouchableOpacity
+          style={[styles.feedbackButton, isDark && styles.feedbackButtonDark]}
+          onPress={() => Linking.openURL("https://forms.gle/Pt6DyHY4ZY6CZthm8")}
+        >
+          <FontAwesome
+            name="comment"
+            size={18}
+            color={isDark ? "#fff" : "#000"}
+          />
+          <Text style={[styles.feedbackButtonText, isDark && styles.textDark]}>
+            Send Feedback
+          </Text>
+        </TouchableOpacity>
+        <Text style={[styles.feedbackHint, isDark && styles.textMuted]}>
+          We'd love to hear your thoughts and suggestions
+        </Text>
+      </View>
 
       <View style={[styles.section, isDark && styles.sectionDark]}>
         <View style={styles.sectionHeader}>
@@ -321,7 +399,12 @@ export default function SettingsScreen() {
             onPress={() => handlePermissionPress(permission)}
             activeOpacity={permission.status === "granted" ? 1 : 0.7}
           >
-            <View style={[styles.permissionIcon, isDark && styles.permissionIconDark]}>
+            <View
+              style={[
+                styles.permissionIcon,
+                isDark && styles.permissionIconDark,
+              ]}
+            >
               <FontAwesome
                 name={permission.icon}
                 size={20}
@@ -332,7 +415,12 @@ export default function SettingsScreen() {
               <Text style={[styles.permissionName, isDark && styles.textDark]}>
                 {permission.name}
               </Text>
-              <Text style={[styles.permissionDescription, isDark && styles.textMuted]}>
+              <Text
+                style={[
+                  styles.permissionDescription,
+                  isDark && styles.textMuted,
+                ]}
+              >
                 {permission.description}
               </Text>
             </View>
@@ -613,5 +701,29 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: "#888",
+  },
+  feedbackButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#f5f5f5",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  feedbackButtonDark: {
+    backgroundColor: "#333",
+  },
+  feedbackButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
+  feedbackHint: {
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 12,
   },
 });

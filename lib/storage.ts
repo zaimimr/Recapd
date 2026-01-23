@@ -8,6 +8,9 @@ import * as MediaLibrary from 'expo-media-library';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 import { MediaItemInsert, MediaItemUpdate } from '@/types/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const DOWNLOADED_PHOTOS_KEY = 'recapd_downloaded_photos';
 
 async function getReadableUri(uri: string): Promise<string> {
   if (uri.startsWith('ph://') || uri.startsWith('assets-library://') || !uri.includes('/')) {
@@ -182,4 +185,25 @@ export async function deletePhoto(storagePath: string, mediaItemId: string): Pro
     console.error('Delete error:', error);
     return false;
   }
+}
+
+export async function isPhotoDownloaded(mediaItemId: string): Promise<boolean> {
+  const data = await AsyncStorage.getItem(DOWNLOADED_PHOTOS_KEY);
+  const downloadedIds: string[] = data ? JSON.parse(data) : [];
+  return downloadedIds.includes(mediaItemId);
+}
+
+export async function markPhotoDownloaded(mediaItemId: string): Promise<void> {
+  const data = await AsyncStorage.getItem(DOWNLOADED_PHOTOS_KEY);
+  const downloadedIds: string[] = data ? JSON.parse(data) : [];
+  if (!downloadedIds.includes(mediaItemId)) {
+    downloadedIds.push(mediaItemId);
+    await AsyncStorage.setItem(DOWNLOADED_PHOTOS_KEY, JSON.stringify(downloadedIds));
+  }
+}
+
+export async function getDownloadedPhotoIds(): Promise<Set<string>> {
+  const data = await AsyncStorage.getItem(DOWNLOADED_PHOTOS_KEY);
+  const downloadedIds: string[] = data ? JSON.parse(data) : [];
+  return new Set(downloadedIds);
 }

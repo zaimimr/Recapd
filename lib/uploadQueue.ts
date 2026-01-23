@@ -11,6 +11,7 @@ export interface PendingUpload {
   status: 'pending' | 'syncing' | 'failed';
   retryCount: number;
   error?: string;
+  assetId?: string;
 }
 
 const MAX_RETRIES = 3;

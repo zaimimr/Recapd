@@ -41,14 +41,15 @@ export default function ShareEventScreen() {
   async function handleShare() {
     if (!currentEvent) return;
 
-    const message = `Join "${currentEvent.title}" on Recapd!\n\nCode: ${currentEvent.join_code}\n\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} • ${format(new Date(currentEvent.starts_at), "h:mm a")} - ${format(new Date(currentEvent.ends_at), "h:mm a")}`;
+    const shareUrl = `https://recapd.app/join/${currentEvent.join_code}`;
+    const message = `Join "${currentEvent.title}" on Recapd!\n\nCode: ${currentEvent.join_code}\n\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} • ${format(new Date(currentEvent.starts_at), "h:mm a")} - ${format(new Date(currentEvent.ends_at), "h:mm a")}\n\n${shareUrl}`;
 
     try {
       await Share.share({
         message,
         title: `Join ${currentEvent.title}`,
       });
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to share");
     }
   }
@@ -71,7 +72,7 @@ export default function ShareEventScreen() {
     );
   }
 
-  const joinUrl = `recapd://join/${currentEvent.join_code}`;
+  const joinUrl = `https://recapd.app/join/${currentEvent.join_code}`;
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>

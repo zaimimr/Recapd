@@ -16,7 +16,7 @@ import {
 import { Image } from 'expo-image';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { getPhotoUrl, downloadPhoto } from '@/lib/storage';
+import { getPhotoUrl, downloadPhoto, isPhotoDownloaded, markPhotoDownloaded } from '@/lib/storage';
 import { saveToLibrary } from '@/lib/mediaLibrary';
 import { MergedMediaItem } from './MomentCluster';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -124,6 +124,13 @@ export default function PhotoViewer({
 
     setSaving(true);
     try {
+      const alreadyDownloaded = await isPhotoDownloaded(currentPhoto.id);
+      if (alreadyDownloaded) {
+        Alert.alert('Already Saved', 'This photo is already in your camera roll');
+        setSaving(false);
+        return;
+      }
+
       const localUri = await downloadPhoto(
         currentPhoto.storage_path,
         `recapd_${currentPhoto.id}.jpg`
@@ -131,6 +138,7 @@ export default function PhotoViewer({
       if (localUri) {
         const asset = await saveToLibrary(localUri);
         if (asset) {
+          await markPhotoDownloaded(currentPhoto.id);
           Alert.alert('Saved', 'Photo saved to your camera roll');
         } else {
           Alert.alert('Error', 'Failed to save photo');

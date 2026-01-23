@@ -19,6 +19,7 @@ import {
   setupNotificationHandler,
 } from "@/lib/notifications";
 import { useAuthStore } from "@/store/authStore";
+import { useEventStore } from "@/store/eventStore";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -60,9 +61,11 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const user = useAuthStore((state) => state.user);
+  const initializePendingUploads = useEventStore((state) => state.initializePendingUploads);
 
   useEffect(() => {
     setupNotificationHandler();
+    initializePendingUploads();
   }, []);
 
   useEffect(() => {
