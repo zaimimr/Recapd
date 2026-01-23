@@ -41,8 +41,7 @@ export default function ShareEventScreen() {
   async function handleShare() {
     if (!currentEvent) return;
 
-    const shareUrl = `https://recapd.app/join/${currentEvent.join_code}`;
-    const message = `Join "${currentEvent.title}" on Recapd!\n\nCode: ${currentEvent.join_code}\n\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} • ${format(new Date(currentEvent.starts_at), "h:mm a")} - ${format(new Date(currentEvent.ends_at), "h:mm a")}\n\n${shareUrl}`;
+    const message = `Join "${currentEvent.title}" on Recapd!\n\nCode: ${currentEvent.join_code}\n\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} • ${format(new Date(currentEvent.starts_at), "h:mm a")} - ${format(new Date(currentEvent.ends_at), "h:mm a")}\n\nOpen the app or download it here:\n${shareUrl}`;
 
     try {
       await Share.share({
@@ -72,7 +71,10 @@ export default function ShareEventScreen() {
     );
   }
 
-  const joinUrl = `https://recapd.app/join/${currentEvent.join_code}`;
+  // Deep link for QR code (opens app directly if installed)
+  const deepLink = `recapd://join/${currentEvent.join_code}`;
+  // Web URL for sharing (has smart redirect to app or store)
+  const shareUrl = `https://recapd.app/join/${currentEvent.join_code}`;
 
   return (
     <View style={[styles.container, isDark && styles.containerDark]}>
@@ -91,7 +93,7 @@ export default function ShareEventScreen() {
         <View style={styles.qrContainer}>
           <View style={styles.qrWrapper}>
             <QRCode
-              value={joinUrl}
+              value={deepLink}
               size={200}
               backgroundColor="#fff"
               color="#000"
