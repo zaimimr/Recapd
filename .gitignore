@@ -45,3 +45,4 @@ yarn-error.*
 credentials.json
 android/keystores/release.keystore
 ios/certs/*
+supabase/.temp/
