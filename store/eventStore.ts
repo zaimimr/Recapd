@@ -20,6 +20,21 @@ import { create } from "zustand";
 
 const PENDING_UPLOADS_KEY = "recapd_pending_uploads";
 
+// Helper to create a valid Date, falling back to current time if invalid
+function safeDate(value: string | number | Date | undefined | null): Date {
+  if (!value) return new Date();
+  const date = value instanceof Date ? value : new Date(value);
+  // Check if date is valid (not NaN and within reasonable bounds)
+  if (
+    isNaN(date.getTime()) ||
+    date.getTime() < 0 ||
+    date.getTime() > 8640000000000000
+  ) {
+    return new Date();
+  }
+  return date;
+}
+
 async function persistPendingUploads(uploads: PendingUpload[]) {
   await AsyncStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(uploads));
 }
@@ -30,7 +45,7 @@ async function loadPendingUploads(): Promise<PendingUpload[]> {
   const uploads = JSON.parse(data);
   return uploads.map((u: PendingUpload & { capturedAt: string }) => ({
     ...u,
-    capturedAt: new Date(u.capturedAt),
+    capturedAt: safeDate(u.capturedAt),
     status: u.status === "syncing" ? "pending" : u.status,
   }));
 }
@@ -721,7 +736,7 @@ export const useEventStore = create<EventState>((set, get) => {
           localUri: photo.uri,
           eventId,
           userId,
-          capturedAt: new Date(photo.creationTime),
+          capturedAt: safeDate(photo.creationTime),
           width: photo.width,
           height: photo.height,
           status: "pending" as const,
@@ -864,7 +879,7 @@ export const useEventStore = create<EventState>((set, get) => {
           id: p.id,
           event_id: p.eventId,
           uploaded_by_user_id: p.userId,
-          captured_at: p.capturedAt.toISOString(),
+          captured_at: safeDate(p.capturedAt).toISOString(),
           uploaded_at: new Date().toISOString(),
           media_type: "photo" as const,
           width: p.width,

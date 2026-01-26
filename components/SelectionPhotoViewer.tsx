@@ -1,0 +1,332 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Dimensions,
+  Modal,
+  FlatList,
+  ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
+import { Image } from 'expo-image';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { LocalPhoto } from '@/lib/mediaLibrary';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+interface SelectionPhotoViewerProps {
+  photos: LocalPhoto[];
+  initialIndex: number;
+  visible: boolean;
+  onClose: () => void;
+  selectedIds: Set<string>;
+  uploadedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+}
+
+interface ZoomableImageProps {
+  photo: LocalPhoto;
+}
+
+function ZoomableImage({ photo }: ZoomableImageProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [isZoomed, setIsZoomed] = useState(false);
+
+  const handleDoubleTap = useCallback(() => {
+    if (isZoomed) {
+      scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+    }
+  }, [isZoomed]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const zoomScale = event.nativeEvent.zoomScale;
+    setIsZoomed(zoomScale > 1);
+  }, []);
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={styles.scrollView}
+      contentContainerStyle={styles.scrollContent}
+      maximumZoomScale={4}
+      minimumZoomScale={1}
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
+      onScroll={handleScroll}
+      scrollEventThrottle={16}
+      bouncesZoom
+      centerContent
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={handleDoubleTap}
+        style={styles.imageWrapper}
+      >
+        <Image
+          source={{ uri: photo.uri }}
+          style={styles.image}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          transition={100}
+        />
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+export default function SelectionPhotoViewer({
+  photos,
+  initialIndex,
+  visible,
+  onClose,
+  selectedIds,
+  uploadedIds,
+  onToggleSelection,
+}: SelectionPhotoViewerProps) {
+  const insets = useSafeAreaInsets();
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(initialIndex);
+    }
+  }, [visible, initialIndex]);
+
+  const currentPhoto = photos[currentIndex];
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  if (!visible || !currentPhoto) return null;
+
+  const isUploaded = uploadedIds.has(currentPhoto.id);
+  const isSelected = selectedIds.has(currentPhoto.id);
+
+  function handleToggle() {
+    if (!isUploaded) {
+      onToggleSelection(currentPhoto.id);
+    }
+  }
+
+  function getButtonStyle() {
+    if (isUploaded) {
+      return [styles.selectionButton, styles.selectionButtonUploaded];
+    }
+    if (isSelected) {
+      return [styles.selectionButton, styles.selectionButtonSelected];
+    }
+    return [styles.selectionButton, styles.selectionButtonUnselected];
+  }
+
+  function getButtonTextStyle() {
+    if (isUploaded) {
+      return [styles.selectionButtonText, styles.selectionButtonTextUploaded];
+    }
+    if (isSelected) {
+      return [styles.selectionButtonText, styles.selectionButtonTextSelected];
+    }
+    return [styles.selectionButtonText, styles.selectionButtonTextUnselected];
+  }
+
+  function getButtonLabel() {
+    if (isUploaded) return 'Already Uploaded';
+    if (isSelected) return 'Selected';
+    return 'Select';
+  }
+
+  function getButtonIcon() {
+    if (isUploaded) return 'cloud';
+    if (isSelected) return 'check';
+    return 'circle-o';
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="none"
+      transparent={false}
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={onClose}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <FontAwesome name="chevron-down" size={20} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.counter}>
+              {currentIndex + 1} / {photos.length}
+            </Text>
+          </View>
+          <View style={styles.headerButtonPlaceholder} />
+        </View>
+
+        <FlatList
+          ref={flatListRef}
+          data={photos}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, index) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * index,
+            index,
+          })}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          renderItem={({ item }) => (
+            <View style={styles.imageContainer}>
+              <ZoomableImage photo={item} />
+            </View>
+          )}
+        />
+
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <TouchableOpacity
+            style={getButtonStyle()}
+            onPress={handleToggle}
+            disabled={isUploaded}
+          >
+            <FontAwesome
+              name={getButtonIcon()}
+              size={18}
+              color={isUploaded ? '#22c55e' : isSelected ? '#fff' : '#3b82f6'}
+              style={styles.buttonIcon}
+            />
+            <Text style={getButtonTextStyle()}>
+              {getButtonLabel()}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    zIndex: 10,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerButtonPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  counter: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  imageContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageWrapper: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  image: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.75,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    zIndex: 10,
+    alignItems: 'center',
+  },
+  selectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    minWidth: 180,
+  },
+  selectionButtonUploaded: {
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+  },
+  selectionButtonSelected: {
+    backgroundColor: '#3b82f6',
+  },
+  selectionButtonUnselected: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  selectionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectionButtonTextUploaded: {
+    color: '#22c55e',
+  },
+  selectionButtonTextSelected: {
+    color: '#fff',
+  },
+  selectionButtonTextUnselected: {
+    color: '#3b82f6',
+  },
+});

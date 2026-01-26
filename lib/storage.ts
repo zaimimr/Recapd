@@ -1,20 +1,24 @@
+import { MediaItemInsert, MediaItemUpdate } from "@/types/database";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { decode } from "base64-arraybuffer";
 import {
-  readAsStringAsync,
-  downloadAsync,
   cacheDirectory,
+  downloadAsync,
   EncodingType,
-} from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
-import { decode } from 'base64-arraybuffer';
-import { supabase } from './supabase';
-import { MediaItemInsert, MediaItemUpdate } from '@/types/database';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+  readAsStringAsync,
+} from "expo-file-system/legacy";
+import * as MediaLibrary from "expo-media-library";
+import { supabase } from "./supabase";
 
-const DOWNLOADED_PHOTOS_KEY = 'recapd_downloaded_photos';
+const DOWNLOADED_PHOTOS_KEY = "recapd_downloaded_photos";
 
 async function getReadableUri(uri: string): Promise<string> {
-  if (uri.startsWith('ph://') || uri.startsWith('assets-library://') || !uri.includes('/')) {
-    const assetId = uri.replace('ph://', '').split('/')[0];
+  if (
+    uri.startsWith("ph://") ||
+    uri.startsWith("assets-library://") ||
+    !uri.includes("/")
+  ) {
+    const assetId = uri.replace("ph://", "").split("/")[0];
     const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId);
     if (assetInfo?.localUri) {
       return assetInfo.localUri;
@@ -36,6 +40,21 @@ export interface UploadProgress {
   percentage: number;
 }
 
+// Helper to create a valid Date, falling back to current time if invalid
+function safeDate(value: Date | string | number | undefined | null): Date {
+  if (!value) return new Date();
+  const date = value instanceof Date ? value : new Date(value);
+  // Check if date is valid (not NaN and within reasonable bounds)
+  if (
+    isNaN(date.getTime()) ||
+    date.getTime() < 0 ||
+    date.getTime() > 8640000000000000
+  ) {
+    return new Date();
+  }
+  return date;
+}
+
 export async function uploadPhoto(
   uri: string,
   eventId: string,
@@ -43,9 +62,10 @@ export async function uploadPhoto(
   capturedAt: Date,
   width?: number,
   height?: number,
-  fileSize?: number
+  fileSize?: number,
 ): Promise<UploadResult> {
   try {
+    const validCapturedAt = safeDate(capturedAt);
     const readableUri = await getReadableUri(uri);
     const base64 = await readAsStringAsync(readableUri, {
       encoding: EncodingType.Base64,
@@ -53,47 +73,49 @@ export async function uploadPhoto(
 
     const arrayBuffer = decode(base64);
     const timestamp = Date.now();
-    const extension = readableUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const extension = readableUri.split(".").pop()?.toLowerCase() || "jpg";
     const fileName = `${eventId}/${userId}/${timestamp}.${extension}`;
 
-    const contentType = extension === 'png' ? 'image/png' : 'image/jpeg';
+    const contentType = extension === "png" ? "image/png" : "image/jpeg";
 
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('event-photos')
+      .from("event-photos")
       .upload(fileName, arrayBuffer, {
         contentType,
         upsert: false,
       });
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError);
+      console.error("Storage upload error:", uploadError);
       return { success: false, error: uploadError.message };
     }
 
     const insertData: MediaItemInsert = {
       event_id: eventId,
       uploaded_by_user_id: userId,
-      captured_at: capturedAt.toISOString(),
-      media_type: 'photo',
+      captured_at: validCapturedAt.toISOString(),
+      media_type: "photo",
       width,
       height,
       file_size_bytes: fileSize || base64.length,
       storage_path: uploadData.path,
-      visibility: 'shared',
+      visibility: "shared",
     };
 
-    const { error: dbError } = await supabase.from('media_items').insert(insertData);
+    const { error: dbError } = await supabase
+      .from("media_items")
+      .insert(insertData);
 
     if (dbError) {
-      console.error('Database insert error:', dbError);
-      await supabase.storage.from('event-photos').remove([uploadData.path]);
+      console.error("Database insert error:", dbError);
+      await supabase.storage.from("event-photos").remove([uploadData.path]);
       return { success: false, error: dbError.message };
     }
 
     return { success: true, path: uploadData.path };
   } catch (error) {
-    console.error('Upload error:', error);
-    return { success: false, error: 'Failed to upload photo' };
+    console.error("Upload error:", error);
+    return { success: false, error: "Failed to upload photo" };
   }
 }
 
@@ -107,7 +129,7 @@ export async function uploadPhotoBatch(
   }>,
   eventId: string,
   userId: string,
-  onProgress?: (progress: UploadProgress) => void
+  onProgress?: (progress: UploadProgress) => void,
 ): Promise<{ successful: number; failed: number; errors: string[] }> {
   const results = { successful: 0, failed: 0, errors: [] as string[] };
   const total = photos.length;
@@ -121,7 +143,7 @@ export async function uploadPhotoBatch(
       photo.capturedAt,
       photo.width,
       photo.height,
-      photo.fileSize
+      photo.fileSize,
     );
 
     if (result.success) {
@@ -144,11 +166,16 @@ export async function uploadPhotoBatch(
 }
 
 export function getPhotoUrl(storagePath: string): string {
-  const { data } = supabase.storage.from('event-photos').getPublicUrl(storagePath);
+  const { data } = supabase.storage
+    .from("event-photos")
+    .getPublicUrl(storagePath);
   return data.publicUrl;
 }
 
-export async function downloadPhoto(storagePath: string, fileName: string): Promise<string | null> {
+export async function downloadPhoto(
+  storagePath: string,
+  fileName: string,
+): Promise<string | null> {
   try {
     const url = getPhotoUrl(storagePath);
     const localUri = `${cacheDirectory}${fileName}`;
@@ -161,28 +188,31 @@ export async function downloadPhoto(storagePath: string, fileName: string): Prom
 
     return null;
   } catch (error) {
-    console.error('Download error:', error);
+    console.error("Download error:", error);
     return null;
   }
 }
 
-export async function deletePhoto(storagePath: string, mediaItemId: string): Promise<boolean> {
+export async function deletePhoto(
+  storagePath: string,
+  mediaItemId: string,
+): Promise<boolean> {
   try {
     const updateData: MediaItemUpdate = {
-      visibility: 'deleted',
+      visibility: "deleted",
       deleted_at: new Date().toISOString(),
     };
 
     const { error: dbError } = await supabase
-      .from('media_items')
+      .from("media_items")
       .update(updateData)
-      .eq('id', mediaItemId);
+      .eq("id", mediaItemId);
 
     if (dbError) throw dbError;
 
     return true;
   } catch (error) {
-    console.error('Delete error:', error);
+    console.error("Delete error:", error);
     return false;
   }
 }
@@ -198,7 +228,10 @@ export async function markPhotoDownloaded(mediaItemId: string): Promise<void> {
   const downloadedIds: string[] = data ? JSON.parse(data) : [];
   if (!downloadedIds.includes(mediaItemId)) {
     downloadedIds.push(mediaItemId);
-    await AsyncStorage.setItem(DOWNLOADED_PHOTOS_KEY, JSON.stringify(downloadedIds));
+    await AsyncStorage.setItem(
+      DOWNLOADED_PHOTOS_KEY,
+      JSON.stringify(downloadedIds),
+    );
   }
 }
 

@@ -1,7 +1,9 @@
 import { useColorScheme } from "@/components/useColorScheme";
+import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import {
   getPhotosInTimeRange,
   LocalPhoto,
+  pickPhotosFromLibrary,
   requestMediaPermissions,
 } from "@/lib/mediaLibrary";
 import { useAuthStore } from "@/store/authStore";
@@ -14,8 +16,6 @@ import {
   Dimensions,
   FlatList,
   Image,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -32,41 +32,6 @@ const PHOTO_SIZE =
 
 type Step = "loading" | "found" | "select" | "empty" | "error";
 
-interface PhotoPreviewProps {
-  photo: LocalPhoto | null;
-  visible: boolean;
-  onClose: () => void;
-}
-
-function PhotoPreview({ photo, visible, onClose }: PhotoPreviewProps) {
-  if (!photo) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.previewContainer} onPress={onClose}>
-        <View style={styles.previewHeader}>
-          <TouchableOpacity style={styles.previewCloseButton} onPress={onClose}>
-            <FontAwesome name="times" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.previewImageContainer}>
-          <Image
-            source={{ uri: photo.uri }}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-        </View>
-      </Pressable>
-    </Modal>
-  );
-}
-
 export default function ContributeScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const router = useRouter();
@@ -82,15 +47,20 @@ export default function ContributeScreen() {
 
   const [step, setStep] = useState<Step>("loading");
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
+  const [manualPhotos, setManualPhotos] = useState<LocalPhoto[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [uploadedIds, setUploadedIds] = useState<Set<string>>(new Set());
   const [permissionDenied, setPermissionDenied] = useState(false);
-  const [previewPhoto, setPreviewPhoto] = useState<LocalPhoto | null>(null);
+  const [scanError, setScanError] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
+  const allPhotos = [...photos, ...manualPhotos];
 
   const loadPhotos = useCallback(async () => {
     if (!eventId) return;
 
     setStep("loading");
+    setScanError(false);
 
     const event = currentEvent || (await fetchEventById(eventId));
     if (!event) {
@@ -105,39 +75,43 @@ export default function ContributeScreen() {
       return;
     }
 
-    const startTime = new Date(event.starts_at);
-    const endTime = new Date(event.ends_at);
+    try {
+      const startTime = new Date(event.starts_at);
+      const endTime = new Date(event.ends_at);
 
-    const foundPhotos = await getPhotosInTimeRange(startTime, endTime);
+      const foundPhotos = await getPhotosInTimeRange(startTime, endTime);
 
-    // Get uploaded photo IDs by comparing with Supabase data
-    const alreadyUploaded = user
-      ? await getUploadedPhotoIdsForEvent(eventId, user.id, foundPhotos)
-      : new Set<string>();
+      const alreadyUploaded = user
+        ? await getUploadedPhotoIdsForEvent(eventId, user.id, foundPhotos)
+        : new Set<string>();
 
-    setPhotos(foundPhotos);
-    setUploadedIds(alreadyUploaded);
+      setPhotos(foundPhotos);
+      setUploadedIds(alreadyUploaded);
 
-    const newPhotoIds = foundPhotos
-      .filter((p) => !alreadyUploaded.has(p.id))
-      .map((p) => p.id);
-    setSelectedIds(new Set(newPhotoIds));
+      const newPhotoIds = foundPhotos
+        .filter((p) => !alreadyUploaded.has(p.id))
+        .map((p) => p.id);
+      setSelectedIds(new Set(newPhotoIds));
 
-    if (foundPhotos.length > 0) {
-      // Go directly to select screen to show all photos
-      setStep("select");
-    } else {
-      setStep("empty");
+      if (foundPhotos.length > 0) {
+        setStep("select");
+      } else {
+        setStep("empty");
+      }
+    } catch (error) {
+      console.error('Photo scanning failed:', error);
+      setScanError(true);
+      setStep("error");
     }
-  }, [eventId, currentEvent, fetchEventById, getUploadedPhotoIdsForEvent]);
+  }, [eventId, currentEvent, fetchEventById, getUploadedPhotoIdsForEvent, user]);
 
   useEffect(() => {
     loadPhotos();
   }, [loadPhotos]);
 
   function handleShareAll() {
-    if (!user || !eventId || photos.length === 0) return;
-    addPendingUploads(photos, eventId, user.id);
+    if (!user || !eventId || allPhotos.length === 0) return;
+    addPendingUploads(allPhotos, eventId, user.id);
     router.replace(`/event/${eventId}`);
   }
 
@@ -161,7 +135,7 @@ export default function ContributeScreen() {
   }
 
   function selectAll() {
-    const selectableIds = photos
+    const selectableIds = allPhotos
       .filter((p) => !uploadedIds.has(p.id))
       .map((p) => p.id);
     setSelectedIds(new Set(selectableIds));
@@ -171,15 +145,36 @@ export default function ContributeScreen() {
     setSelectedIds(new Set());
   }
 
-  const newPhotosCount = photos.filter((p) => !uploadedIds.has(p.id)).length;
+  async function handleManualPick() {
+    const picked = await pickPhotosFromLibrary();
+    if (picked.length > 0) {
+      const existingUris = new Set(allPhotos.map((p) => p.uri));
+      const newPhotos = picked.filter((p) => !existingUris.has(p.uri));
+      setManualPhotos((prev) => [...prev, ...newPhotos]);
+      const newIds = new Set(newPhotos.map((p) => p.id));
+      setSelectedIds((prev) => new Set([...prev, ...newIds]));
+    }
+  }
+
+  async function handleManualPickFromError() {
+    const picked = await pickPhotosFromLibrary();
+    if (picked.length > 0) {
+      setManualPhotos(picked);
+      const newIds = new Set(picked.map((p) => p.id));
+      setSelectedIds(newIds);
+      setStep("select");
+    }
+  }
+
+  const newPhotosCount = allPhotos.filter((p) => !uploadedIds.has(p.id)).length;
   const alreadyUploadedCount =
     uploadedIds.size > 0
-      ? photos.filter((p) => uploadedIds.has(p.id)).length
+      ? allPhotos.filter((p) => uploadedIds.has(p.id)).length
       : 0;
 
   function handleUpload() {
     if (!user || !eventId || selectedIds.size === 0) return;
-    const selectedPhotos = photos.filter((p) => selectedIds.has(p.id));
+    const selectedPhotos = allPhotos.filter((p) => selectedIds.has(p.id));
     addPendingUploads(selectedPhotos, eventId, user.id);
     router.replace(`/event/${eventId}`);
   }
@@ -202,6 +197,17 @@ export default function ContributeScreen() {
   }
 
   if (step === "error") {
+    const errorTitle = permissionDenied
+      ? "Permission Required"
+      : scanError
+        ? "Scanning Issue"
+        : "Something went wrong";
+    const errorMessage = permissionDenied
+      ? "Please allow access to your photos in Settings to continue"
+      : scanError
+        ? "We had trouble scanning your photos automatically"
+        : "Unable to load the event. Please try again.";
+
     return (
       <View
         style={[
@@ -212,15 +218,27 @@ export default function ContributeScreen() {
       >
         <FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
         <Text style={[styles.errorTitle, isDark && styles.textDark]}>
-          {permissionDenied ? "Permission Required" : "Something went wrong"}
+          {errorTitle}
         </Text>
         <Text style={[styles.errorText, isDark && styles.textMuted]}>
-          {permissionDenied
-            ? "Please allow access to your photos in Settings to continue"
-            : "Unable to load the event. Please try again."}
+          {errorMessage}
         </Text>
-        <TouchableOpacity style={styles.errorButton} onPress={handleSkip}>
-          <Text style={styles.errorButtonText}>Go Back</Text>
+        {scanError && (
+          <TouchableOpacity
+            style={styles.manualPickButton}
+            onPress={handleManualPickFromError}
+          >
+            <FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[styles.errorButton, scanError && styles.errorButtonSecondary]}
+          onPress={handleSkip}
+        >
+          <Text style={[styles.errorButtonText, scanError && styles.errorButtonTextSecondary]}>
+            Go Back
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -265,10 +283,17 @@ export default function ContributeScreen() {
               We couldn't find any photos from the event time window.
             </Text>
             <Text style={[styles.emptyHint, isDark && styles.textMuted]}>
-              Take some photos during the event and come back to share them!
+              Or select photos manually from your library.
             </Text>
-            <TouchableOpacity style={styles.emptyButton} onPress={handleSkip}>
-              <Text style={styles.emptyButtonText}>Got It</Text>
+            <TouchableOpacity
+              style={styles.manualPickButton}
+              onPress={handleManualPickFromError}
+            >
+              <FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.emptyButtonSecondary} onPress={handleSkip}>
+              <Text style={styles.emptyButtonSecondaryText}>Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -386,21 +411,28 @@ export default function ContributeScreen() {
             <TouchableOpacity onPress={deselectAll}>
               <Text style={styles.selectAction}>Clear</Text>
             </TouchableOpacity>
+            <Text style={[styles.selectDivider, isDark && styles.textMuted]}>
+              |
+            </Text>
+            <TouchableOpacity onPress={handleManualPick} style={styles.addPhotosButton}>
+              <FontAwesome name="plus" size={14} color="#3b82f6" />
+              <Text style={styles.selectAction}> Add</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         <FlatList
-          data={photos}
+          data={allPhotos}
           keyExtractor={(item) => item.id}
           numColumns={NUM_COLUMNS}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isSelected = selectedIds.has(item.id);
             const isUploaded = uploadedIds.has(item.id);
             return (
               <TouchableOpacity
                 style={styles.selectPhotoItem}
                 onPress={() => togglePhotoSelection(item.id)}
-                onLongPress={() => setPreviewPhoto(item)}
+                onLongPress={() => setPreviewIndex(index)}
                 delayLongPress={200}
                 disabled={isUploaded}
               >
@@ -458,10 +490,14 @@ export default function ContributeScreen() {
         </View>
       </View>
 
-      <PhotoPreview
-        photo={previewPhoto}
-        visible={previewPhoto !== null}
-        onClose={() => setPreviewPhoto(null)}
+      <SelectionPhotoViewer
+        photos={allPhotos}
+        initialIndex={previewIndex ?? 0}
+        visible={previewIndex !== null}
+        onClose={() => setPreviewIndex(null)}
+        selectedIds={selectedIds}
+        uploadedIds={uploadedIds}
+        onToggleSelection={togglePhotoSelection}
       />
     </>
   );
@@ -505,6 +541,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   errorButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  errorButtonSecondary: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#666",
+  },
+  errorButtonTextSecondary: {
+    color: "#666",
+  },
+  manualPickButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#3b82f6",
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  manualPickButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
@@ -554,6 +612,15 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  emptyButtonSecondary: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+  },
+  emptyButtonSecondaryText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "500",
   },
   foundContent: {
     alignItems: "center",
@@ -627,6 +694,10 @@ const styles = StyleSheet.create({
   },
   selectDivider: {
     color: "#e5e5e5",
+  },
+  addPhotosButton: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   selectGrid: {
     padding: GRID_PADDING,
@@ -726,32 +797,5 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: "#888",
-  },
-  previewContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
-  },
-  previewHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    zIndex: 10,
-  },
-  previewCloseButton: {
-    padding: 8,
-    alignSelf: "flex-start",
-  },
-  previewImageContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  previewImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.8,
   },
 });
