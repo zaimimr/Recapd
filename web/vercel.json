@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/join/:code",
+      "destination": "/api/join"
+    }
+  ]
+}

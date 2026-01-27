@@ -41,12 +41,12 @@ export default function ShareEventScreen() {
   async function handleShare() {
     if (!currentEvent) return;
 
-    const message = `Join "${currentEvent.title}" on Recapd!\n\nCode: ${currentEvent.join_code}\n\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} • ${format(new Date(currentEvent.starts_at), "h:mm a")} - ${format(new Date(currentEvent.ends_at), "h:mm a")}\n\nOpen the app or download it here:\n${shareUrl}`;
+    const message = `${currentEvent.title}\n${format(new Date(currentEvent.starts_at), "EEE, MMM d")} · ${format(new Date(currentEvent.starts_at), "h:mm")} – ${format(new Date(currentEvent.ends_at), "h:mm a")}\n\nJoin code: ${currentEvent.join_code}\nJoin the event here: https://recapd.app/join/${currentEvent.join_code}`;
 
     try {
       await Share.share({
         message,
-        title: `Join ${currentEvent.title}`,
+        title: currentEvent.title,
       });
     } catch {
       Alert.alert("Error", "Failed to share");

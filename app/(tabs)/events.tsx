@@ -11,6 +11,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -96,11 +97,22 @@ function EventCard({
 export default function EventsScreen() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
+  const createUser = useAuthStore((state) => state.createUser);
   const { events, isLoading, fetchUserEvents, subscribeToUserEvents } =
     useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  async function handleCreateProfile() {
+    const trimmedName = displayName.trim();
+    if (trimmedName.length < 2) return;
+    setIsCreating(true);
+    await createUser(trimmedName);
+    setIsCreating(false);
+  }
 
   const loadEvents = useCallback(() => {
     if (user?.id) {
@@ -135,9 +147,35 @@ export default function EventsScreen() {
           isDark && styles.containerDark,
         ]}
       >
-        <Text style={[styles.emptyText, isDark && styles.textMuted]}>
-          Please sign in to view your events
+        <Text style={[styles.welcomeTitle, isDark && styles.textDark]}>
+          What should we call you?
         </Text>
+        <TextInput
+          style={[styles.nameInput, isDark && styles.nameInputDark]}
+          placeholder="Enter your name"
+          placeholderTextColor={isDark ? "#666" : "#999"}
+          value={displayName}
+          onChangeText={setDisplayName}
+          autoCapitalize="words"
+          autoCorrect={false}
+          maxLength={30}
+          returnKeyType="done"
+          onSubmitEditing={handleCreateProfile}
+        />
+        <TouchableOpacity
+          style={[
+            styles.continueButton,
+            (displayName.trim().length < 2 || isCreating) && styles.buttonDisabled,
+          ]}
+          onPress={handleCreateProfile}
+          disabled={displayName.trim().length < 2 || isCreating}
+        >
+          {isCreating ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.continueButtonText}>Continue</Text>
+          )}
+        </TouchableOpacity>
       </View>
     );
   }
@@ -154,9 +192,10 @@ export default function EventsScreen() {
             onPress={() => router.push(`/event/${item.id}`)}
           />
         )}
-        contentContainerStyle={
-          events.length === 0 ? styles.emptyContainer : styles.listContent
-        }
+        contentContainerStyle={[
+          styles.listContent,
+          events.length === 0 && styles.emptyContainer,
+        ]}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
@@ -211,10 +250,12 @@ const styles = StyleSheet.create({
   centered: {
     justifyContent: "center",
     alignItems: "center",
+    padding: 24,
   },
   listContent: {
     padding: 16,
     gap: 12,
+    flexGrow: 1,
   },
   emptyContainer: {
     flex: 1,
@@ -332,5 +373,43 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: "#888",
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: "#000",
+    marginBottom: 24,
+    textAlign: "center",
+  },
+  nameInput: {
+    backgroundColor: "#f5f5f5",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    fontSize: 18,
+    color: "#000",
+    width: "100%",
+    maxWidth: 320,
+    marginBottom: 16,
+  },
+  nameInputDark: {
+    backgroundColor: "#1a1a1a",
+    color: "#fff",
+  },
+  continueButton: {
+    backgroundColor: "#000",
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    minWidth: 200,
+  },
+  continueButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });
