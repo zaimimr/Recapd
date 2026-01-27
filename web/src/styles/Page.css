@@ -1,0 +1,93 @@
+.page-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-container h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.page-container .updated {
+  color: var(--text-muted, #666);
+  font-size: 0.875rem;
+  margin-bottom: 2rem;
+}
+
+.page-container .subtitle {
+  color: var(--text-muted, #666);
+  font-size: 1.125rem;
+  margin-bottom: 2rem;
+}
+
+.page-container h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.page-container p {
+  margin-bottom: 1rem;
+  color: var(--text-muted, #444);
+}
+
+.page-container ul {
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.page-container li {
+  margin-bottom: 0.5rem;
+  color: var(--text-muted, #444);
+}
+
+.page-container a {
+  color: var(--text, #000);
+}
+
+/* FAQ styles */
+.page-container .faq-item {
+  margin-bottom: 1.5rem;
+}
+
+.page-container .question {
+  font-weight: 600;
+  color: var(--text, #000);
+  margin-bottom: 0.5rem;
+}
+
+.page-container .answer {
+  color: var(--text-muted, #666);
+}
+
+/* Contact button */
+.page-container .contact-btn {
+  display: inline-block;
+  background: var(--text, #000);
+  color: var(--bg, #fff);
+  padding: 14px 28px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 600;
+  margin-bottom: 8px;
+  transition: background 0.2s;
+}
+
+.page-container .contact-btn:hover {
+  opacity: 0.8;
+}
+
+.page-container .email-hint {
+  color: var(--text-muted, #888);
+  font-size: 0.875rem;
+}
+
+.page-container .version {
+  color: var(--text-muted, #888);
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border, #eee);
+}
