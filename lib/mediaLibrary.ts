@@ -26,7 +26,7 @@ export async function getPhotosInTimeRange(
   if (!hasPermission) return [];
 
   const assets = await MediaLibrary.getAssetsAsync({
-    mediaType: ["photo", "video"],
+    mediaType: ["photo"],
     sortBy: [MediaLibrary.SortBy.creationTime],
     first: limit,
   });
@@ -88,7 +88,10 @@ export async function saveToLibrary(
   }
 }
 
-export async function pickPhotosFromLibrary(): Promise<LocalPhoto[]> {
+export async function pickPhotosFromLibrary(): Promise<{
+  photos: LocalPhoto[];
+  videosFiltered: boolean;
+}> {
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["images", "videos"],
     allowsMultipleSelection: true,
@@ -96,13 +99,15 @@ export async function pickPhotosFromLibrary(): Promise<LocalPhoto[]> {
     exif: true,
   });
 
-  if (result.canceled || !result.assets) return [];
+  if (result.canceled || !result.assets) return { photos: [], videosFiltered: false };
 
-  return result.assets.map((asset, index) => {
+  const photoAssets = result.assets.filter((asset) => asset.type !== "video");
+  const videosFiltered = photoAssets.length < result.assets.length;
+
+  const photos = photoAssets.map((asset, index) => {
     let creationTime = Date.now();
     if (asset.exif?.DateTimeOriginal) {
       const parsed = new Date(asset.exif.DateTimeOriginal as string).getTime();
-      // Only use parsed time if it's valid and within reasonable bounds
       if (!isNaN(parsed) && parsed > 0 && parsed <= 8640000000000000) {
         creationTime = parsed;
       }
@@ -115,8 +120,9 @@ export async function pickPhotosFromLibrary(): Promise<LocalPhoto[]> {
       width: asset.width,
       height: asset.height,
       duration: asset.duration || 0,
-      mediaType:
-        asset.type === "video" ? "video" : ("photo" as "photo" | "video"),
+      mediaType: "photo" as "photo" | "video",
     };
   });
+
+  return { photos, videosFiltered };
 }

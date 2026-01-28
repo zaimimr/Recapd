@@ -13,6 +13,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -146,7 +147,13 @@ export default function ContributeScreen() {
   }
 
   async function handleManualPick() {
-    const picked = await pickPhotosFromLibrary();
+    const { photos: picked, videosFiltered } = await pickPhotosFromLibrary();
+    if (videosFiltered) {
+      Alert.alert(
+        "Videos Not Supported",
+        "Currently we do not support video uploads. Videos have been deselected."
+      );
+    }
     if (picked.length > 0) {
       const existingUris = new Set(allPhotos.map((p) => p.uri));
       const newPhotos = picked.filter((p) => !existingUris.has(p.uri));
@@ -157,7 +164,13 @@ export default function ContributeScreen() {
   }
 
   async function handleManualPickFromError() {
-    const picked = await pickPhotosFromLibrary();
+    const { photos: picked, videosFiltered } = await pickPhotosFromLibrary();
+    if (videosFiltered) {
+      Alert.alert(
+        "Videos Not Supported",
+        "Currently we do not support video uploads. Videos have been deselected."
+      );
+    }
     if (picked.length > 0) {
       setManualPhotos(picked);
       const newIds = new Set(picked.map((p) => p.id));
