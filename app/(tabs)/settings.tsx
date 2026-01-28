@@ -2,6 +2,7 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { useAuthStore } from "@/store/authStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Camera } from "expo-camera";
+import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
 import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
@@ -461,7 +462,7 @@ export default function SettingsScreen() {
             Version
           </Text>
           <Text style={[styles.aboutValue, isDark && styles.textDark]}>
-            1.0.0
+            {Constants.expoConfig?.version ?? "1.0.0"}
           </Text>
         </View>
         <TouchableOpacity

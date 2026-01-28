@@ -9,6 +9,7 @@ import {
 import { Image } from 'expo-image';
 import { format } from 'date-fns';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { getAvatarColor } from '@/lib/colors';
 import { getPhotoUrl } from '@/lib/storage';
 import { MergedMediaItem } from './MomentCluster';
 
@@ -22,12 +23,6 @@ interface MasonryGridProps {
   onPhotoPress: (photo: MergedMediaItem, index: number) => void;
   onRetry?: (id: string) => void;
   isDark: boolean;
-}
-
-function getAvatarColor(name: string): string {
-  const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399', '#22d3ee', '#818cf8', '#c084fc'];
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return colors[hash % colors.length];
 }
 
 function calculatePhotoHeight(photo: MergedMediaItem): number {

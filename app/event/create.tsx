@@ -287,8 +287,9 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
     paddingHorizontal: 20,
-    fontSize: 18,
+    fontSize: 17,
     color: '#000',
+    fontWeight: '400',
   },
   inputDark: {
     backgroundColor: '#1a1a1a',

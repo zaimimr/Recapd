@@ -61,18 +61,6 @@ export async function getPhotosInTimeRange(
   return photosWithLocalUri;
 }
 
-export async function getAssetInfo(
-  assetId: string,
-): Promise<MediaLibrary.AssetInfo | null> {
-  try {
-    const asset = await MediaLibrary.getAssetInfoAsync(assetId);
-    return asset;
-  } catch (error) {
-    console.error("Get asset info error:", error);
-    return null;
-  }
-}
-
 export async function saveToLibrary(
   uri: string,
 ): Promise<MediaLibrary.Asset | null> {

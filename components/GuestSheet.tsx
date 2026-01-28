@@ -11,6 +11,7 @@ import {
   PanResponder,
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { getAvatarColor } from '@/lib/colors';
 import { ParticipantWithStats } from '@/store/eventStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -23,12 +24,6 @@ interface GuestSheetProps {
   onClose: () => void;
   participants: ParticipantWithStats[];
   isDark: boolean;
-}
-
-function getAvatarColor(name: string): string {
-  const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399', '#22d3ee', '#818cf8', '#c084fc'];
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return colors[hash % colors.length];
 }
 
 export default function GuestSheet({
@@ -146,7 +141,7 @@ export default function GuestSheet({
             },
           ]}
         >
-          <View {...panResponder.panHandlers} style={styles.dragArea}>
+          <View {...panResponder.panHandlers}>
             <View style={styles.handleContainer}>
               <View style={[styles.handle, isDark && styles.handleDark]} />
             </View>
@@ -191,7 +186,11 @@ export default function GuestSheet({
                     )}
                   </View>
                   <Text style={styles.status}>
-                    {item.photoCount > 0 ? 'shared' : 'waiting'}
+                    {item.photoCount > 0
+                      ? 'shared'
+                      : item.noPhotosToUpload
+                        ? 'nothing to share'
+                        : 'waiting'}
                   </Text>
                 </View>
                 <View style={styles.photoCount}>
@@ -236,7 +235,6 @@ const styles = StyleSheet.create({
   sheetDark: {
     backgroundColor: '#1c1c1e',
   },
-  dragArea: {},
   handleContainer: {
     alignItems: 'center',
     paddingTop: 10,

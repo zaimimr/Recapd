@@ -2,9 +2,24 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { supabase } from './supabase';
 
 let handlerConfigured = false;
+let responseListenerSubscription: Notifications.Subscription | null = null;
+
+function handleNotificationResponse(response: Notifications.NotificationResponse) {
+  const data = response.notification.request.content.data;
+
+  if (data?.type === 'upload_reminder' && data?.eventIds) {
+    const eventIds = data.eventIds as string[];
+    if (eventIds.length > 0) {
+      router.push(`/contribute/${eventIds[0]}`);
+    }
+  } else if (data?.eventId) {
+    router.push(`/contribute/${data.eventId}`);
+  }
+}
 
 export function setupNotificationHandler() {
   if (handlerConfigured) return;
@@ -18,6 +33,10 @@ export function setupNotificationHandler() {
       shouldShowList: true,
     }),
   });
+
+  responseListenerSubscription = Notifications.addNotificationResponseReceivedListener(
+    handleNotificationResponse
+  );
 
   handlerConfigured = true;
 }
@@ -135,7 +154,8 @@ export async function sendReminderToParticipants(
   const success = await sendPushNotification(
     tokens,
     eventTitle,
-    "Don't forget to upload your photos!"
+    "Don't forget to upload your photos!",
+    { type: 'upload_reminder', eventId, eventIds: [eventId] }
   );
 
   return { success, sentCount: tokens.length };

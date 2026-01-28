@@ -31,7 +31,7 @@ const PHOTO_SIZE =
   (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) /
   NUM_COLUMNS;
 
-type Step = "loading" | "found" | "select" | "empty" | "error";
+type Step = "loading" | "select" | "empty" | "error";
 
 export default function ContributeScreen() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
@@ -109,16 +109,6 @@ export default function ContributeScreen() {
   useEffect(() => {
     loadPhotos();
   }, [loadPhotos]);
-
-  function handleShareAll() {
-    if (!user || !eventId || allPhotos.length === 0) return;
-    addPendingUploads(allPhotos, eventId, user.id);
-    router.replace(`/event/${eventId}`);
-  }
-
-  function handleReviewFirst() {
-    setStep("select");
-  }
 
   function handleSkip() {
     router.back();
@@ -308,88 +298,6 @@ export default function ContributeScreen() {
             <TouchableOpacity style={styles.emptyButtonSecondary} onPress={handleSkip}>
               <Text style={styles.emptyButtonSecondaryText}>Go Back</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </>
-    );
-  }
-
-  if (step === "found") {
-    const hasNewPhotos = newPhotosCount > 0;
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: "",
-            headerRight: () => (
-              <TouchableOpacity onPress={handleSkip} style={{ padding: 8 }}>
-                <FontAwesome
-                  name="times"
-                  size={22}
-                  color={isDark ? "#fff" : "#000"}
-                />
-              </TouchableOpacity>
-            ),
-          }}
-        />
-        <View
-          style={[
-            styles.container,
-            styles.centered,
-            isDark && styles.containerDark,
-          ]}
-        >
-          <View style={styles.foundContent}>
-            <View style={styles.foundIcon}>
-              <FontAwesome name="camera" size={32} color="#000" />
-            </View>
-            <Text style={[styles.foundTitle, isDark && styles.textDark]}>
-              {hasNewPhotos
-                ? `We found ${newPhotosCount} new photo${newPhotosCount !== 1 ? "s" : ""}`
-                : "All photos already uploaded"}
-            </Text>
-            <Text style={[styles.foundText, isDark && styles.textMuted]}>
-              {alreadyUploadedCount > 0 && hasNewPhotos
-                ? `${alreadyUploadedCount} already uploaded`
-                : hasNewPhotos
-                  ? "from the event time window"
-                  : `${photos.length} photo${photos.length !== 1 ? "s" : ""} from this event`}
-            </Text>
-            <View style={styles.foundActions}>
-              {hasNewPhotos ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.primaryButton}
-                    onPress={handleReviewFirst}
-                  >
-                    <Text style={styles.primaryButtonText}>Review First</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.secondaryButton,
-                      isDark && styles.secondaryButtonDark,
-                    ]}
-                    onPress={handleShareAll}
-                  >
-                    <Text
-                      style={[
-                        styles.secondaryButtonText,
-                        isDark && styles.textDark,
-                      ]}
-                    >
-                      Share All New
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={handleSkip}
-                >
-                  <Text style={styles.primaryButtonText}>Go Back</Text>
-                </TouchableOpacity>
-              )}
-            </View>
           </View>
         </View>
       </>
@@ -631,54 +539,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   emptyButtonSecondaryText: {
-    color: "#666",
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  foundContent: {
-    alignItems: "center",
-  },
-  foundIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#f5f5f5",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  foundTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#000",
-    marginBottom: 8,
-  },
-  foundText: {
-    fontSize: 16,
-    color: "#666",
-    marginBottom: 32,
-  },
-  foundActions: {
-    width: "100%",
-    gap: 12,
-  },
-  primaryButton: {
-    backgroundColor: "#000",
-    paddingVertical: 18,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  secondaryButton: {
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  secondaryButtonDark: {},
-  secondaryButtonText: {
     color: "#666",
     fontSize: 16,
     fontWeight: "500",

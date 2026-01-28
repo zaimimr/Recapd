@@ -1,4 +1,4 @@
-import { MediaItemInsert, MediaItemUpdate } from "@/types/database";
+import { MediaItemInsert } from "@/types/database";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { decode } from "base64-arraybuffer";
 import {
@@ -8,6 +8,7 @@ import {
   readAsStringAsync,
 } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
+import { safeDate } from "./dateUtils";
 import { supabase } from "./supabase";
 
 const DOWNLOADED_PHOTOS_KEY = "recapd_downloaded_photos";
@@ -38,21 +39,6 @@ export interface UploadProgress {
   current: number;
   total: number;
   percentage: number;
-}
-
-// Helper to create a valid Date, falling back to current time if invalid
-function safeDate(value: Date | string | number | undefined | null): Date {
-  if (!value) return new Date();
-  const date = value instanceof Date ? value : new Date(value);
-  // Check if date is valid (not NaN and within reasonable bounds)
-  if (
-    isNaN(date.getTime()) ||
-    date.getTime() < 0 ||
-    date.getTime() > 8640000000000000
-  ) {
-    return new Date();
-  }
-  return date;
 }
 
 export async function uploadPhoto(
@@ -119,52 +105,6 @@ export async function uploadPhoto(
   }
 }
 
-export async function uploadPhotoBatch(
-  photos: Array<{
-    uri: string;
-    capturedAt: Date;
-    width?: number;
-    height?: number;
-    fileSize?: number;
-  }>,
-  eventId: string,
-  userId: string,
-  onProgress?: (progress: UploadProgress) => void,
-): Promise<{ successful: number; failed: number; errors: string[] }> {
-  const results = { successful: 0, failed: 0, errors: [] as string[] };
-  const total = photos.length;
-
-  for (let i = 0; i < photos.length; i++) {
-    const photo = photos[i];
-    const result = await uploadPhoto(
-      photo.uri,
-      eventId,
-      userId,
-      photo.capturedAt,
-      photo.width,
-      photo.height,
-      photo.fileSize,
-    );
-
-    if (result.success) {
-      results.successful++;
-    } else {
-      results.failed++;
-      if (result.error) {
-        results.errors.push(result.error);
-      }
-    }
-
-    onProgress?.({
-      current: i + 1,
-      total,
-      percentage: Math.round(((i + 1) / total) * 100),
-    });
-  }
-
-  return results;
-}
-
 export function getPhotoUrl(storagePath: string): string {
   const { data } = supabase.storage
     .from("event-photos")
@@ -190,30 +130,6 @@ export async function downloadPhoto(
   } catch (error) {
     console.error("Download error:", error);
     return null;
-  }
-}
-
-export async function deletePhoto(
-  storagePath: string,
-  mediaItemId: string,
-): Promise<boolean> {
-  try {
-    const updateData: MediaItemUpdate = {
-      visibility: "deleted",
-      deleted_at: new Date().toISOString(),
-    };
-
-    const { error: dbError } = await supabase
-      .from("media_items")
-      .update(updateData)
-      .eq("id", mediaItemId);
-
-    if (dbError) throw dbError;
-
-    return true;
-  } catch (error) {
-    console.error("Delete error:", error);
-    return false;
   }
 }
 

@@ -98,6 +98,8 @@ export interface Database {
           role: ParticipantRole;
           nickname: string | null;
           joined_at: string;
+          no_photos_to_upload: boolean;
+          last_reminder_sent_at: string | null;
         };
         Insert: {
           id?: string;
@@ -106,6 +108,8 @@ export interface Database {
           role?: ParticipantRole;
           nickname?: string | null;
           joined_at?: string;
+          no_photos_to_upload?: boolean;
+          last_reminder_sent_at?: string | null;
         };
         Update: {
           id?: string;
@@ -114,6 +118,8 @@ export interface Database {
           role?: ParticipantRole;
           nickname?: string | null;
           joined_at?: string;
+          no_photos_to_upload?: boolean;
+          last_reminder_sent_at?: string | null;
         };
         Relationships: [
           {

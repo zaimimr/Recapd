@@ -1,3 +1,4 @@
+import { safeDate } from "@/lib/dateUtils";
 import { LocalPhoto } from "@/lib/mediaLibrary";
 import { supabase } from "@/lib/supabase";
 import {
@@ -19,21 +20,6 @@ import { addDays } from "date-fns";
 import { create } from "zustand";
 
 const PENDING_UPLOADS_KEY = "recapd_pending_uploads";
-
-// Helper to create a valid Date, falling back to current time if invalid
-function safeDate(value: string | number | Date | undefined | null): Date {
-  if (!value) return new Date();
-  const date = value instanceof Date ? value : new Date(value);
-  // Check if date is valid (not NaN and within reasonable bounds)
-  if (
-    isNaN(date.getTime()) ||
-    date.getTime() < 0 ||
-    date.getTime() > 8640000000000000
-  ) {
-    return new Date();
-  }
-  return date;
-}
 
 async function persistPendingUploads(uploads: PendingUpload[]) {
   await AsyncStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(uploads));
@@ -62,6 +48,7 @@ export interface ParticipantWithStats {
   role: "host" | "guest";
   photoCount: number;
   joinedAt: string;
+  noPhotosToUpload: boolean;
 }
 
 interface EventState {
@@ -116,6 +103,8 @@ interface EventState {
     userId: string,
     localPhotos: LocalPhoto[],
   ) => Promise<Set<string>>;
+  markNoPhotosToUpload: (eventId: string, userId: string) => Promise<boolean>;
+  getNoPhotosToUpload: (eventId: string, userId: string) => Promise<boolean>;
 }
 
 function generateJoinCode(): string {
@@ -134,7 +123,6 @@ export const useEventStore = create<EventState>((set, get) => {
       const newUploads = get().pendingUploads.filter((u) => u.id !== id);
       set({ pendingUploads: newUploads });
       await persistPendingUploads(newUploads);
-      // Refetch media items to show the newly uploaded photo
       if (completedUpload) {
         get().fetchMediaItems(completedUpload.eventId);
       }
@@ -867,6 +855,7 @@ export const useEventStore = create<EventState>((set, get) => {
         role: p.role as "host" | "guest",
         photoCount: countMap[p.user_id] || 0,
         joinedAt: p.joined_at,
+        noPhotosToUpload: p.no_photos_to_upload ?? false,
       }));
     },
 
@@ -1009,8 +998,6 @@ export const useEventStore = create<EventState>((set, get) => {
         });
       }
 
-      // Match local photos to uploaded photos by comparing captured_at timestamp
-      // Allow 1 second tolerance for timestamp matching
       const uploadedLocalIds = new Set<string>();
       for (const localPhoto of localPhotos) {
         const localTimestamp = localPhoto.creationTime;
@@ -1033,6 +1020,51 @@ export const useEventStore = create<EventState>((set, get) => {
       }
 
       return uploadedLocalIds;
+    },
+
+    markNoPhotosToUpload: async (eventId: string, userId: string) => {
+      try {
+        const { data, error, count } = await supabase
+          .from("event_participants")
+          .update({ no_photos_to_upload: true })
+          .eq("event_id", eventId)
+          .eq("user_id", userId)
+          .select();
+
+        if (error) {
+          console.error("Error marking no photos to upload:", error);
+          return false;
+        }
+
+        if (!data || data.length === 0) {
+          console.error("No rows updated - participant not found");
+          return false;
+        }
+
+        return true;
+      } catch (error) {
+        console.error("Error marking no photos to upload:", error);
+        return false;
+      }
+    },
+
+    getNoPhotosToUpload: async (eventId: string, userId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("event_participants")
+          .select("no_photos_to_upload")
+          .eq("event_id", eventId)
+          .eq("user_id", userId)
+          .single();
+
+        if (error || !data) {
+          return false;
+        }
+
+        return data.no_photos_to_upload ?? false;
+      } catch {
+        return false;
+      }
     },
   };
 });

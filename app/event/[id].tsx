@@ -54,6 +54,8 @@ export default function EventScreen() {
     retryFailedUpload,
     deletePhoto,
     fetchParticipantStats,
+    markNoPhotosToUpload,
+    getNoPhotosToUpload,
   } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -73,6 +75,8 @@ export default function EventScreen() {
   const [participants, setParticipants] = useState<ParticipantWithStats[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notificationPromptVisible, setNotificationPromptVisible] = useState(false);
+  const [hasMarkedNoPhotos, setHasMarkedNoPhotos] = useState(false);
+  const [markingNoPhotos, setMarkingNoPhotos] = useState(false);
 
   const loadData = useCallback(async () => {
     if (id) {
@@ -87,6 +91,16 @@ export default function EventScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    async function checkNoPhotosStatus() {
+      if (id && user?.id) {
+        const status = await getNoPhotosToUpload(id, user.id);
+        setHasMarkedNoPhotos(status);
+      }
+    }
+    checkNoPhotosStatus();
+  }, [id, user?.id, getNoPhotosToUpload]);
 
   // Refresh participant stats when currentEvent participants change (real-time updates)
   useEffect(() => {
@@ -251,6 +265,20 @@ export default function EventScreen() {
     setNotificationPromptVisible(false);
   }
 
+  async function handleNoPhotosToShare() {
+    if (!id || !user?.id || markingNoPhotos) return;
+
+    setMarkingNoPhotos(true);
+    const success = await markNoPhotosToUpload(id, user.id);
+    setMarkingNoPhotos(false);
+
+    if (success) {
+      setHasMarkedNoPhotos(true);
+    } else {
+      Alert.alert("Error", "Failed to save your preference. Please try again.");
+    }
+  }
+
   async function handleRemindGuests() {
     if (!currentEvent || !user || sendingReminder) return;
 
@@ -324,6 +352,9 @@ export default function EventScreen() {
   const isHost = currentEvent.participants?.some(
     (p) => p.user_id === user?.id && p.role === "host",
   );
+  const myPhotoCount = mediaItems.filter(
+    (p) => p.uploaded_by_user_id === user?.id,
+  ).length;
 
   const getExpiryColor = () => {
     if (daysUntilExpiry <= 1) return "#ef4444";
@@ -447,6 +478,32 @@ export default function EventScreen() {
               <FontAwesome name="plus" size={16} color="#fff" />
               <Text style={styles.contributeButtonText}>Add Your Photos</Text>
             </TouchableOpacity>
+
+            {isEnded && myPhotoCount === 0 && !hasMarkedNoPhotos && (
+              <TouchableOpacity
+                style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
+                onPress={handleNoPhotosToShare}
+                disabled={markingNoPhotos}
+              >
+                {markingNoPhotos ? (
+                  <ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
+                ) : (
+                  <FontAwesome name="check" size={14} color={isDark ? "#888" : "#666"} />
+                )}
+                <Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
+                  I don't have photos to share
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {isEnded && myPhotoCount === 0 && hasMarkedNoPhotos && (
+              <View style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}>
+                <FontAwesome name="check-circle" size={16} color="#22c55e" />
+                <Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
+                  Thanks! We won't remind you about this event.
+                </Text>
+              </View>
+            )}
 
             {mediaItems.length > 0 && (
               <TouchableOpacity
@@ -767,5 +824,33 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: "#888",
+  },
+  noPhotosButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    gap: 6,
+    marginBottom: 16,
+    marginTop: -16,
+  },
+  noPhotosButtonDark: {},
+  noPhotosButtonText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  noPhotosConfirmation: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    gap: 8,
+    marginBottom: 16,
+    marginTop: -16,
+  },
+  noPhotosConfirmationDark: {},
+  noPhotosConfirmationText: {
+    color: "#666",
+    fontSize: 14,
   },
 });
