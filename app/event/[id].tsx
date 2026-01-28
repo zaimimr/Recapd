@@ -1,10 +1,19 @@
 import GuestSheet from "@/components/GuestSheet";
 import MasonryGrid from "@/components/MasonryGrid";
 import { MergedMediaItem } from "@/components/MomentCluster";
+import NotificationPromptModal from "@/components/NotificationPromptModal";
 import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
 import { saveToLibrary } from "@/lib/mediaLibrary";
-import { sendReminderToParticipants } from "@/lib/notifications";
+import {
+  registerForPushNotifications,
+  savePushToken,
+  sendReminderToParticipants,
+} from "@/lib/notifications";
+import {
+  shouldShowNotificationPrompt,
+  markNotificationPromptSeen,
+} from "@/lib/notificationPrompt";
 import {
   downloadPhoto,
   getDownloadedPhotoIds,
@@ -29,7 +38,7 @@ import {
 } from "react-native";
 
 export default function EventScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, justJoined } = useLocalSearchParams<{ id: string; justJoined?: string }>();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const {
@@ -63,6 +72,7 @@ export default function EventScreen() {
   const [guestSheetVisible, setGuestSheetVisible] = useState(false);
   const [participants, setParticipants] = useState<ParticipantWithStats[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [notificationPromptVisible, setNotificationPromptVisible] = useState(false);
 
   const loadData = useCallback(async () => {
     if (id) {
@@ -105,6 +115,18 @@ export default function EventScreen() {
       return unsubscribe;
     }
   }, [id, subscribeToEvent]);
+
+  useEffect(() => {
+    async function checkNotificationPrompt() {
+      if (justJoined === "true") {
+        const shouldShow = await shouldShowNotificationPrompt();
+        if (shouldShow) {
+          setTimeout(() => setNotificationPromptVisible(true), 800);
+        }
+      }
+    }
+    checkNotificationPrompt();
+  }, [justJoined]);
 
   const mergedPhotos = id ? getMergedTimeline(id) : [];
 
@@ -213,6 +235,20 @@ export default function EventScreen() {
         : `Saved ${successCount} of ${photosToDownload.length} photos to your camera roll`;
 
     Alert.alert("Download Complete", message);
+  }
+
+  async function handleEnableNotifications() {
+    await markNotificationPromptSeen();
+    setNotificationPromptVisible(false);
+    const token = await registerForPushNotifications();
+    if (token && user?.id) {
+      await savePushToken(user.id, token);
+    }
+  }
+
+  async function handleMaybeLater() {
+    await markNotificationPromptSeen();
+    setNotificationPromptVisible(false);
   }
 
   async function handleRemindGuests() {
@@ -526,6 +562,13 @@ export default function EventScreen() {
           visible={guestSheetVisible}
           onClose={() => setGuestSheetVisible(false)}
           participants={participants}
+          isDark={isDark}
+        />
+
+        <NotificationPromptModal
+          visible={notificationPromptVisible}
+          onEnable={handleEnableNotifications}
+          onMaybeLater={handleMaybeLater}
           isDark={isDark}
         />
       </View>

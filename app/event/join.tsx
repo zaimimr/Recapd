@@ -89,7 +89,7 @@ export default function JoinEventScreen() {
     const success = await joinEvent(eventPreview.id, currentUser.id);
 
     if (success) {
-      router.replace(`/event/${eventPreview.id}`);
+      router.replace(`/event/${eventPreview.id}?justJoined=true`);
     } else {
       Alert.alert('Error', 'Failed to join event. Please try again.');
     }
