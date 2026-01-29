@@ -1,4 +1,6 @@
-import { uploadPhoto } from './storage';
+import { uploadMedia } from './storage';
+
+export type MediaType = 'photo' | 'video';
 
 export interface PendingUpload {
   id: string;
@@ -12,6 +14,8 @@ export interface PendingUpload {
   retryCount: number;
   error?: string;
   assetId?: string;
+  mediaType: MediaType;
+  duration?: number;
 }
 
 const MAX_RETRIES = 3;
@@ -35,14 +39,16 @@ export function setUploadCallbacks(callbacks: {
 export async function processUpload(upload: PendingUpload): Promise<boolean> {
   onStatusChange?.(upload.id, 'syncing');
 
-  const result = await uploadPhoto(
-    upload.localUri,
-    upload.eventId,
-    upload.userId,
-    upload.capturedAt,
-    upload.width,
-    upload.height
-  );
+  const result = await uploadMedia({
+    uri: upload.localUri,
+    eventId: upload.eventId,
+    userId: upload.userId,
+    capturedAt: upload.capturedAt,
+    width: upload.width,
+    height: upload.height,
+    mediaType: upload.mediaType,
+    duration: upload.duration,
+  });
 
   if (result.success && result.path) {
     onUploadComplete?.(upload.id, result.path);

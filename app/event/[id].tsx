@@ -2,6 +2,7 @@ import GuestSheet from "@/components/GuestSheet";
 import MasonryGrid from "@/components/MasonryGrid";
 import { MergedMediaItem } from "@/components/MomentCluster";
 import NotificationPromptModal from "@/components/NotificationPromptModal";
+import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
 import { saveToLibrary } from "@/lib/mediaLibrary";
@@ -470,6 +471,13 @@ export default function EventScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <ParticipantLimitBanner
+              participantCount={currentEvent.participant_count || 0}
+              hostIsPro={currentEvent.hostIsPro || false}
+              isHost={isHost || false}
+              isDark={isDark}
+            />
 
             <TouchableOpacity
               style={styles.contributeButton}

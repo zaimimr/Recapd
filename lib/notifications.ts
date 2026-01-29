@@ -160,3 +160,26 @@ export async function sendReminderToParticipants(
 
   return { success, sentCount: tokens.length };
 }
+
+export async function sendParticipantLimitNotification(
+  eventId: string,
+  eventTitle: string,
+  hostUserId: string
+): Promise<boolean> {
+  const { data: hostUser, error } = await supabase
+    .from('users')
+    .select('push_token')
+    .eq('id', hostUserId)
+    .single();
+
+  if (error || !hostUser?.push_token) {
+    return false;
+  }
+
+  return sendPushNotification(
+    [hostUser.push_token],
+    `${eventTitle} reached 12 participants`,
+    'Upgrade to Pro for unlimited participants.',
+    { type: 'participant_limit', eventId }
+  );
+}

@@ -1,27 +1,33 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
+  downloadPhoto,
+  getPhotoUrl,
+  isPhotoDownloaded,
+  markPhotoDownloaded,
+} from "@/lib/storage";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { format } from "date-fns";
+import { Image } from "expo-image";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
   StyleSheet,
-  View,
   Text,
   TouchableOpacity,
-  Dimensions,
-  Modal,
-  FlatList,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { format } from 'date-fns';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { getPhotoUrl, downloadPhoto, isPhotoDownloaded, markPhotoDownloaded } from '@/lib/storage';
-import { saveToLibrary } from '@/lib/mediaLibrary';
-import { MergedMediaItem } from './MomentCluster';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MergedMediaItem } from "./MomentCluster";
+import VideoPlayer from "./VideoPlayer";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface PhotoViewerProps {
   photos: MergedMediaItem[];
@@ -43,9 +49,10 @@ function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
   const scrollRef = useRef<ScrollView>(null);
   const [isZoomed, setIsZoomed] = useState(false);
 
-  const imageUri = photo.isPending && photo.localUri
-    ? photo.localUri
-    : getPhotoUrl(photo.storage_path);
+  const imageUri =
+    photo.isPending && photo.localUri
+      ? photo.localUri
+      : getPhotoUrl(photo.storage_path);
 
   const placeholderUri = photo.localUri || thumbnailUri;
 
@@ -55,10 +62,13 @@ function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
     }
   }, [isZoomed]);
 
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const zoomScale = event.nativeEvent.zoomScale;
-    setIsZoomed(zoomScale > 1);
-  }, []);
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const zoomScale = event.nativeEvent.zoomScale;
+      setIsZoomed(zoomScale > 1);
+    },
+    [],
+  );
 
   return (
     <ScrollView
@@ -116,7 +126,9 @@ export default function PhotoViewer({
   }, [visible, initialIndex]);
 
   const currentPhoto = photos[currentIndex];
-  const canDelete = currentPhoto && !currentPhoto.isPending &&
+  const canDelete =
+    currentPhoto &&
+    !currentPhoto.isPending &&
     currentPhoto.uploaded_by_user_id === currentUserId;
 
   const handleDownload = useCallback(async () => {
@@ -125,27 +137,40 @@ export default function PhotoViewer({
     setSaving(true);
     try {
       const alreadyDownloaded = await isPhotoDownloaded(currentPhoto.id);
+      const isVideo = currentPhoto.media_type === "video";
+      const mediaLabel = isVideo ? "video" : "photo";
+
       if (alreadyDownloaded) {
-        Alert.alert('Already Saved', 'This photo is already in your camera roll');
+        Alert.alert(
+          "Already Saved",
+          `This ${mediaLabel} is already in your camera roll`,
+        );
         setSaving(false);
         return;
       }
 
+      const extension = isVideo ? "mp4" : "jpg";
       const localUri = await downloadPhoto(
         currentPhoto.storage_path,
-        `recapd_${currentPhoto.id}.jpg`
+        `recapd_${currentPhoto.id}.${extension}`,
       );
       if (localUri) {
         const asset = await saveToLibrary(localUri);
         if (asset) {
           await markPhotoDownloaded(currentPhoto.id);
-          Alert.alert('Saved', 'Photo saved to your camera roll');
+          Alert.alert(
+            "Saved",
+            `${isVideo ? "Video" : "Photo"} saved to your camera roll`,
+          );
         } else {
-          Alert.alert('Error', 'Failed to save photo');
+          Alert.alert("Error", `Failed to save ${mediaLabel}`);
         }
       }
     } catch {
-      Alert.alert('Error', 'Failed to download photo');
+      Alert.alert(
+        "Error",
+        `Failed to download ${currentPhoto.media_type === "video" ? "video" : "photo"}`,
+      );
     }
     setSaving(false);
   }, [currentPhoto]);
@@ -153,14 +178,17 @@ export default function PhotoViewer({
   const handleDelete = useCallback(async () => {
     if (!currentPhoto || !onDelete) return;
 
+    const isVideo = currentPhoto.media_type === "video";
+    const mediaLabel = isVideo ? "video" : "photo";
+
     Alert.alert(
-      'Delete Photo',
-      'Are you sure you want to delete this photo?',
+      `Delete ${isVideo ? "Video" : "Photo"}`,
+      `Are you sure you want to delete this ${mediaLabel}?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             setDeleting(true);
             const success = await onDelete(currentPhoto.id);
@@ -172,19 +200,21 @@ export default function PhotoViewer({
                 setCurrentIndex(currentIndex - 1);
               }
             } else {
-              Alert.alert('Error', 'Failed to delete photo');
+              Alert.alert("Error", `Failed to delete ${mediaLabel}`);
             }
           },
         },
-      ]
+      ],
     );
   }, [currentPhoto, onDelete, currentIndex, photos.length, onClose]);
 
-  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
-    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-      setCurrentIndex(viewableItems[0].index);
-    }
-  }).current;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
+      if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+        setCurrentIndex(viewableItems[0].index);
+      }
+    },
+  ).current;
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
@@ -251,10 +281,16 @@ export default function PhotoViewer({
           viewabilityConfig={viewabilityConfig}
           renderItem={({ item, index }) => (
             <View style={styles.imageContainer}>
-              <ZoomableImage
-                photo={item}
-                thumbnailUri={index === initialIndex ? initialThumbnailUri : undefined}
-              />
+              {item.media_type === "video" ? (
+                <VideoPlayer media={item} />
+              ) : (
+                <ZoomableImage
+                  photo={item}
+                  thumbnailUri={
+                    index === initialIndex ? initialThumbnailUri : undefined
+                  }
+                />
+              )}
             </View>
           )}
         />
@@ -262,16 +298,23 @@ export default function PhotoViewer({
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <View style={styles.footerContent}>
             <View style={styles.attribution}>
-              {currentPhoto.uploader?.display_name && !currentPhoto.isPending ? (
+              {currentPhoto.uploader?.display_name &&
+              !currentPhoto.isPending ? (
                 <View style={styles.uploaderRow}>
                   <View
                     style={[
                       styles.uploaderAvatar,
-                      { backgroundColor: getAvatarColor(currentPhoto.uploader.display_name) },
+                      {
+                        backgroundColor: getAvatarColor(
+                          currentPhoto.uploader.display_name,
+                        ),
+                      },
                     ]}
                   >
                     <Text style={styles.uploaderInitial}>
-                      {currentPhoto.uploader.display_name.charAt(0).toUpperCase()}
+                      {currentPhoto.uploader.display_name
+                        .charAt(0)
+                        .toUpperCase()}
                     </Text>
                   </View>
                   <View style={styles.uploaderInfo}>
@@ -279,7 +322,10 @@ export default function PhotoViewer({
                       {currentPhoto.uploader.display_name}
                     </Text>
                     <Text style={styles.captureTime}>
-                      {format(new Date(currentPhoto.captured_at), 'MMM d, yyyy · h:mm a')}
+                      {format(
+                        new Date(currentPhoto.captured_at),
+                        "MMM d, yyyy · h:mm a",
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -290,7 +336,10 @@ export default function PhotoViewer({
                 </View>
               ) : (
                 <Text style={styles.captureTime}>
-                  {format(new Date(currentPhoto.captured_at), 'MMM d, yyyy · h:mm a')}
+                  {format(
+                    new Date(currentPhoto.captured_at),
+                    "MMM d, yyyy · h:mm a",
+                  )}
                 </Text>
               )}
             </View>
@@ -315,24 +364,35 @@ export default function PhotoViewer({
 }
 
 function getAvatarColor(name: string): string {
-  const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399', '#22d3ee', '#818cf8', '#c084fc'];
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const colors = [
+    "#f87171",
+    "#fb923c",
+    "#fbbf24",
+    "#a3e635",
+    "#34d399",
+    "#22d3ee",
+    "#818cf8",
+    "#c084fc",
+  ];
+  const hash = name
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: "#000",
   },
   header: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingBottom: 12,
     zIndex: 10,
@@ -341,9 +401,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   headerButtonPlaceholder: {
     width: 40,
@@ -351,15 +411,15 @@ const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: "center",
   },
   headerRight: {
     width: 40,
   },
   counter: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: "rgba(255, 255, 255, 0.8)",
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   imageContainer: {
     width: SCREEN_WIDTH,
@@ -370,84 +430,84 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   imageWrapper: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   image: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT * 0.75,
   },
   footer: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 20,
     paddingTop: 16,
     zIndex: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   footerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   attribution: {
     flex: 1,
   },
   uploaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   uploaderAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   uploaderInitial: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   uploaderInfo: {
     flex: 1,
   },
   uploaderName: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 2,
   },
   pendingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   pendingText: {
-    color: '#fbbf24',
+    color: "#fbbf24",
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   captureTime: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: "rgba(255, 255, 255, 0.6)",
     fontSize: 13,
   },
   downloadButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 16,
   },
 });

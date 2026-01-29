@@ -41,15 +41,46 @@ export interface UploadProgress {
   percentage: number;
 }
 
-export async function uploadPhoto(
-  uri: string,
-  eventId: string,
-  userId: string,
-  capturedAt: Date,
-  width?: number,
-  height?: number,
-  fileSize?: number,
-): Promise<UploadResult> {
+export type MediaType = 'photo' | 'video';
+
+export interface UploadMediaOptions {
+  uri: string;
+  eventId: string;
+  userId: string;
+  capturedAt: Date;
+  width?: number;
+  height?: number;
+  fileSize?: number;
+  mediaType?: MediaType;
+  duration?: number;
+}
+
+function getContentType(extension: string, mediaType: MediaType): string {
+  if (mediaType === 'video') {
+    switch (extension) {
+      case 'mov': return 'video/quicktime';
+      case 'webm': return 'video/webm';
+      case 'avi': return 'video/x-msvideo';
+      case 'm4v': return 'video/x-m4v';
+      default: return 'video/mp4';
+    }
+  }
+  return extension === 'png' ? 'image/png' : 'image/jpeg';
+}
+
+export async function uploadMedia(options: UploadMediaOptions): Promise<UploadResult> {
+  const {
+    uri,
+    eventId,
+    userId,
+    capturedAt,
+    width,
+    height,
+    fileSize,
+    mediaType = 'photo',
+    duration,
+  } = options;
+
   try {
     const validCapturedAt = safeDate(capturedAt);
     const readableUri = await getReadableUri(uri);
@@ -59,10 +90,10 @@ export async function uploadPhoto(
 
     const arrayBuffer = decode(base64);
     const timestamp = Date.now();
-    const extension = readableUri.split(".").pop()?.toLowerCase() || "jpg";
+    const extension = readableUri.split(".").pop()?.toLowerCase() || (mediaType === 'video' ? 'mp4' : 'jpg');
     const fileName = `${eventId}/${userId}/${timestamp}.${extension}`;
 
-    const contentType = extension === "png" ? "image/png" : "image/jpeg";
+    const contentType = getContentType(extension, mediaType);
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("event-photos")
@@ -80,9 +111,10 @@ export async function uploadPhoto(
       event_id: eventId,
       uploaded_by_user_id: userId,
       captured_at: validCapturedAt.toISOString(),
-      media_type: "photo",
+      media_type: mediaType,
       width,
       height,
+      duration_milliseconds: mediaType === 'video' ? Math.round(duration || 0) : null,
       file_size_bytes: fileSize || base64.length,
       storage_path: uploadData.path,
       visibility: "shared",
@@ -101,8 +133,29 @@ export async function uploadPhoto(
     return { success: true, path: uploadData.path };
   } catch (error) {
     console.error("Upload error:", error);
-    return { success: false, error: "Failed to upload photo" };
+    return { success: false, error: `Failed to upload ${mediaType}` };
   }
+}
+
+export async function uploadPhoto(
+  uri: string,
+  eventId: string,
+  userId: string,
+  capturedAt: Date,
+  width?: number,
+  height?: number,
+  fileSize?: number,
+): Promise<UploadResult> {
+  return uploadMedia({
+    uri,
+    eventId,
+    userId,
+    capturedAt,
+    width,
+    height,
+    fileSize,
+    mediaType: 'photo',
+  });
 }
 
 export function getPhotoUrl(storagePath: string): string {
@@ -110,6 +163,10 @@ export function getPhotoUrl(storagePath: string): string {
     .from("event-photos")
     .getPublicUrl(storagePath);
   return data.publicUrl;
+}
+
+export function getMediaUrl(storagePath: string): string {
+  return getPhotoUrl(storagePath);
 }
 
 export async function downloadPhoto(

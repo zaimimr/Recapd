@@ -20,6 +20,7 @@ import {
 } from "@/lib/notifications";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
+import { useSubscriptionStore } from "@/store/subscriptionStore";
 
 export { ErrorBoundary } from "expo-router";
 
@@ -62,6 +63,7 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const user = useAuthStore((state) => state.user);
   const initializePendingUploads = useEventStore((state) => state.initializePendingUploads);
+  const initializeSubscription = useSubscriptionStore((state) => state.initialize);
 
   useEffect(() => {
     setupNotificationHandler();
@@ -75,6 +77,7 @@ function RootLayoutNav() {
           savePushToken(user.id, token);
         }
       });
+      initializeSubscription(user.id);
     }
   }, [user?.id]);
 

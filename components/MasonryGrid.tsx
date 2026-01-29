@@ -1,19 +1,21 @@
+import { getAvatarColor } from "@/lib/colors";
+import { getPhotoUrl } from "@/lib/storage";
+import { formatDuration } from "@/lib/utils";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { format } from "date-fns";
+import { ResizeMode, Video } from "expo-av";
+import { Image } from "expo-image";
 import {
+  ActivityIndicator,
+  Dimensions,
   StyleSheet,
-  View,
   Text,
   TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { format } from 'date-fns';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { getAvatarColor } from '@/lib/colors';
-import { getPhotoUrl } from '@/lib/storage';
-import { MergedMediaItem } from './MomentCluster';
+  View,
+} from "react-native";
+import { MergedMediaItem } from "./MomentCluster";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 2;
 const GAP = 8;
 const COLUMN_WIDTH = (SCREEN_WIDTH - 48 - GAP) / NUM_COLUMNS;
@@ -26,7 +28,8 @@ interface MasonryGridProps {
 }
 
 function calculatePhotoHeight(photo: MergedMediaItem): number {
-  const aspectRatio = photo.width && photo.height ? photo.height / photo.width : 1;
+  const aspectRatio =
+    photo.width && photo.height ? photo.height / photo.width : 1;
   const height = COLUMN_WIDTH * aspectRatio;
   return Math.min(Math.max(height, 120), 300);
 }
@@ -44,9 +47,10 @@ function distributePhotos(photos: MergedMediaItem[]): Column[] {
 
   photos.forEach((photo, index) => {
     const height = calculatePhotoHeight(photo);
-    const shortestColumn = columns.reduce((min, col, i) =>
-      col.totalHeight < columns[min].totalHeight ? i : min
-    , 0);
+    const shortestColumn = columns.reduce(
+      (min, col, i) => (col.totalHeight < columns[min].totalHeight ? i : min),
+      0,
+    );
 
     columns[shortestColumn].photos.push({ photo, index, height });
     columns[shortestColumn].totalHeight += height + GAP;
@@ -70,12 +74,13 @@ function PhotoCard({
   onRetry?: (id: string) => void;
   isDark: boolean;
 }) {
-  const imageUri = photo.isPending && photo.localUri
-    ? photo.localUri
-    : getPhotoUrl(photo.storage_path);
+  const imageUri =
+    photo.isPending && photo.localUri
+      ? photo.localUri
+      : getPhotoUrl(photo.storage_path);
 
-  const isSyncing = photo.isPending && photo.syncStatus === 'syncing';
-  const isFailed = photo.isPending && photo.syncStatus === 'failed';
+  const isSyncing = photo.isPending && photo.syncStatus === "syncing";
+  const isFailed = photo.isPending && photo.syncStatus === "failed";
 
   return (
     <TouchableOpacity
@@ -83,18 +88,26 @@ function PhotoCard({
       onPress={onPress}
       activeOpacity={0.9}
     >
-      <Image
-        source={{ uri: imageUri }}
-        style={[
-          styles.photoImage,
-          photo.isPending && styles.pendingImage,
-        ]}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        transition={150}
-        recyclingKey={photo.id}
-        blurRadius={photo.isPending && photo.syncStatus !== 'failed' ? 2 : 0}
-      />
+      {photo.media_type === "video" ? (
+        <Video
+          source={{ uri: imageUri }}
+          style={styles.photoImage}
+          resizeMode={ResizeMode.COVER}
+          id={photo.id}
+          key={photo.id}
+        />
+      ) : (
+        <Image
+          source={{ uri: imageUri }}
+          style={[styles.photoImage, photo.isPending && styles.pendingImage]}
+          key={photo.id}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={150}
+          recyclingKey={photo.id}
+          blurRadius={photo.isPending && photo.syncStatus !== "failed" ? 2 : 0}
+        />
+      )}
 
       {photo.isPending && (
         <View style={styles.syncOverlay}>
@@ -114,6 +127,29 @@ function PhotoCard({
         </View>
       )}
 
+      {photo.media_type === "video" && !photo.isPending && (
+        <>
+          <View style={styles.videoPlayOverlay}>
+            <View style={styles.videoPlayButton}>
+              <FontAwesome
+                name="play"
+                size={16}
+                color="#fff"
+                style={styles.videoPlayIcon}
+              />
+            </View>
+          </View>
+          {photo.duration_milliseconds != null &&
+            photo.duration_milliseconds > 0 && (
+              <View style={styles.videoDurationBadge}>
+                <Text style={styles.videoDurationText}>
+                  {formatDuration(photo.duration_milliseconds)}
+                </Text>
+              </View>
+            )}
+        </>
+      )}
+
       {photo.uploader?.display_name && !photo.isPending && (
         <View style={styles.photoFooter}>
           <View
@@ -127,7 +163,7 @@ function PhotoCard({
             </Text>
           </View>
           <Text style={styles.timeText} numberOfLines={1}>
-            {format(new Date(photo.captured_at), 'h:mm a')}
+            {format(new Date(photo.captured_at), "h:mm a")}
           </Text>
         </View>
       )}
@@ -168,7 +204,7 @@ export default function MasonryGrid({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: GAP,
   },
   column: {
@@ -176,59 +212,89 @@ const styles = StyleSheet.create({
     gap: GAP,
   },
   photoCard: {
-    width: '100%',
+    width: "100%",
     borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#1a1a1a',
+    overflow: "hidden",
+    backgroundColor: "#1a1a1a",
   },
   photoImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   pendingImage: {
     opacity: 0.7,
   },
   syncOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   syncBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     padding: 10,
     borderRadius: 20,
   },
   retryBadge: {
-    backgroundColor: '#ef4444',
+    backgroundColor: "#ef4444",
     padding: 10,
     borderRadius: 20,
   },
   photoFooter: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 8,
     gap: 6,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   avatarBadge: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   avatarInitial: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   timeText: {
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: "rgba(255, 255, 255, 0.9)",
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: "500",
+  },
+  videoPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoPlayButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoPlayIcon: {
+    marginLeft: 3,
+  },
+  videoDurationBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  videoDurationText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
   },
 });

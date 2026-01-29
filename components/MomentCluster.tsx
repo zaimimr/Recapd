@@ -1,21 +1,23 @@
-import { MediaItemWithUser } from '@/types/database';
-import { format } from 'date-fns';
+import { getPhotoUrl } from "@/lib/storage";
+import { formatDuration } from "@/lib/utils";
+import { MediaItemWithUser } from "@/types/database";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { format } from "date-fns";
 import {
-  StyleSheet,
-  View,
-  Text,
+  ActivityIndicator,
+  Dimensions,
   Image,
   ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
-} from 'react-native';
-import { getPhotoUrl } from '@/lib/storage';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+  View,
+} from "react-native";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CLUSTER_PHOTO_HEIGHT = 200;
 const CLUSTER_THRESHOLD_MS = 60000;
+
 
 export interface MergedMediaItem extends MediaItemWithUser {
   isPending?: boolean;
@@ -30,7 +32,11 @@ export interface Cluster {
 
 interface MomentClusterProps {
   photos: MergedMediaItem[];
-  onPhotoPress: (photo: MergedMediaItem, index: number, allPhotos: MergedMediaItem[]) => void;
+  onPhotoPress: (
+    photo: MergedMediaItem,
+    index: number,
+    allPhotos: MergedMediaItem[],
+  ) => void;
   onRetry?: (id: string) => void;
   isDark: boolean;
 }
@@ -40,7 +46,11 @@ interface ClusterRowProps {
   clusterIndex: number;
   globalStartIndex: number;
   allPhotos: MergedMediaItem[];
-  onPhotoPress: (photo: MergedMediaItem, index: number, allPhotos: MergedMediaItem[]) => void;
+  onPhotoPress: (
+    photo: MergedMediaItem,
+    index: number,
+    allPhotos: MergedMediaItem[],
+  ) => void;
   onRetry?: (id: string) => void;
   isDark: boolean;
 }
@@ -49,7 +59,8 @@ export function clusterPhotos(photos: MergedMediaItem[]): Cluster[] {
   if (!photos.length) return [];
 
   const sorted = [...photos].sort(
-    (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+    (a, b) =>
+      new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime(),
   );
 
   const clusters: Cluster[] = [];
@@ -72,8 +83,19 @@ export function clusterPhotos(photos: MergedMediaItem[]): Cluster[] {
 }
 
 function getAvatarColor(name: string): string {
-  const colors = ['#f87171', '#fb923c', '#fbbf24', '#a3e635', '#34d399', '#22d3ee', '#818cf8', '#c084fc'];
-  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const colors = [
+    "#f87171",
+    "#fb923c",
+    "#fbbf24",
+    "#a3e635",
+    "#34d399",
+    "#22d3ee",
+    "#818cf8",
+    "#c084fc",
+  ];
+  const hash = name
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
 }
 
@@ -90,7 +112,7 @@ function ClusterRow({
   return (
     <View style={styles.clusterContainer}>
       <Text style={[styles.clusterTime, isDark && styles.textMuted]}>
-        {format(new Date(cluster.time), 'h:mm a')}
+        {format(new Date(cluster.time), "h:mm a")}
       </Text>
       <ScrollView
         horizontal
@@ -100,17 +122,19 @@ function ClusterRow({
       >
         {cluster.photos.map((photo, idx) => {
           const globalIndex = globalStartIndex + idx;
-          const aspectRatio = photo.width && photo.height ? photo.width / photo.height : 1;
+          const aspectRatio =
+            photo.width && photo.height ? photo.width / photo.height : 1;
           const photoWidth = isSinglePhoto
             ? SCREEN_WIDTH - 48
             : Math.min(CLUSTER_PHOTO_HEIGHT * aspectRatio, SCREEN_WIDTH * 0.7);
 
-          const imageUri = photo.isPending && photo.localUri
-            ? photo.localUri
-            : getPhotoUrl(photo.storage_path);
+          const imageUri =
+            photo.isPending && photo.localUri
+              ? photo.localUri
+              : getPhotoUrl(photo.storage_path);
 
-          const isSyncing = photo.isPending && photo.syncStatus === 'syncing';
-          const isFailed = photo.isPending && photo.syncStatus === 'failed';
+          const isSyncing = photo.isPending && photo.syncStatus === "syncing";
+          const isFailed = photo.isPending && photo.syncStatus === "failed";
 
           return (
             <TouchableOpacity
@@ -129,7 +153,9 @@ function ClusterRow({
                   photo.isPending && styles.pendingImage,
                 ]}
                 resizeMode="cover"
-                blurRadius={photo.isPending && photo.syncStatus !== 'failed' ? 2 : 0}
+                blurRadius={
+                  photo.isPending && photo.syncStatus !== "failed" ? 2 : 0
+                }
               />
 
               {photo.isPending && (
@@ -151,11 +177,38 @@ function ClusterRow({
                 </View>
               )}
 
+              {photo.media_type === "video" && !photo.isPending && (
+                <>
+                  <View style={styles.videoPlayOverlay}>
+                    <View style={styles.videoPlayButton}>
+                      <FontAwesome
+                        name="play"
+                        size={20}
+                        color="#fff"
+                        style={styles.videoPlayIcon}
+                      />
+                    </View>
+                  </View>
+                  {photo.duration_milliseconds != null &&
+                    photo.duration_milliseconds > 0 && (
+                      <View style={styles.videoDurationBadge}>
+                        <Text style={styles.videoDurationText}>
+                          {formatDuration(photo.duration_milliseconds)}
+                        </Text>
+                      </View>
+                    )}
+                </>
+              )}
+
               {photo.uploader?.display_name && !photo.isPending && (
                 <View
                   style={[
                     styles.avatarBadge,
-                    { backgroundColor: getAvatarColor(photo.uploader.display_name) },
+                    {
+                      backgroundColor: getAvatarColor(
+                        photo.uploader.display_name,
+                      ),
+                    },
                   ]}
                 >
                   <Text style={styles.avatarInitial}>
@@ -211,8 +264,8 @@ const styles = StyleSheet.create({
   },
   clusterTime: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
     paddingHorizontal: 0,
   },
   clusterScroll: {
@@ -220,57 +273,87 @@ const styles = StyleSheet.create({
   },
   clusterPhoto: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   clusterImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   pendingImage: {
     opacity: 0.8,
   },
   syncOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   syncBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     padding: 12,
     borderRadius: 24,
   },
   retryBadge: {
-    backgroundColor: '#ef4444',
+    backgroundColor: "#ef4444",
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   retryText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   avatarBadge: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 8,
     left: 8,
     width: 28,
     height: 28,
     borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: "#fff",
   },
   avatarInitial: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   textMuted: {
-    color: '#888',
+    color: "#888",
+  },
+  videoPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoPlayButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoPlayIcon: {
+    marginLeft: 4,
+  },
+  videoDurationBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  videoDurationText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });

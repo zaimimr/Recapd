@@ -1,5 +1,6 @@
 import { safeDate } from "@/lib/dateUtils";
 import { LocalPhoto } from "@/lib/mediaLibrary";
+import { sendParticipantLimitNotification } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase";
 import {
   PendingUpload,
@@ -15,6 +16,7 @@ import {
   EventUpdate,
   MediaItemWithUser,
 } from "@/types/database";
+import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { addDays } from "date-fns";
 import { create } from "zustand";
@@ -40,6 +42,8 @@ export interface EventWithParticipants extends Event {
   participants?: EventParticipant[];
   participant_count?: number;
   userRole?: "host" | "guest";
+  hostIsPro?: boolean;
+  hostDisplayName?: string;
 }
 
 export interface ParticipantWithStats {
@@ -255,10 +259,29 @@ export const useEventStore = create<EventState>((set, get) => {
           .select("*")
           .eq("event_id", eventId);
 
+        const host = participants?.find((p) => p.role === "host");
+        let hostIsPro = false;
+        let hostDisplayName = "the host";
+
+        if (host) {
+          const { data: hostUser } = await supabase
+            .from("users")
+            .select("subscription_tier, display_name")
+            .eq("id", host.user_id)
+            .single();
+
+          if (hostUser) {
+            hostIsPro = hostUser.subscription_tier === "pro";
+            hostDisplayName = hostUser.display_name || "the host";
+          }
+        }
+
         const eventWithParticipants: EventWithParticipants = {
           ...(data as Event),
           participants: (participants || []) as EventParticipant[],
           participant_count: participants?.length || 0,
+          hostIsPro,
+          hostDisplayName,
         };
 
         set({ currentEvent: eventWithParticipants, isLoading: false });
@@ -369,6 +392,35 @@ export const useEventStore = create<EventState>((set, get) => {
           .insert(participantData);
 
         if (error) throw error;
+
+        const { count } = await supabase
+          .from("event_participants")
+          .select("*", { count: "exact", head: true })
+          .eq("event_id", eventId);
+
+        if (count === FREE_PARTICIPANT_LIMIT) {
+          const { data: event } = await supabase
+            .from("events")
+            .select("title, created_by_user_id")
+            .eq("id", eventId)
+            .single();
+
+          if (event?.created_by_user_id) {
+            const { data: hostUser } = await supabase
+              .from("users")
+              .select("subscription_tier")
+              .eq("id", event.created_by_user_id)
+              .single();
+
+            if (hostUser?.subscription_tier !== "pro") {
+              sendParticipantLimitNotification(
+                eventId,
+                event.title,
+                event.created_by_user_id
+              );
+            }
+          }
+        }
 
         set({ isLoading: false });
         return true;
@@ -730,6 +782,8 @@ export const useEventStore = create<EventState>((set, get) => {
           status: "pending" as const,
           retryCount: 0,
           assetId: photo.id,
+          mediaType: photo.mediaType,
+          duration: photo.duration,
         }),
       );
 
@@ -873,7 +927,7 @@ export const useEventStore = create<EventState>((set, get) => {
           media_type: "photo" as const,
           width: p.width,
           height: p.height,
-          duration_seconds: null,
+          duration_milliseconds: null,
           file_size_bytes: null,
           storage_path: "",
           thumbnail_path: null,

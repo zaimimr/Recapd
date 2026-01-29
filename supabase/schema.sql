@@ -47,7 +47,7 @@ CREATE TABLE media_items (
   media_type TEXT DEFAULT 'photo' CHECK (media_type IN ('photo', 'video')),
   width INT,
   height INT,
-  duration_seconds INT,
+  duration_milliseconds INT,
   file_size_bytes BIGINT,
   storage_path TEXT NOT NULL,
   thumbnail_path TEXT,

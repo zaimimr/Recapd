@@ -17,16 +17,24 @@ export async function requestMediaPermissions(): Promise<boolean> {
   return status === "granted";
 }
 
-export async function getPhotosInTimeRange(
+export const PRO_MAX_VIDEO_DURATION_MS = 300*1000;
+export const FREE_MAX_VIDEO_DURATION_MS = 30*1000;
+
+export async function getMediaInTimeRange(
   startTime: Date,
   endTime: Date,
   limit: number = 1000,
+  includeVideos: boolean = true,
 ): Promise<LocalPhoto[]> {
   const hasPermission = await requestMediaPermissions();
   if (!hasPermission) return [];
 
+  const mediaTypes: MediaLibrary.MediaTypeValue[] = includeVideos
+    ? ["photo", "video"]
+    : ["photo"];
+
   const assets = await MediaLibrary.getAssetsAsync({
-    mediaType: ["photo"],
+    mediaType: mediaTypes,
     sortBy: [MediaLibrary.SortBy.creationTime],
     first: limit,
   });
@@ -61,6 +69,14 @@ export async function getPhotosInTimeRange(
   return photosWithLocalUri;
 }
 
+export async function getPhotosInTimeRange(
+  startTime: Date,
+  endTime: Date,
+  limit: number = 1000,
+): Promise<LocalPhoto[]> {
+  return getMediaInTimeRange(startTime, endTime, limit, false);
+}
+
 export async function saveToLibrary(
   uri: string,
 ): Promise<MediaLibrary.Asset | null> {
@@ -76,23 +92,57 @@ export async function saveToLibrary(
   }
 }
 
-export async function pickPhotosFromLibrary(): Promise<{
-  photos: LocalPhoto[];
+export interface PickMediaOptions {
+  includeVideos?: boolean;
+  maxVideoDuration?: number;
+}
+
+export interface PickMediaResult {
+  media: LocalPhoto[];
   videosFiltered: boolean;
-}> {
+  videosTooLong: number;
+}
+
+export async function pickMediaFromLibrary(
+  options: PickMediaOptions = {}
+): Promise<PickMediaResult> {
+  const { includeVideos = true, maxVideoDuration = 0 } = options;
+
+  const mediaTypes: ImagePicker.MediaType[] = includeVideos
+    ? ["images", "videos"]
+    : ["images"];
+
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ["images", "videos"],
+    mediaTypes,
     allowsMultipleSelection: true,
     quality: 1,
     exif: true,
+    videoMaxDuration: maxVideoDuration > 0 ? maxVideoDuration : undefined,
   });
 
-  if (result.canceled || !result.assets) return { photos: [], videosFiltered: false };
+  if (result.canceled || !result.assets) {
+    return { media: [], videosFiltered: false, videosTooLong: 0 };
+  }
 
-  const photoAssets = result.assets.filter((asset) => asset.type !== "video");
-  const videosFiltered = photoAssets.length < result.assets.length;
+  let videosTooLong = 0;
+  const validAssets = result.assets.filter((asset) => {
+    console.log("Picked asset:", asset);
+    if (asset.type === "video" && !includeVideos) {
+      return false;
+    }
+    if (asset.type === "video" && maxVideoDuration > 0) {
+      const duration = asset.duration || 0;
+      if (duration > maxVideoDuration) {
+        videosTooLong++;
+        return false;
+      }
+    }
+    return true;
+  });
 
-  const photos = photoAssets.map((asset, index) => {
+  const videosFiltered = !includeVideos && result.assets.some(a => a.type === "video");
+
+  const media = validAssets.map((asset, index) => {
     let creationTime = Date.now();
     if (asset.exif?.DateTimeOriginal) {
       const parsed = new Date(asset.exif.DateTimeOriginal as string).getTime();
@@ -100,17 +150,30 @@ export async function pickPhotosFromLibrary(): Promise<{
         creationTime = parsed;
       }
     }
+
+    const isVideo = asset.type === "video";
+    const defaultExt = isVideo ? "mp4" : "jpg";
+
+
     return {
       id: `manual-${Date.now()}-${index}`,
       uri: asset.uri,
-      filename: asset.fileName || `photo-${index}.jpg`,
+      filename: asset.fileName || `${isVideo ? 'video' : 'photo'}-${index}.${defaultExt}`,
       creationTime,
       width: asset.width,
       height: asset.height,
       duration: asset.duration || 0,
-      mediaType: "photo" as "photo" | "video",
+      mediaType: (isVideo ? "video" : "photo") as "photo" | "video",
     };
   });
 
-  return { photos, videosFiltered };
+  return { media, videosFiltered, videosTooLong };
+}
+
+export async function pickPhotosFromLibrary(): Promise<{
+  photos: LocalPhoto[];
+  videosFiltered: boolean;
+}> {
+  const result = await pickMediaFromLibrary({ includeVideos: false });
+  return { photos: result.media, videosFiltered: result.videosFiltered };
 }

@@ -1,14 +1,21 @@
-import { useColorScheme } from "@/components/useColorScheme";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
+import { InlineUpgradePrompt } from "@/components/UpgradePrompt";
+import { useColorScheme } from "@/components/useColorScheme";
 import {
-  getPhotosInTimeRange,
+  FREE_MAX_VIDEO_DURATION_MS,
+  getMediaInTimeRange,
   LocalPhoto,
-  pickPhotosFromLibrary,
+  pickMediaFromLibrary,
+  PRO_MAX_VIDEO_DURATION_MS,
   requestMediaPermissions,
 } from "@/lib/mediaLibrary";
+import { formatDuration } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
+import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
+import { canUploadVideos as checkCanUploadVideos } from "@/types/subscription";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { Video } from "expo-av";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -31,6 +38,15 @@ const PHOTO_SIZE =
   (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) /
   NUM_COLUMNS;
 
+function formatVideoDuration(milliseconds: number): string {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  if (mins === 0) return `${secs} seconds`;
+  if (secs === 0) return mins === 1 ? `${mins} minute` : `${mins} minutes`;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 type Step = "loading" | "select" | "empty" | "error";
 
 export default function ContributeScreen() {
@@ -45,6 +61,15 @@ export default function ContributeScreen() {
   } = useEventStore();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
+
+  const isPro = useIsPro();
+  const { showPaywall } = useSubscriptionStore();
+  const hostIsPro = currentEvent?.hostIsPro || false;
+  const hostDisplayName = currentEvent?.hostDisplayName || "the host";
+  const canUploadVideos = checkCanUploadVideos(isPro, hostIsPro);
+  const maxVideoDurationMilliseconds = canUploadVideos
+    ? PRO_MAX_VIDEO_DURATION_MS
+    : FREE_MAX_VIDEO_DURATION_MS;
 
   const [step, setStep] = useState<Step>("loading");
   const [photos, setPhotos] = useState<LocalPhoto[]>([]);
@@ -80,31 +105,51 @@ export default function ContributeScreen() {
       const startTime = new Date(event.starts_at);
       const endTime = new Date(event.ends_at);
 
-      const foundPhotos = await getPhotosInTimeRange(startTime, endTime);
+      const foundMedia = await getMediaInTimeRange(
+        startTime,
+        endTime,
+        1000,
+        canUploadVideos,
+      );
+
+      const filteredMedia = foundMedia.filter((item) => {
+        if (item.mediaType === "video" && maxVideoDurationMilliseconds > 0) {
+          return item.duration <= maxVideoDurationMilliseconds;
+        }
+        return true;
+      });
 
       const alreadyUploaded = user
-        ? await getUploadedPhotoIdsForEvent(eventId, user.id, foundPhotos)
+        ? await getUploadedPhotoIdsForEvent(eventId, user.id, filteredMedia)
         : new Set<string>();
 
-      setPhotos(foundPhotos);
+      setPhotos(filteredMedia);
       setUploadedIds(alreadyUploaded);
 
-      const newPhotoIds = foundPhotos
+      const newPhotoIds = filteredMedia
         .filter((p) => !alreadyUploaded.has(p.id))
         .map((p) => p.id);
       setSelectedIds(new Set(newPhotoIds));
 
-      if (foundPhotos.length > 0) {
+      if (filteredMedia.length > 0) {
         setStep("select");
       } else {
         setStep("empty");
       }
     } catch (error) {
-      console.error('Photo scanning failed:', error);
+      console.error("Photo scanning failed:", error);
       setScanError(true);
       setStep("error");
     }
-  }, [eventId, currentEvent, fetchEventById, getUploadedPhotoIdsForEvent, user]);
+  }, [
+    eventId,
+    currentEvent,
+    fetchEventById,
+    getUploadedPhotoIdsForEvent,
+    user,
+    canUploadVideos,
+    maxVideoDurationMilliseconds,
+  ]);
 
   useEffect(() => {
     loadPhotos();
@@ -137,13 +182,31 @@ export default function ContributeScreen() {
   }
 
   async function handleManualPick() {
-    const { photos: picked, videosFiltered } = await pickPhotosFromLibrary();
-    if (videosFiltered) {
+    const {
+      media: picked,
+      videosFiltered,
+      videosTooLong,
+    } = await pickMediaFromLibrary({
+      includeVideos: canUploadVideos,
+      maxVideoDuration: maxVideoDurationMilliseconds,
+    });
+
+    if (videosFiltered && !canUploadVideos) {
       Alert.alert(
-        "Videos Not Supported",
-        "Currently we do not support video uploads. Videos have been deselected."
+        "Video Uploads Require Pro",
+        `Videos require Pro. Upgrade yourself or ask ${hostDisplayName} to upgrade.`,
+        [
+          { text: "Not Now", style: "cancel" },
+          { text: "Upgrade", onPress: () => showPaywall() },
+        ],
+      );
+    } else if (videosTooLong > 0) {
+      Alert.alert(
+        "Videos Too Long",
+        `${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped because they exceed the ${formatVideoDuration(maxVideoDurationMilliseconds)} limit for your plan.`,
       );
     }
+
     if (picked.length > 0) {
       const existingUris = new Set(allPhotos.map((p) => p.uri));
       const newPhotos = picked.filter((p) => !existingUris.has(p.uri));
@@ -154,13 +217,31 @@ export default function ContributeScreen() {
   }
 
   async function handleManualPickFromError() {
-    const { photos: picked, videosFiltered } = await pickPhotosFromLibrary();
-    if (videosFiltered) {
+    const {
+      media: picked,
+      videosFiltered,
+      videosTooLong,
+    } = await pickMediaFromLibrary({
+      includeVideos: canUploadVideos,
+      maxVideoDuration: maxVideoDurationMilliseconds,
+    });
+
+    if (videosFiltered && !canUploadVideos) {
       Alert.alert(
-        "Videos Not Supported",
-        "Currently we do not support video uploads. Videos have been deselected."
+        "Video Uploads Require Pro",
+        `Videos require Pro. Upgrade yourself or ask ${hostDisplayName} to upgrade.`,
+        [
+          { text: "Not Now", style: "cancel" },
+          { text: "Upgrade", onPress: () => showPaywall() },
+        ],
+      );
+    } else if (videosTooLong > 0) {
+      Alert.alert(
+        "Videos Too Long",
+        `${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped because they exceed the ${formatVideoDuration(maxVideoDurationMilliseconds)} limit for your plan.`,
       );
     }
+
     if (picked.length > 0) {
       setManualPhotos(picked);
       const newIds = new Set(picked.map((p) => p.id));
@@ -169,11 +250,47 @@ export default function ContributeScreen() {
     }
   }
 
-  const newPhotosCount = allPhotos.filter((p) => !uploadedIds.has(p.id)).length;
+  const selectableMedia = allPhotos.filter((p) => !uploadedIds.has(p.id));
+  const newPhotosCount = selectableMedia.filter(
+    (p) => p.mediaType === "photo",
+  ).length;
+  const newVideosCount = selectableMedia.filter(
+    (p) => p.mediaType === "video",
+  ).length;
   const alreadyUploadedCount =
     uploadedIds.size > 0
       ? allPhotos.filter((p) => uploadedIds.has(p.id)).length
       : 0;
+
+  const selectedPhotosCount = allPhotos.filter(
+    (p) => selectedIds.has(p.id) && p.mediaType === "photo",
+  ).length;
+  const selectedVideosCount = allPhotos.filter(
+    (p) => selectedIds.has(p.id) && p.mediaType === "video",
+  ).length;
+
+  function getShareButtonText(): string {
+    if (selectedIds.size === 0) return "Select media to share";
+    const parts: string[] = [];
+    if (selectedPhotosCount > 0)
+      parts.push(
+        `${selectedPhotosCount} Photo${selectedPhotosCount !== 1 ? "s" : ""}`,
+      );
+    if (selectedVideosCount > 0)
+      parts.push(
+        `${selectedVideosCount} Video${selectedVideosCount !== 1 ? "s" : ""}`,
+      );
+    return `Share ${parts.join(" & ")}`;
+  }
+
+  function getCountText(): string {
+    const parts: string[] = [];
+    if (newPhotosCount > 0)
+      parts.push(`${newPhotosCount} photo${newPhotosCount !== 1 ? "s" : ""}`);
+    if (newVideosCount > 0)
+      parts.push(`${newVideosCount} video${newVideosCount !== 1 ? "s" : ""}`);
+    return parts.join(", ") || "No new media";
+  }
 
   function handleUpload() {
     if (!user || !eventId || selectedIds.size === 0) return;
@@ -231,15 +348,27 @@ export default function ContributeScreen() {
             style={styles.manualPickButton}
             onPress={handleManualPickFromError}
           >
-            <FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+            <FontAwesome
+              name="photo"
+              size={18}
+              color="#fff"
+              style={{ marginRight: 8 }}
+            />
+            <Text style={styles.manualPickButtonText}>
+              Select Photos Manually
+            </Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={[styles.errorButton, scanError && styles.errorButtonSecondary]}
           onPress={handleSkip}
         >
-          <Text style={[styles.errorButtonText, scanError && styles.errorButtonTextSecondary]}>
+          <Text
+            style={[
+              styles.errorButtonText,
+              scanError && styles.errorButtonTextSecondary,
+            ]}
+          >
             Go Back
           </Text>
         </TouchableOpacity>
@@ -292,10 +421,20 @@ export default function ContributeScreen() {
               style={styles.manualPickButton}
               onPress={handleManualPickFromError}
             >
-              <FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+              <FontAwesome
+                name="photo"
+                size={18}
+                color="#fff"
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.manualPickButtonText}>
+                Select Photos Manually
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.emptyButtonSecondary} onPress={handleSkip}>
+            <TouchableOpacity
+              style={styles.emptyButtonSecondary}
+              onPress={handleSkip}
+            >
               <Text style={styles.emptyButtonSecondaryText}>Go Back</Text>
             </TouchableOpacity>
           </View>
@@ -314,7 +453,7 @@ export default function ContributeScreen() {
         <View style={styles.selectHeader}>
           <View>
             <Text style={[styles.selectCount, isDark && styles.textMuted]}>
-              {newPhotosCount} new photo{newPhotosCount !== 1 ? "s" : ""}
+              {getCountText()}
             </Text>
             {alreadyUploadedCount > 0 && (
               <Text style={[styles.uploadedCount, isDark && styles.textMuted]}>
@@ -335,7 +474,10 @@ export default function ContributeScreen() {
             <Text style={[styles.selectDivider, isDark && styles.textMuted]}>
               |
             </Text>
-            <TouchableOpacity onPress={handleManualPick} style={styles.addPhotosButton}>
+            <TouchableOpacity
+              onPress={handleManualPick}
+              style={styles.addPhotosButton}
+            >
               <FontAwesome name="plus" size={14} color="#3b82f6" />
               <Text style={styles.selectAction}> Add</Text>
             </TouchableOpacity>
@@ -349,6 +491,7 @@ export default function ContributeScreen() {
           renderItem={({ item, index }) => {
             const isSelected = selectedIds.has(item.id);
             const isUploaded = uploadedIds.has(item.id);
+            const isVideo = item.mediaType === "video";
             return (
               <TouchableOpacity
                 style={styles.selectPhotoItem}
@@ -357,10 +500,29 @@ export default function ContributeScreen() {
                 delayLongPress={200}
                 disabled={isUploaded}
               >
-                <Image
-                  source={{ uri: item.uri }}
-                  style={styles.selectPhotoImage}
-                />
+                {isVideo ? (
+                  <Video
+                    source={{ uri: item.uri }}
+                    style={styles.selectPhotoImage}
+                  />
+                ) : (
+                  <Image
+                    source={{ uri: item.uri }}
+                    style={styles.selectPhotoImage}
+                  />
+                )}
+                {isVideo && (
+                  <View style={styles.videoIndicator}>
+                    <FontAwesome name="play-circle" size={28} color="#fff" />
+                    {item.duration > 0 && (
+                      <View style={styles.durationBadge}>
+                        <Text style={styles.durationText}>
+                          {formatDuration(item.duration)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
                 {isUploaded ? (
                   <View style={styles.uploadedOverlay}>
                     <View style={styles.uploadedBadge}>
@@ -388,6 +550,14 @@ export default function ContributeScreen() {
         />
 
         <View style={[styles.selectFooter, isDark && styles.selectFooterDark]}>
+          {!canUploadVideos && (
+            <View style={styles.upgradePromptContainer}>
+              <InlineUpgradePrompt
+                message="Upgrade to Pro to upload videos"
+                onPress={() => showPaywall()}
+              />
+            </View>
+          )}
           <TouchableOpacity
             style={[
               styles.uploadButton,
@@ -402,11 +572,7 @@ export default function ContributeScreen() {
               color="#fff"
               style={styles.uploadIcon}
             />
-            <Text style={styles.uploadButtonText}>
-              {selectedIds.size > 0
-                ? `Share ${selectedIds.size} Photo${selectedIds.size !== 1 ? "s" : ""}`
-                : "Select photos to share"}
-            </Text>
+            <Text style={styles.uploadButtonText}>{getShareButtonText()}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -670,5 +836,27 @@ const styles = StyleSheet.create({
   },
   textMuted: {
     color: "#888",
+  },
+  videoIndicator: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  durationBadge: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  durationText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  upgradePromptContainer: {
+    marginBottom: 12,
   },
 });

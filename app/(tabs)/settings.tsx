@@ -1,5 +1,6 @@
 import { useColorScheme } from "@/components/useColorScheme";
 import { useAuthStore } from "@/store/authStore";
+import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Camera } from "expo-camera";
 import Constants from "expo-constants";
@@ -30,11 +31,20 @@ interface PermissionInfo {
   required: boolean;
 }
 
+const IS_PAYMENTS_ENABLED = process.env.EXPO_PUBLIC_PAYMENTS_ENABLED === "true";
+
 export default function SettingsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const user = useAuthStore((state) => state.user);
   const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
+  const isPro = useIsPro();
+  const {
+    status,
+    showPaywall,
+    showCustomerCenter,
+    isLoading: subscriptionLoading,
+  } = useSubscriptionStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(user?.display_name || "");
@@ -348,6 +358,97 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             )}
           </View>
+        </View>
+      )}
+
+      {IS_PAYMENTS_ENABLED && (
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>
+            Subscription
+          </Text>
+          <View style={styles.subscriptionRow}>
+            <View
+              style={[
+                styles.subscriptionIcon,
+                isPro && styles.subscriptionIconPro,
+              ]}
+            >
+              <FontAwesome
+                name={isPro ? "star" : "star-o"}
+                size={20}
+                color={isPro ? "#f59e0b" : isDark ? "#666" : "#999"}
+              />
+            </View>
+            <View style={styles.subscriptionInfo}>
+              <Text
+                style={[styles.subscriptionTitle, isDark && styles.textDark]}
+              >
+                {isPro ? "Recapd Pro" : "Free Plan"}
+              </Text>
+              <Text
+                style={[styles.subscriptionSubtext, isDark && styles.textMuted]}
+              >
+                {isPro
+                  ? status.expiresAt
+                    ? `Renews ${status.expiresAt.toLocaleDateString()}`
+                    : "Active subscription"
+                  : "Upgrade for unlimited features"}
+              </Text>
+            </View>
+            {isPro && (
+              <View style={styles.proBadge}>
+                <Text style={styles.proBadgeText}>PRO</Text>
+              </View>
+            )}
+          </View>
+
+          {isPro ? (
+            <TouchableOpacity
+              style={[styles.manageButton, isDark && styles.manageButtonDark]}
+              onPress={showCustomerCenter}
+              disabled={subscriptionLoading}
+            >
+              <FontAwesome
+                name="cog"
+                size={16}
+                color={isDark ? "#fff" : "#000"}
+              />
+              <Text
+                style={[styles.manageButtonText, isDark && styles.textDark]}
+              >
+                Manage Subscription
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={showPaywall}
+              disabled={subscriptionLoading}
+            >
+              <FontAwesome name="star" size={16} color="#fff" />
+              <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+            </TouchableOpacity>
+          )}
+
+          {!isPro && (
+            <View style={styles.featuresPreview}>
+              <Text style={[styles.featuresTitle, isDark && styles.textMuted]}>
+                Pro features include:
+              </Text>
+              <View style={styles.featureItem}>
+                <FontAwesome name="check" size={12} color="#22c55e" />
+                <Text style={[styles.featureText, isDark && styles.textMuted]}>
+                  Unlimited participants
+                </Text>
+              </View>
+              <View style={styles.featureItem}>
+                <FontAwesome name="check" size={12} color="#22c55e" />
+                <Text style={[styles.featureText, isDark && styles.textMuted]}>
+                  Video uploads
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       )}
 
@@ -726,5 +827,97 @@ const styles = StyleSheet.create({
     color: "#666",
     textAlign: "center",
     marginTop: 12,
+  },
+  subscriptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  subscriptionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#f5f5f5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  subscriptionIconPro: {
+    backgroundColor: "#fef3c7",
+  },
+  subscriptionInfo: {
+    flex: 1,
+  },
+  subscriptionTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#000",
+  },
+  subscriptionSubtext: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 2,
+  },
+  proBadge: {
+    backgroundColor: "#f59e0b",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  proBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  upgradeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#3b82f6",
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  upgradeButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+  },
+  manageButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#f5f5f5",
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  manageButtonDark: {
+    backgroundColor: "#333",
+  },
+  manageButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#000",
+  },
+  featuresPreview: {
+    marginTop: 16,
+    gap: 8,
+  },
+  featuresTitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#666",
+    marginBottom: 4,
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  featureText: {
+    fontSize: 14,
+    color: "#666",
   },
 });
