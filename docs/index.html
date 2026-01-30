@@ -1207,8 +1207,8 @@
   </footer>
 
   <script>
-    document.querySelectorAll('a[href="#beta"]').forEach(function(link) {
-      link.addEventListener('click', function(e) {
+    document.querySelectorAll('a[href="#beta"]').forEach((link) => {
+      link.addEventListener('click', (e) => {
         e.preventDefault();
         document.getElementById('beta').scrollIntoView({ behavior: 'smooth' });
       });

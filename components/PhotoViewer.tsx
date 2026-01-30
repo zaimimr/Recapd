@@ -15,8 +15,8 @@ import {
   Dimensions,
   FlatList,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,7 +24,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { MergedMediaItem } from "./MomentCluster";
+import type { MergedMediaItem } from "./MomentCluster";
 import VideoPlayer from "./VideoPlayer";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -114,16 +114,20 @@ export default function PhotoViewer({
   initialThumbnailUri,
 }: PhotoViewerProps) {
   const insets = useSafeAreaInsets();
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const safeInitialIndex = Math.max(
+    0,
+    Math.min(initialIndex, photos.length - 1),
+  );
+  const [currentIndex, setCurrentIndex] = useState(safeInitialIndex);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (visible) {
-      setCurrentIndex(initialIndex);
+      setCurrentIndex(Math.max(0, Math.min(initialIndex, photos.length - 1)));
     }
-  }, [visible, initialIndex]);
+  }, [visible, initialIndex, photos.length]);
 
   const currentPhoto = photos[currentIndex];
   const canDelete =
@@ -271,7 +275,7 @@ export default function PhotoViewer({
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
-          initialScrollIndex={initialIndex}
+          initialScrollIndex={safeInitialIndex}
           getItemLayout={(_, index) => ({
             length: SCREEN_WIDTH,
             offset: SCREEN_WIDTH * index,

@@ -1,51 +1,48 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
+const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 
 function formatDate(startsAt: string, endsAt: string): string {
-  const start = new Date(startsAt);
-  const end = new Date(endsAt);
-  const dateStr = start.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-  const startTime = start
-    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    .replace(" ", "");
-  const endTime = end
-    .toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-    .replace(" ", "");
-  return `${dateStr} · ${startTime} – ${endTime}`;
+	const start = new Date(startsAt);
+	const end = new Date(endsAt);
+	const dateStr = start.toLocaleDateString("en-US", {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+	});
+	const startTime = start
+		.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+		.replace(" ", "");
+	const endTime = end
+		.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+		.replace(" ", "");
+	return `${dateStr} · ${startTime} – ${endTime}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const code = req.url?.split("/join/")[1]?.split("?")[0]?.toUpperCase();
+	const code = req.url?.split("/join/")[1]?.split("?")[0]?.toUpperCase();
 
-  if (!code) {
-    return res.redirect(302, "https://recapd.app");
-  }
+	if (!code) {
+		return res.redirect(302, "https://recapd.app");
+	}
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("title, starts_at, ends_at")
-    .eq("join_code", code)
-    .single();
+	const { data: event } = await supabase
+		.from("events")
+		.select("title, starts_at, ends_at")
+		.eq("join_code", code)
+		.single();
 
-  const title = event?.title || "Join Event on Recapd";
-  const description = event
-    ? formatDate(event.starts_at, event.ends_at)
-    : "Share photos together, privately.";
+	const title = event?.title || "Join Event on Recapd";
+	const description = event
+		? formatDate(event.starts_at, event.ends_at)
+		: "Share photos together, privately.";
 
-  const appStoreUrl = "https://apps.apple.com/no/app/recapd/id6758083751";
-  const playStoreUrl = "https://play.google.com/store/apps/details?id=app.recapd";
-  const deepLink = `recapd://join/${code}`;
+	const appStoreUrl = "https://apps.apple.com/no/app/recapd/id6758083751";
+	const playStoreUrl = "https://play.google.com/store/apps/details?id=app.recapd";
+	const deepLink = `recapd://join/${code}`;
 
-  const html = `<!DOCTYPE html>
+	const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -181,6 +178,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </body>
 </html>`;
 
-  res.setHeader("Content-Type", "text/html");
-  res.status(200).send(html);
+	res.setHeader("Content-Type", "text/html");
+	res.status(200).send(html);
 }

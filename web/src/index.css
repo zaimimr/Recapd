@@ -1,44 +1,46 @@
 :root {
-  --bg: #ffffff;
-  --bg-alt: #f8f9fa;
-  --text: #111111;
-  --text-muted: #666666;
-  --accent: #22c55e;
-  --accent-hover: #16a34a;
-  --border: #e5e5e5;
-  --card-bg: #ffffff;
-  --phone-bg: #1a1a1a;
+	--bg: #ffffff;
+	--bg-alt: #f8f9fa;
+	--text: #111111;
+	--text-muted: #666666;
+	--accent: #22c55e;
+	--accent-hover: #16a34a;
+	--border: #e5e5e5;
+	--card-bg: #ffffff;
+	--phone-bg: #1a1a1a;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0a0a;
-    --bg-alt: #111111;
-    --text: #ffffff;
-    --text-muted: #888888;
-    --border: #222222;
-    --card-bg: #1a1a1a;
-    --phone-bg: #000000;
-  }
+	:root {
+		--bg: #0a0a0a;
+		--bg-alt: #111111;
+		--text: #ffffff;
+		--text-muted: #888888;
+		--border: #222222;
+		--card-bg: #1a1a1a;
+		--phone-bg: #000000;
+	}
 }
 
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.6;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial,
+		sans-serif;
+	line-height: 1.6;
+	color: var(--text);
+	background: var(--bg);
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
 a {
-  color: inherit;
+	color: inherit;
 }
