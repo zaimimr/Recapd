@@ -1,9 +1,11 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { format } from "date-fns";
 import { Image } from "expo-image";
+import { memo, useCallback, useMemo } from "react";
 import {
 	ActivityIndicator,
 	Dimensions,
+	FlatList,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
@@ -32,29 +34,34 @@ function calculatePhotoHeight(photo: MergedMediaItem): number {
 	return Math.min(Math.max(height, 120), 300);
 }
 
-interface Column {
-	photos: { photo: MergedMediaItem; index: number; height: number }[];
-	totalHeight: number;
+// Flatten photos into rows of 2 for FlatList
+interface RowItem {
+	id: string;
+	left: { photo: MergedMediaItem; index: number; height: number } | null;
+	right: { photo: MergedMediaItem; index: number; height: number } | null;
+	rowHeight: number;
 }
 
-function distributePhotos(photos: MergedMediaItem[]): Column[] {
-	const columns: Column[] = Array.from({ length: NUM_COLUMNS }, () => ({
-		photos: [],
-		totalHeight: 0,
-	}));
+function distributePhotosIntoRows(photos: MergedMediaItem[]): RowItem[] {
+	const rows: RowItem[] = [];
 
-	photos.forEach((photo, index) => {
-		const height = calculatePhotoHeight(photo);
-		const shortestColumn = columns.reduce(
-			(min, col, i) => (col.totalHeight < columns[min].totalHeight ? i : min),
-			0
-		);
+	for (let i = 0; i < photos.length; i += 2) {
+		const leftPhoto = photos[i];
+		const rightPhoto = photos[i + 1];
 
-		columns[shortestColumn].photos.push({ photo, index, height });
-		columns[shortestColumn].totalHeight += height + GAP;
-	});
+		const leftHeight = calculatePhotoHeight(leftPhoto);
+		const rightHeight = rightPhoto ? calculatePhotoHeight(rightPhoto) : 0;
+		const rowHeight = Math.max(leftHeight, rightHeight);
 
-	return columns;
+		rows.push({
+			id: `row-${i}`,
+			left: { photo: leftPhoto, index: i, height: leftHeight },
+			right: rightPhoto ? { photo: rightPhoto, index: i + 1, height: rightHeight } : null,
+			rowHeight,
+		});
+	}
+
+	return rows;
 }
 
 function PhotoCard({
@@ -93,6 +100,7 @@ function PhotoCard({
 
 	const isSyncing = photo.isPending && photo.syncStatus === "syncing";
 	const isFailed = photo.isPending && photo.syncStatus === "failed";
+	const isPendingNotStarted = photo.isPending && photo.syncStatus === "pending";
 
 	return (
 		<TouchableOpacity style={[styles.photoCard, { height }]} onPress={onPress} activeOpacity={0.9}>
@@ -105,7 +113,6 @@ function PhotoCard({
 					cachePolicy="memory-disk"
 					transition={150}
 					recyclingKey={photo.id}
-					blurRadius={photo.isPending && photo.syncStatus !== "failed" ? 2 : 0}
 				/>
 			) : (
 				<View style={[styles.photoImage, styles.videoPlaceholder]}>
@@ -113,18 +120,33 @@ function PhotoCard({
 				</View>
 			)}
 
+			{/* Upload status overlay */}
 			{photo.isPending && (
-				<View style={styles.syncOverlay}>
-					{isSyncing && (
-						<View style={styles.syncBadge}>
-							<ActivityIndicator size="small" color="#fff" />
-						</View>
-					)}
-					{isFailed && (
-						<TouchableOpacity style={styles.retryBadge} onPress={() => onRetry?.(photo.id)}>
-							<FontAwesome name="refresh" size={14} color="#fff" />
-						</TouchableOpacity>
-					)}
+				<View style={styles.uploadOverlay}>
+					<View style={styles.uploadIndicator}>
+						{isSyncing && (
+							<>
+								<ActivityIndicator size="small" color="#fff" />
+								<Text style={styles.uploadText}>Uploading...</Text>
+							</>
+						)}
+						{isPendingNotStarted && (
+							<>
+								<FontAwesome name="clock-o" size={16} color="#fff" />
+								<Text style={styles.uploadText}>Waiting...</Text>
+							</>
+						)}
+						{isFailed && (
+							<TouchableOpacity
+								style={styles.retryButton}
+								onPress={() => onRetry?.(photo.id)}
+								hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+							>
+								<FontAwesome name="refresh" size={14} color="#fff" />
+								<Text style={styles.uploadText}>Retry</Text>
+							</TouchableOpacity>
+						)}
+					</View>
 				</View>
 			)}
 
@@ -166,43 +188,73 @@ function PhotoCard({
 	);
 }
 
+// Memoize PhotoCard to prevent unnecessary re-renders
+const MemoizedPhotoCard = memo(PhotoCard);
+
 export default function MasonryGrid({ photos, onPhotoPress, onRetry, isDark }: MasonryGridProps) {
+	const rows = useMemo(() => distributePhotosIntoRows(photos), [photos]);
+
+	const renderRow = useCallback(
+		({ item }: { item: RowItem }) => (
+			<View style={styles.row}>
+				{item.left && (
+					<MemoizedPhotoCard
+						photo={item.left.photo}
+						index={item.left.index}
+						height={item.left.height}
+						onPress={() => onPhotoPress(item.left!.photo, item.left!.index)}
+						onRetry={onRetry}
+						isDark={isDark}
+					/>
+				)}
+				{item.right && (
+					<MemoizedPhotoCard
+						photo={item.right.photo}
+						index={item.right.index}
+						height={item.right.height}
+						onPress={() => onPhotoPress(item.right!.photo, item.right!.index)}
+						onRetry={onRetry}
+						isDark={isDark}
+					/>
+				)}
+				{!item.right && <View style={styles.emptyCell} />}
+			</View>
+		),
+		[onPhotoPress, onRetry, isDark]
+	);
+
 	if (photos.length === 0) return null;
 
-	const columns = distributePhotos(photos);
-
 	return (
-		<View style={styles.container}>
-			{columns.map((column, colIndex) => (
-				<View key={colIndex} style={styles.column}>
-					{column.photos.map(({ photo, index, height }) => (
-						<PhotoCard
-							key={photo.id}
-							photo={photo}
-							index={index}
-							height={height}
-							onPress={() => onPhotoPress(photo, index)}
-							onRetry={onRetry}
-							isDark={isDark}
-						/>
-					))}
-				</View>
-			))}
-		</View>
+		<FlatList
+			data={rows}
+			renderItem={renderRow}
+			keyExtractor={(item) => item.id}
+			initialNumToRender={6}
+			maxToRenderPerBatch={4}
+			windowSize={5}
+			removeClippedSubviews
+			showsVerticalScrollIndicator={false}
+			contentContainerStyle={styles.container}
+			scrollEnabled={false} // Parent ScrollView handles scrolling
+		/>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: {
+		paddingBottom: GAP,
+	},
+	row: {
 		flexDirection: "row",
 		gap: GAP,
+		marginBottom: GAP,
 	},
-	column: {
+	emptyCell: {
 		flex: 1,
-		gap: GAP,
 	},
 	photoCard: {
-		width: "100%",
+		flex: 1,
 		borderRadius: 12,
 		overflow: "hidden",
 		backgroundColor: "#1a1a1a",
@@ -212,22 +264,33 @@ const styles = StyleSheet.create({
 		height: "100%",
 	},
 	pendingImage: {
-		opacity: 0.7,
+		opacity: 0.6,
 	},
-	syncOverlay: {
+	uploadOverlay: {
 		...StyleSheet.absoluteFillObject,
+		backgroundColor: "rgba(0, 0, 0, 0.4)",
 		justifyContent: "center",
 		alignItems: "center",
 	},
-	syncBadge: {
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		padding: 10,
-		borderRadius: 20,
+	uploadIndicator: {
+		flexDirection: "column",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 6,
+		backgroundColor: "rgba(0, 0, 0, 0.6)",
+		paddingVertical: 10,
+		paddingHorizontal: 14,
+		borderRadius: 12,
 	},
-	retryBadge: {
-		backgroundColor: "#ef4444",
-		padding: 10,
-		borderRadius: 20,
+	uploadText: {
+		color: "#fff",
+		fontSize: 11,
+		fontWeight: "600",
+	},
+	retryButton: {
+		flexDirection: "column",
+		alignItems: "center",
+		gap: 4,
 	},
 	photoFooter: {
 		position: "absolute",

@@ -20,6 +20,7 @@ export interface PendingUpload {
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
+const CONCURRENT_UPLOADS = 3; // Process 3 uploads at a time
 
 let isProcessing = false;
 let onUploadComplete: ((id: string, storagePath: string) => void) | null = null;
@@ -63,6 +64,34 @@ export async function processUpload(upload: PendingUpload): Promise<boolean> {
 	}
 }
 
+/**
+ * Process a single upload with retry handling
+ */
+async function processUploadWithRetry(
+	upload: PendingUpload,
+	getLatestUploads: () => PendingUpload[],
+	updateUpload: (id: string, updates: Partial<PendingUpload>) => void
+): Promise<void> {
+	const latestUploads = getLatestUploads();
+	const currentUpload = latestUploads.find((u) => u.id === upload.id);
+
+	if (!currentUpload || currentUpload.status === "failed") {
+		return;
+	}
+
+	updateUpload(upload.id, { status: "syncing" });
+
+	const success = await processUpload(currentUpload);
+
+	if (!success && currentUpload.retryCount < MAX_RETRIES) {
+		updateUpload(upload.id, {
+			status: "failed",
+			retryCount: currentUpload.retryCount + 1,
+		});
+		await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+	}
+}
+
 export async function processUploadQueue(
 	uploads: PendingUpload[],
 	getLatestUploads: () => PendingUpload[],
@@ -71,30 +100,21 @@ export async function processUploadQueue(
 	if (isProcessing) return;
 	isProcessing = true;
 
-	const pendingUploads = uploads.filter((u) => u.status === "pending" || u.status === "syncing");
+	try {
+		const pendingUploads = uploads.filter((u) => u.status === "pending" || u.status === "syncing");
 
-	for (const upload of pendingUploads) {
-		const latestUploads = getLatestUploads();
-		const currentUpload = latestUploads.find((u) => u.id === upload.id);
+		// Process uploads in concurrent batches
+		for (let i = 0; i < pendingUploads.length; i += CONCURRENT_UPLOADS) {
+			const batch = pendingUploads.slice(i, i + CONCURRENT_UPLOADS);
 
-		if (!currentUpload || currentUpload.status === "failed") {
-			continue;
+			// Process batch concurrently
+			await Promise.all(
+				batch.map((upload) => processUploadWithRetry(upload, getLatestUploads, updateUpload))
+			);
 		}
-
-		updateUpload(upload.id, { status: "syncing" });
-
-		const success = await processUpload(currentUpload);
-
-		if (!success && currentUpload.retryCount < MAX_RETRIES) {
-			updateUpload(upload.id, {
-				status: "failed",
-				retryCount: currentUpload.retryCount + 1,
-			});
-			await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-		}
+	} finally {
+		isProcessing = false;
 	}
-
-	isProcessing = false;
 }
 
 export function generateUploadId(): string {

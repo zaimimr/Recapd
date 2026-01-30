@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as VideoThumbnails from "expo-video-thumbnails";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -12,6 +12,7 @@ import {
 	Text,
 	TouchableOpacity,
 	View,
+	type ViewToken,
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { InlineUpgradePrompt } from "@/components/UpgradePrompt";
@@ -36,39 +37,81 @@ const GRID_PADDING = 8;
 const GRID_GAP = 2;
 const PHOTO_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
-// Video thumbnail component with caching
-function VideoThumbnail({ uri, style }: { uri: string; style: object }) {
-	const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
+// Simple thumbnail cache to avoid regenerating
+const thumbnailCache = new Map<string, string>();
+
+// Video thumbnail component with lazy loading and caching
+const VideoThumbnail = memo(function VideoThumbnail({
+	uri,
+	style,
+	isVisible,
+}: {
+	uri: string;
+	style: object;
+	isVisible: boolean;
+}) {
+	const [thumbnailUri, setThumbnailUri] = useState<string | null>(() => {
+		// Check cache on mount
+		return thumbnailCache.get(uri) || null;
+	});
+	const [isGenerating, setIsGenerating] = useState(false);
 
 	useEffect(() => {
+		// Skip if already have thumbnail or currently generating
+		if (thumbnailUri || isGenerating) return;
+
 		let mounted = true;
+		let timeoutId: ReturnType<typeof setTimeout>;
 
 		async function generateThumbnail() {
+			setIsGenerating(true);
 			try {
 				const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, {
 					time: 0,
 				});
 				if (mounted) {
+					thumbnailCache.set(uri, thumbUri);
 					setThumbnailUri(thumbUri);
 				}
 			} catch {
-				// Fall back to showing nothing or a placeholder
+				// Fall back to showing placeholder
+			} finally {
+				if (mounted) setIsGenerating(false);
 			}
 		}
 
-		generateThumbnail();
+		// If visible, generate immediately; otherwise delay to prioritize visible items
+		if (isVisible) {
+			generateThumbnail();
+		} else {
+			timeoutId = setTimeout(generateThumbnail, 500);
+		}
 
 		return () => {
 			mounted = false;
+			if (timeoutId) clearTimeout(timeoutId);
 		};
-	}, [uri]);
+	}, [uri, isVisible, thumbnailUri, isGenerating]);
 
 	if (!thumbnailUri) {
-		return <View style={[style, { backgroundColor: "#1a1a1a" }]} />;
+		return (
+			<View
+				style={[
+					style,
+					{
+						backgroundColor: "#1a1a1a",
+						justifyContent: "center",
+						alignItems: "center",
+					},
+				]}
+			>
+				{isGenerating && <ActivityIndicator size="small" color="#666" />}
+			</View>
+		);
 	}
 
 	return <Image source={{ uri: thumbnailUri }} style={style} />;
-}
+});
 
 function formatVideoDuration(milliseconds: number): string {
 	const totalSeconds = Math.floor(milliseconds / 1000);
@@ -107,8 +150,23 @@ export default function ContributeScreen() {
 	const [permissionDenied, setPermissionDenied] = useState(false);
 	const [scanError, setScanError] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+	// Track visible items for lazy thumbnail loading
+	const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
 
 	const allPhotos = [...photos, ...manualPhotos];
+
+	const onViewableItemsChanged = useCallback(
+		({ viewableItems }: { viewableItems: ViewToken[] }) => {
+			const newVisibleIds = new Set(viewableItems.map((item) => (item.item as LocalPhoto).id));
+			setVisibleIds(newVisibleIds);
+		},
+		[]
+	);
+
+	const viewabilityConfig = useRef({
+		itemVisiblePercentThreshold: 10,
+		minimumViewTime: 100,
+	}).current;
 
 	const loadPhotos = useCallback(async () => {
 		if (!eventId) return;
@@ -424,10 +482,17 @@ export default function ContributeScreen() {
 					data={allPhotos}
 					keyExtractor={(item) => item.id}
 					numColumns={NUM_COLUMNS}
+					onViewableItemsChanged={onViewableItemsChanged}
+					viewabilityConfig={viewabilityConfig}
+					initialNumToRender={15}
+					maxToRenderPerBatch={9}
+					windowSize={5}
+					removeClippedSubviews
 					renderItem={({ item, index }) => {
 						const isSelected = selectedIds.has(item.id);
 						const isUploaded = uploadedIds.has(item.id);
 						const isVideo = item.mediaType === "video";
+						const isVisible = visibleIds.has(item.id);
 						return (
 							<TouchableOpacity
 								style={styles.selectPhotoItem}
@@ -437,7 +502,11 @@ export default function ContributeScreen() {
 								disabled={isUploaded}
 							>
 								{isVideo ? (
-									<VideoThumbnail uri={item.uri} style={styles.selectPhotoImage} />
+									<VideoThumbnail
+										uri={item.uri}
+										style={styles.selectPhotoImage}
+										isVisible={isVisible}
+									/>
 								) : (
 									<Image source={{ uri: item.uri }} style={styles.selectPhotoImage} />
 								)}

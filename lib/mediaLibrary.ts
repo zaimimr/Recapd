@@ -20,6 +20,28 @@ export async function requestMediaPermissions(): Promise<boolean> {
 export const PRO_MAX_VIDEO_DURATION_MS = 300 * 1000;
 export const FREE_MAX_VIDEO_DURATION_MS = 30 * 1000;
 
+// Batch size for processing asset info (prevents too many concurrent API calls)
+const ASSET_INFO_BATCH_SIZE = 10;
+
+/**
+ * Process items in batches to prevent memory issues and API overload
+ */
+async function batchProcess<T, R>(
+	items: T[],
+	batchSize: number,
+	processor: (item: T) => Promise<R>
+): Promise<R[]> {
+	const results: R[] = [];
+
+	for (let i = 0; i < items.length; i += batchSize) {
+		const batch = items.slice(i, i + batchSize);
+		const batchResults = await Promise.all(batch.map(processor));
+		results.push(...batchResults);
+	}
+
+	return results;
+}
+
 export async function getMediaInTimeRange(
 	startTime: Date,
 	endTime: Date,
@@ -31,22 +53,53 @@ export async function getMediaInTimeRange(
 
 	const mediaTypes: MediaLibrary.MediaTypeValue[] = includeVideos ? ["photo", "video"] : ["photo"];
 
-	const assets = await MediaLibrary.getAssetsAsync({
-		mediaType: mediaTypes,
-		sortBy: [MediaLibrary.SortBy.creationTime],
-		first: limit,
-	});
-
 	const startTimestamp = startTime.getTime();
 	const endTimestamp = endTime.getTime();
 
-	const filtered = assets.assets.filter((asset) => {
-		const created = asset.creationTime;
-		return created >= startTimestamp && created <= endTimestamp;
-	});
+	// Use pagination to fetch assets in chunks
+	const PAGE_SIZE = 100;
+	const allFilteredAssets: MediaLibrary.Asset[] = [];
+	let cursor: string | undefined;
+	let hasMore = true;
 
-	const photosWithLocalUri = await Promise.all(
-		filtered.map(async (asset) => {
+	while (hasMore && allFilteredAssets.length < limit) {
+		const result = await MediaLibrary.getAssetsAsync({
+			mediaType: mediaTypes,
+			sortBy: [MediaLibrary.SortBy.creationTime],
+			first: PAGE_SIZE,
+			after: cursor,
+		});
+
+		// Filter assets by time range
+		const filtered = result.assets.filter((asset) => {
+			const created = asset.creationTime;
+			return created >= startTimestamp && created <= endTimestamp;
+		});
+
+		allFilteredAssets.push(...filtered);
+
+		// Check if we should continue pagination
+		hasMore = result.hasNextPage;
+		cursor = result.endCursor;
+
+		// Stop if oldest asset in this batch is before our start time
+		// (since assets are sorted by creation time)
+		if (result.assets.length > 0) {
+			const oldestInBatch = Math.min(...result.assets.map((a) => a.creationTime));
+			if (oldestInBatch < startTimestamp) {
+				hasMore = false;
+			}
+		}
+	}
+
+	// Trim to limit
+	const assetsToProcess = allFilteredAssets.slice(0, limit);
+
+	// Process asset info in batches to prevent memory issues
+	const photosWithLocalUri = await batchProcess(
+		assetsToProcess,
+		ASSET_INFO_BATCH_SIZE,
+		async (asset) => {
 			const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id);
 			return {
 				id: asset.id,
@@ -58,7 +111,7 @@ export async function getMediaInTimeRange(
 				duration: asset.duration,
 				mediaType: asset.mediaType === "photo" ? "photo" : ("video" as "photo" | "video"),
 			};
-		})
+		}
 	);
 
 	return photosWithLocalUri;

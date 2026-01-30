@@ -1,6 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import type React from "react";
+import { TouchableOpacity } from "react-native";
 import { useClientOnlyValue } from "@/components/useClientOnlyValue";
 import { useColorScheme } from "@/components/useColorScheme";
 import Colors from "@/constants/Colors";
@@ -14,6 +15,7 @@ function TabBarIcon(props: {
 
 export default function TabLayout() {
 	const colorScheme = useColorScheme();
+	const router = useRouter();
 
 	return (
 		<Tabs
@@ -35,6 +37,15 @@ export default function TabLayout() {
 				options={{
 					title: "My Events",
 					tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
+					headerRight: () => (
+						<TouchableOpacity
+							onPress={() => router.push("/event/create")}
+							style={{ marginRight: 16 }}
+							hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+						>
+							<FontAwesome name="plus" size={22} color={Colors[colorScheme ?? "light"].tint} />
+						</TouchableOpacity>
+					),
 				}}
 			/>
 			<Tabs.Screen
