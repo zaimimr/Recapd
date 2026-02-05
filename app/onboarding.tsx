@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
 	ActivityIndicator,

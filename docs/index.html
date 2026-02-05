@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recapd - #1 Photo Sharing App for Events | Collect Event Photos Automatically</title>
-  <meta name="description" content="Recapd is the #1 photo sharing app for events. Automatically collect and share photos from weddings, parties, concerts & festivals into one beautiful timeline.">
-  <meta name="keywords" content="photo sharing app, event photo sharing, wedding photo app, party photo sharing, group photo app, event photos, share photos after event, photo collection app, best photo sharing app">
+  <title>Recapd - Event Photo Sharing App | Collect Photos Automatically</title>
+  <meta name="description" content="Recapd is a photo sharing app for events. Automatically collect and share photos from weddings, parties, concerts & festivals into one beautiful timeline.">
+  <meta name="keywords" content="photo sharing app, event photo sharing, wedding photo app, party photo sharing, group photo app, event photos, share photos after event, photo collection app">
   <meta name="robots" content="index, follow">
   <meta name="author" content="Recapd">
   <link rel="canonical" href="https://recapd.app/">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Recapd - #1 Photo Sharing App for Events">
-  <meta property="og:description" content="Automatically collect everyone's photos from your event into one beautiful timeline. The best way to share photos after weddings, parties, and festivals.">
+  <meta property="og:title" content="Recapd - Event Photo Sharing App">
+  <meta property="og:description" content="Automatically collect everyone's photos from your event into one beautiful timeline. Share photos effortlessly after weddings, parties, and festivals.">
   <meta property="og:image" content="https://recapd.app/icon.png">
   <meta property="og:url" content="https://recapd.app/">
   <meta property="og:site_name" content="Recapd">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Recapd - #1 Photo Sharing App for Events">
+  <meta name="twitter:title" content="Recapd - Event Photo Sharing App">
   <meta name="twitter:description" content="Automatically collect everyone's photos from your event into one beautiful timeline.">
   <meta name="twitter:image" content="https://recapd.app/icon.png">
 
@@ -32,7 +32,7 @@
     "name": "Recapd",
     "operatingSystem": "iOS, Android",
     "applicationCategory": "PhotographyApplication",
-    "description": "The best photo sharing app for events. Automatically collect and share photos from weddings, parties, concerts, and festivals.",
+    "description": "Photo sharing app for events. Automatically collect and share photos from weddings, parties, concerts, and festivals.",
     "offers": {
       "@type": "Offer",
       "price": "0",
@@ -802,6 +802,141 @@
       font-size: 0.95rem;
     }
 
+    /* Pricing Section */
+    .pricing {
+      text-align: center;
+    }
+
+    .pricing h2 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+    }
+
+    .pricing-subtitle {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 64px;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      background: var(--card-bg);
+      border-radius: 24px;
+      padding: 40px;
+      border: 1px solid var(--border);
+      text-align: left;
+      position: relative;
+    }
+
+    .pricing-card.featured {
+      border-color: var(--accent);
+      border-width: 2px;
+    }
+
+    .pricing-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: white;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .pricing-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+
+    .pricing-price {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .pricing-price span {
+      font-size: 1rem;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    .pricing-description {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 32px;
+      min-height: 48px;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+
+    .pricing-features li:last-child {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pricing-features svg {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .pricing-note {
+      margin-top: 48px;
+      padding: 24px;
+      background: var(--bg-alt);
+      border-radius: 16px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .pricing-note p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin: 0;
+    }
+
+    .pricing-note strong {
+      color: var(--text);
+    }
+
+    @media (max-width: 768px) {
+      .pricing-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .pricing h2 {
+        font-size: 2rem;
+      }
+    }
+
     /* Final CTA */
     .final-cta {
       text-align: center;
@@ -971,7 +1106,7 @@
       <div class="hero-content">
         <div class="hero-text">
           <img src="icon.png" alt="Recapd app icon - green camera logo for event photo sharing" class="app-icon">
-          <h1>Recapd - The #1 Photo Sharing App for Events</h1>
+          <h1>Recapd - Event Photo Sharing Made Effortless</h1>
           <p class="hero-subtitle">See the night from everyone's eyes. Automatically collect and share photos from weddings, parties, concerts, and festivals into one beautiful timeline.</p>
           <div class="cta-buttons">
             <a href="https://apps.apple.com/no/app/recapd/id6758083751" class="store-badge" target="_blank" rel="noopener noreferrer">
@@ -1173,6 +1308,66 @@
           <h3>No Storage Bloat</h3>
           <p>Shared photos expire after 2 weeks. Your photos stay on your device, but shared links clean themselves up.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing">
+    <div class="container">
+      <h2>Simple, Fair Pricing</h2>
+      <p class="pricing-subtitle">Free for small gatherings. Only the host needs a subscription for larger events.</p>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="pricing-price">$0</div>
+          <p class="pricing-description">Great for small get-togethers with close friends and family.</p>
+          <ul class="pricing-features">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Up to 10 participants per event
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Unlimited photos
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Full resolution downloads
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              14-day photo storage
+            </li>
+          </ul>
+        </div>
+        <div class="pricing-card featured">
+          <div class="pricing-badge">For Larger Events</div>
+          <h3>Pro</h3>
+          <div class="pricing-price">$4.99 <span>/ month</span></div>
+          <p class="pricing-description">Host events of any size. Guests always join for free.</p>
+          <ul class="pricing-features">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Unlimited participants
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Unlimited photos
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Full resolution downloads
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              14-day photo storage
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="pricing-note">
+        <p><strong>Only the event host needs a subscription.</strong> Everyone else joins for free — no account required. Perfect for weddings, parties, and festivals where you want everyone to contribute photos without any friction.</p>
       </div>
     </div>
   </section>

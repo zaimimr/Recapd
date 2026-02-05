@@ -147,8 +147,8 @@ export const useAuthStore = create<AuthState>()(
 
 					const trimmedName = displayName.trim();
 					if (trimmedName.length < 2 || trimmedName.length > 30) {
-					set({ isLoading: false });
-					return null;
+						set({ isLoading: false });
+						return null;
 					}
 					const deviceId = await getOrCreateDeviceId();
 					set({ deviceId });

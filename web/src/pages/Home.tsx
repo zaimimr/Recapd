@@ -12,7 +12,7 @@ export default function Home() {
 								alt="Recapd app icon - green camera logo for event photo sharing"
 								className="app-icon"
 							/>
-							<h1>Recapd - The #1 Photo Sharing App for Events</h1>
+							<h1>Recapd - Event Photo Sharing Made Effortless</h1>
 							<p className="hero-subtitle">
 								See the night from everyone's eyes. Automatically collect and share photos from
 								weddings, parties, concerts, and festivals into one beautiful timeline.
@@ -280,6 +280,93 @@ export default function Home() {
 								links clean themselves up.
 							</p>
 						</div>
+					</div>
+				</div>
+			</section>
+
+			<section className="pricing">
+				<div className="container">
+					<h2>Simple, Fair Pricing</h2>
+					<p className="pricing-subtitle">
+						Free for small gatherings. Only the host needs a subscription for larger events.
+					</p>
+					<div className="pricing-grid">
+						<div className="pricing-card">
+							<h3>Free</h3>
+							<div className="pricing-price">$0</div>
+							<p className="pricing-description">
+								Great for small get-togethers with close friends and family.
+							</p>
+							<ul className="pricing-features">
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Up to 10 participants per event
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Unlimited photos
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Full resolution downloads
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									14-day photo storage
+								</li>
+							</ul>
+						</div>
+						<div className="pricing-card featured">
+							<div className="pricing-badge">For Larger Events</div>
+							<h3>Pro</h3>
+							<div className="pricing-price">
+								$4.99 <span>/ month</span>
+							</div>
+							<p className="pricing-description">
+								Host events of any size. Guests always join for free.
+							</p>
+							<ul className="pricing-features">
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Unlimited participants
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Unlimited photos
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Full resolution downloads
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									14-day photo storage
+								</li>
+							</ul>
+						</div>
+					</div>
+					<div className="pricing-note">
+						<p>
+							<strong>Only the event host needs a subscription.</strong> Everyone else joins for
+							free — no account required. Perfect for weddings, parties, and festivals where you
+							want everyone to contribute photos without any friction.
+						</p>
 					</div>
 				</div>
 			</section>
