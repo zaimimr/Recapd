@@ -188,7 +188,6 @@ export async function getScheduledRemindersForEvent(eventId: string): Promise<Sc
 
 export async function cleanupExpiredReminders(): Promise<void> {
 	const reminders = await getScheduledReminders();
-	const _now = new Date();
 
 	const activeReminders = reminders.filter((r) => {
 		const scheduledDate = new Date(r.scheduledFor);

@@ -1,4 +1,5 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { format } from "date-fns";
 import {
 	ActivityIndicator,
@@ -10,6 +11,7 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native";
+import { getAvatarColor } from "@/lib/colors";
 import { getPhotoUrl } from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
 import type { MediaItemWithUser } from "@/types/database";
@@ -70,21 +72,6 @@ export function clusterPhotos(photos: MergedMediaItem[]): Cluster[] {
 
 	clusters.push({ time: current[0].captured_at, photos: current });
 	return clusters;
-}
-
-function getAvatarColor(name: string): string {
-	const colors = [
-		"#f87171",
-		"#fb923c",
-		"#fbbf24",
-		"#a3e635",
-		"#34d399",
-		"#22d3ee",
-		"#818cf8",
-		"#c084fc",
-	];
-	const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-	return colors[hash % colors.length];
 }
 
 function ClusterRow({

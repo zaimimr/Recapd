@@ -30,12 +30,18 @@ async function persistPendingUploads(uploads: PendingUpload[]) {
 async function loadPendingUploads(): Promise<PendingUpload[]> {
 	const data = await AsyncStorage.getItem(PENDING_UPLOADS_KEY);
 	if (!data) return [];
-	const uploads = JSON.parse(data);
-	return uploads.map((u: PendingUpload & { capturedAt: string }) => ({
-		...u,
-		capturedAt: safeDate(u.capturedAt),
-		status: u.status === "syncing" ? "pending" : u.status,
-	}));
+	try {
+		const uploads = JSON.parse(data);
+		return uploads.map((u: PendingUpload & { capturedAt: string }) => ({
+			...u,
+			capturedAt: safeDate(u.capturedAt),
+			status: u.status === "syncing" ? "pending" : u.status,
+		}));
+	} catch {
+		console.error("Corrupted pending uploads data, clearing");
+		await AsyncStorage.removeItem(PENDING_UPLOADS_KEY);
+		return [];
+	}
 }
 
 export interface EventWithParticipants extends Event {
@@ -121,7 +127,11 @@ export const useEventStore = create<EventState>((set, get) => {
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
 			if (completedUpload) {
-				get().fetchMediaItems(completedUpload.eventId);
+				try {
+					await get().fetchMediaItems(completedUpload.eventId);
+				} catch (error) {
+					console.error("Failed to refresh media items after upload:", error);
+				}
 			}
 		},
 		onFailed: async (id, error) => {
@@ -344,7 +354,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			try {
 				set({ isLoading: true, error: null });
 
-				const { data: existing } = await supabase
+				const { data: existing, error: existingError } = await supabase
 					.from("event_participants")
 					.select("id")
 					.eq("event_id", eventId)
@@ -356,6 +366,9 @@ export const useEventStore = create<EventState>((set, get) => {
 					return true;
 				}
 
+				if (existingError && existingError.code !== "PGRST116") {
+					throw existingError;
+				}
 				const participantData: EventParticipantInsert = {
 					event_id: eventId,
 					user_id: userId,
@@ -447,7 +460,7 @@ export const useEventStore = create<EventState>((set, get) => {
 										.select("display_name")
 										.eq("id", newItem.uploaded_by_user_id)
 										.single();
-									newItem.uploader = userData;
+									newItem.uploader = userData ?? { display_name: "Unknown" };
 								}
 								set({
 									mediaItems: [...mediaItems, newItem].sort(
@@ -502,12 +515,13 @@ export const useEventStore = create<EventState>((set, get) => {
 
 						if (payload.eventType === "INSERT") {
 							const newParticipant = payload.new as EventParticipant;
-							// Fetch user details for the new participant
 							const { data: userData } = await supabase
 								.from("users")
 								.select("display_name")
 								.eq("id", newParticipant.user_id)
 								.single();
+
+							if (!userData) return;
 
 							const participantWithUser = {
 								...newParticipant,

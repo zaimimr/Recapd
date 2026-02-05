@@ -242,7 +242,7 @@ export async function syncSubscriptionToDatabase(
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 
 	try {
-		await supabase
+		const { error } = await supabase
 			.from("users")
 			.update({
 				subscription_tier: status.isActive ? "pro" : "free",
@@ -251,6 +251,9 @@ export async function syncSubscriptionToDatabase(
 				subscription_id: customerInfo.originalAppUserId,
 			})
 			.eq("id", userId);
+		if (error) {
+			console.error("Failed to sync subscription to database:", error);
+		}
 	} catch (error) {
 		console.error("Failed to sync subscription to database:", error);
 	}

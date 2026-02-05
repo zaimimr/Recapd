@@ -101,7 +101,12 @@ export default function EventScreen() {
 	// Refresh participant stats when currentEvent participants change (real-time updates)
 	useEffect(() => {
 		if (id && currentEvent?.participants) {
-			fetchParticipantStats(id).then(setParticipants);
+			const currentEventId = id;
+			fetchParticipantStats(id).then((stats) => {
+				if (currentEventId === id) {
+					setParticipants(stats);
+				}
+			});
 		}
 	}, [id, fetchParticipantStats, currentEvent?.participants]);
 
@@ -220,8 +225,8 @@ export default function EventScreen() {
 						successCount++;
 					}
 				}
-			} catch {
-				// Continue with next photo
+			} catch (error) {
+				console.error(`Failed to download photo ${photo.id}:`, error);
 			}
 		}
 

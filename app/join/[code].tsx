@@ -47,10 +47,15 @@ export default function JoinByCodeScreen() {
 		async function lookupEvent() {
 			if (code.length === 6 && !lookupDone) {
 				clearError();
-				const event = await fetchEventByCode(code);
-				setLookupDone(true);
-				if (event) {
-					setEventPreview(event);
+				try {
+					const event = await fetchEventByCode(code);
+					setLookupDone(true);
+					if (event) {
+						setEventPreview(event);
+					}
+				} catch (error) {
+					console.error("Event lookup failed:", error);
+					setLookupDone(true);
 				}
 			}
 		}

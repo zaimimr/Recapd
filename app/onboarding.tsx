@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import {
 	ActivityIndicator,
@@ -41,7 +41,7 @@ export default function OnboardingScreen() {
 		const user = await createUser(trimmedName);
 
 		if (user) {
-			router.replace((returnTo || "/(tabs)") as any);
+			router.replace((returnTo || "/(tabs)") as Href);
 		} else {
 			setError("Failed to create profile. Please try again.");
 		}

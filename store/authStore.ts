@@ -23,7 +23,7 @@ interface AuthState {
 	deviceId: string | null;
 	initializeAuth: () => Promise<void>;
 	createUser: (displayName: string) => Promise<User | null>;
-	updateDisplayName: (displayName: string) => Promise<void>;
+	updateDisplayName: (displayName: string) => Promise<boolean>;
 	logout: () => Promise<void>;
 }
 
@@ -119,7 +119,13 @@ export const useAuthStore = create<AuthState>()(
 						const updateData: UserUpdate = {
 							last_seen_at: new Date().toISOString(),
 						};
-						await supabase.from("users").update(updateData).eq("id", existingUser.id);
+						const { error: updateError } = await supabase
+							.from("users")
+							.update(updateData)
+							.eq("id", existingUser.id);
+						if (updateError) {
+							console.error("Failed to update last_seen_at:", updateError);
+						}
 
 						set({
 							user: existingUser as User,
@@ -139,11 +145,16 @@ export const useAuthStore = create<AuthState>()(
 				try {
 					set({ isLoading: true });
 
+					const trimmedName = displayName.trim();
+					if (trimmedName.length < 2 || trimmedName.length > 30) {
+					set({ isLoading: false });
+					return null;
+					}
 					const deviceId = await getOrCreateDeviceId();
 					set({ deviceId });
 
 					const insertData: UserInsert = {
-						display_name: displayName,
+						display_name: trimmedName,
 						device_id: deviceId,
 					};
 
@@ -160,9 +171,9 @@ export const useAuthStore = create<AuthState>()(
 				}
 			},
 
-			updateDisplayName: async (displayName: string) => {
+			updateDisplayName: async (displayName: string): Promise<boolean> => {
 				const { user } = get();
-				if (!user) return;
+				if (!user) return false;
 
 				try {
 					const updateData: UserUpdate = { display_name: displayName };
@@ -171,8 +182,10 @@ export const useAuthStore = create<AuthState>()(
 					if (error) throw error;
 
 					set({ user: { ...user, display_name: displayName } });
+					return true;
 				} catch (error) {
 					console.error("Update display name error:", error);
+					return false;
 				}
 			},
 

@@ -67,15 +67,16 @@ function RootLayoutNav() {
 	}, [initializePendingUploads]);
 
 	useEffect(() => {
-		if (user?.id) {
-			registerForPushNotifications().then((token) => {
-				if (token && user.push_token !== token) {
-					savePushToken(user.id, token);
-				}
-			});
-			initializeSubscription(user.id);
-		}
-	}, [user?.id, initializeSubscription, user.push_token]);
+		if (!user?.id) return;
+		const userId = user.id;
+		const currentPushToken = user.push_token;
+		registerForPushNotifications().then((token) => {
+			if (token && currentPushToken !== token) {
+				savePushToken(userId, token);
+			}
+		});
+		initializeSubscription(userId);
+	}, [user?.id, initializeSubscription, user?.push_token]);
 
 	return (
 		<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
