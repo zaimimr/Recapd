@@ -24,9 +24,22 @@ interface GuestSheetProps {
 	onClose: () => void;
 	participants: ParticipantWithStats[];
 	isDark: boolean;
+	isHost: boolean;
+	currentUserId: string;
+	onRemoveParticipant: (userId: string, displayName: string) => void;
+	onLeaveEvent: () => void;
 }
 
-export default function GuestSheet({ visible, onClose, participants, isDark }: GuestSheetProps) {
+export default function GuestSheet({
+	visible,
+	onClose,
+	participants,
+	isDark,
+	isHost,
+	currentUserId,
+	onRemoveParticipant,
+	onLeaveEvent,
+}: GuestSheetProps) {
 	const insets = useSafeAreaInsets();
 	const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 	const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -155,40 +168,62 @@ export default function GuestSheet({ visible, onClose, participants, isDark }: G
 						contentContainerStyle={styles.list}
 						showsVerticalScrollIndicator={false}
 						bounces={false}
-						renderItem={({ item }) => (
-							<View style={styles.participantRow}>
-								<View
-									style={[styles.avatar, { backgroundColor: getAvatarColor(item.displayName) }]}
-								>
-									<Text style={styles.avatarText}>{item.displayName.charAt(0).toUpperCase()}</Text>
-								</View>
-								<View style={styles.participantInfo}>
-									<View style={styles.nameRow}>
-										<Text style={[styles.participantName, isDark && styles.textDark]}>
-											{item.displayName}
+						renderItem={({ item }) => {
+							const isCurrentUser = item.userId === currentUserId;
+							const canRemove = isHost && item.role !== "host" && !isCurrentUser;
+
+							return (
+								<View style={styles.participantRow}>
+									<View
+										style={[styles.avatar, { backgroundColor: getAvatarColor(item.displayName) }]}
+									>
+										<Text style={styles.avatarText}>
+											{item.displayName.charAt(0).toUpperCase()}
 										</Text>
-										{item.role === "host" && (
-											<View style={styles.hostBadge}>
-												<Text style={styles.hostBadgeText}>Host</Text>
-											</View>
-										)}
 									</View>
-									<Text style={styles.status}>
-										{item.photoCount > 0
-											? "shared"
-											: item.noPhotosToUpload
-												? "nothing to share"
-												: "waiting"}
-									</Text>
+									<View style={styles.participantInfo}>
+										<View style={styles.nameRow}>
+											<Text style={[styles.participantName, isDark && styles.textDark]}>
+												{item.displayName}
+											</Text>
+											{isCurrentUser && <Text style={styles.youLabel}>(You)</Text>}
+											{item.role === "host" && (
+												<View style={styles.hostBadge}>
+													<Text style={styles.hostBadgeText}>Host</Text>
+												</View>
+											)}
+										</View>
+										<Text style={styles.status}>
+											{item.photoCount > 0
+												? "shared"
+												: item.noPhotosToUpload
+													? "nothing to share"
+													: "waiting"}
+										</Text>
+									</View>
+									{canRemove && (
+										<TouchableOpacity
+											onPress={() => onRemoveParticipant(item.userId, item.displayName)}
+											style={styles.removeButton}
+											hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+										>
+											<FontAwesome name="minus-circle" size={20} color="#ef4444" />
+										</TouchableOpacity>
+									)}
+									<View style={styles.photoCount}>
+										<Text style={[styles.photoCountValue, isDark && styles.photoCountValueDark]}>
+											{item.photoCount}
+										</Text>
+										<FontAwesome name="camera" size={12} color="#8e8e93" />
+									</View>
 								</View>
-								<View style={styles.photoCount}>
-									<Text style={[styles.photoCountValue, isDark && styles.photoCountValueDark]}>
-										{item.photoCount}
-									</Text>
-									<FontAwesome name="camera" size={12} color={isDark ? "#8e8e93" : "#8e8e93"} />
-								</View>
-							</View>
-						)}
+							);
+						}}
+						ListFooterComponent={
+							<TouchableOpacity style={styles.leaveButton} onPress={onLeaveEvent}>
+								<Text style={styles.leaveButtonText}>Leave Event</Text>
+							</TouchableOpacity>
+						}
 					/>
 				</Animated.View>
 			</View>
@@ -323,5 +358,23 @@ const styles = StyleSheet.create({
 	},
 	textDark: {
 		color: "#fff",
+	},
+	youLabel: {
+		fontSize: 14,
+		color: "#8e8e93",
+	},
+	removeButton: {
+		paddingHorizontal: 8,
+	},
+	leaveButton: {
+		alignItems: "center",
+		paddingVertical: 14,
+		marginTop: 8,
+		marginBottom: 8,
+	},
+	leaveButtonText: {
+		color: "#ef4444",
+		fontSize: 16,
+		fontWeight: "500",
 	},
 });

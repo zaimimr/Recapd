@@ -19,7 +19,7 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
-import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
+import { useIsPro } from "@/store/subscriptionStore";
 
 export default function CreateEventScreen() {
 	const router = useRouter();
@@ -29,7 +29,6 @@ export default function CreateEventScreen() {
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
 	const isPro = useIsPro();
-	const { showPaywall } = useSubscriptionStore();
 
 	// Calculate default dates for initial state
 	const now = new Date();
@@ -206,26 +205,14 @@ export default function CreateEventScreen() {
 						<View style={[styles.proBadge, isDark && styles.proBadgeDark]}>
 							<Text style={styles.proBadgeTitle}>Pro Plan Active</Text>
 							<Text style={[styles.proBadgeSubtitle, isDark && styles.textMuted]}>
-								Unlimited participants • Video uploads
+								Unlimited participants {"\u00B7"} 5-min videos
 							</Text>
 						</View>
 					) : (
-						<View style={[styles.freeTierBanner, isDark && styles.freeTierBannerDark]}>
-							<Text style={[styles.freeTierTitle, isDark && styles.textDark]}>
-								Free Plan: Up to 12 participants
+						<View style={[styles.freeTierInfo, isDark && styles.freeTierInfoDark]}>
+							<Text style={[styles.freeTierInfoText, isDark && styles.textMuted]}>
+								Free plan — up to 12 participants, 30s videos
 							</Text>
-							<Text style={[styles.freeTierSubtitle, isDark && styles.textMuted]}>
-								Want more? Upgrade to Pro for:
-							</Text>
-							<View style={styles.benefitsList}>
-								<Text style={[styles.benefitItem, isDark && styles.textMuted]}>
-									Unlimited participants
-								</Text>
-								<Text style={[styles.benefitItem, isDark && styles.textMuted]}>Video uploads</Text>
-							</View>
-							<TouchableOpacity style={styles.upgradeButton} onPress={showPaywall}>
-								<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
-							</TouchableOpacity>
 						</View>
 					))}
 			</View>
@@ -454,46 +441,17 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		color: "#92400e",
 	},
-	freeTierBanner: {
-		backgroundColor: "#fef9c3",
+	freeTierInfo: {
+		backgroundColor: "#f5f5f5",
 		borderRadius: 12,
-		padding: 16,
-		borderWidth: 1,
-		borderColor: "#eab308",
+		padding: 14,
 	},
-	freeTierBannerDark: {
-		backgroundColor: "#422006",
-		borderColor: "#a16207",
+	freeTierInfoDark: {
+		backgroundColor: "#1a1a1a",
 	},
-	freeTierTitle: {
-		fontSize: 15,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 8,
-	},
-	freeTierSubtitle: {
+	freeTierInfoText: {
 		fontSize: 14,
 		color: "#666",
-		marginBottom: 12,
-	},
-	benefitsList: {
-		gap: 6,
-		marginBottom: 16,
-	},
-	benefitItem: {
-		fontSize: 14,
-		color: "#666",
-		paddingLeft: 8,
-	},
-	upgradeButton: {
-		backgroundColor: "#000",
-		paddingVertical: 12,
-		borderRadius: 10,
-		alignItems: "center",
-	},
-	upgradeButtonText: {
-		color: "#fff",
-		fontSize: 15,
-		fontWeight: "600",
+		textAlign: "center",
 	},
 });

@@ -17,8 +17,7 @@ export async function requestMediaPermissions(): Promise<boolean> {
 	return status === "granted";
 }
 
-export const PRO_MAX_VIDEO_DURATION_MS = 300 * 1000;
-export const FREE_MAX_VIDEO_DURATION_MS = 30 * 1000;
+export { FREE_MAX_VIDEO_DURATION_MS, PRO_MAX_VIDEO_DURATION_MS } from "@/types/subscription";
 
 // Batch size for processing asset info (prevents too many concurrent API calls)
 const ASSET_INFO_BATCH_SIZE = 10;

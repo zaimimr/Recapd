@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { sendParticipantLimitNotification } from "@/lib/notifications";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { supabase } from "@/lib/supabase";
 import {
 	generateUploadId,
@@ -108,6 +109,15 @@ interface EventState {
 	) => Promise<Set<string>>;
 	markNoPhotosToUpload: (eventId: string, userId: string) => Promise<boolean>;
 	getNoPhotosToUpload: (eventId: string, userId: string) => Promise<boolean>;
+	leaveEvent: (
+		eventId: string,
+		userId: string
+	) => Promise<{ success: boolean; isLastHost?: boolean }>;
+	removeParticipant: (
+		eventId: string,
+		targetUserId: string,
+		hostUserId: string
+	) => Promise<boolean>;
 }
 
 function generateJoinCode(): string {
@@ -228,9 +238,30 @@ export const useEventStore = create<EventState>((set, get) => {
 					.select("*", { count: "exact", head: true })
 					.eq("event_id", data.id);
 
+				const { data: participants } = await supabase
+					.from("event_participants")
+					.select("role, user_id")
+					.eq("event_id", data.id);
+
+				const host = participants?.find((p) => p.role === "host");
+				let hostIsPro = false;
+
+				if (host) {
+					const { data: hostUser } = await supabase
+						.from("users")
+						.select("subscription_tier")
+						.eq("id", host.user_id)
+						.single();
+
+					if (hostUser) {
+						hostIsPro = hostUser.subscription_tier === "pro";
+					}
+				}
+
 				const eventWithCount: EventWithParticipants = {
 					...(data as Event),
 					participant_count: count || 0,
+					hostIsPro,
 				};
 				set({ isLoading: false });
 				return eventWithCount;
@@ -369,6 +400,36 @@ export const useEventStore = create<EventState>((set, get) => {
 				if (existingError && existingError.code !== "PGRST116") {
 					throw existingError;
 				}
+
+				if (SUBSCRIPTIONS_ENABLED) {
+					const { count: currentCount } = await supabase
+						.from("event_participants")
+						.select("*", { count: "exact", head: true })
+						.eq("event_id", eventId);
+
+					const { data: eventData } = await supabase
+						.from("events")
+						.select("created_by_user_id")
+						.eq("id", eventId)
+						.single();
+
+					if (eventData?.created_by_user_id) {
+						const { data: hostUser } = await supabase
+							.from("users")
+							.select("subscription_tier")
+							.eq("id", eventData.created_by_user_id)
+							.single();
+
+						if (
+							(currentCount || 0) >= FREE_PARTICIPANT_LIMIT &&
+							hostUser?.subscription_tier !== "pro"
+						) {
+							set({ error: "Event is full", isLoading: false });
+							return false;
+						}
+					}
+				}
+
 				const participantData: EventParticipantInsert = {
 					event_id: eventId,
 					user_id: userId,
@@ -1053,6 +1114,87 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				return data.no_photos_to_upload ?? false;
 			} catch {
+				return false;
+			}
+		},
+
+		leaveEvent: async (eventId: string, userId: string) => {
+			try {
+				const { data: participants, error: fetchError } = await supabase
+					.from("event_participants")
+					.select("user_id, role")
+					.eq("event_id", eventId);
+
+				if (fetchError || !participants) {
+					return { success: false };
+				}
+
+				const hosts = participants.filter((p) => p.role === "host");
+				const isUserHost = hosts.some((p) => p.user_id === userId);
+
+				if (isUserHost && hosts.length === 1) {
+					return { success: false, isLastHost: true };
+				}
+
+				const { error: deleteError } = await supabase
+					.from("event_participants")
+					.delete()
+					.eq("event_id", eventId)
+					.eq("user_id", userId);
+
+				if (deleteError) throw deleteError;
+
+				const pendingWithoutEvent = get().pendingUploads.filter((u) => u.eventId !== eventId);
+				await persistPendingUploads(pendingWithoutEvent);
+
+				set((state) => ({
+					events: state.events.filter((e) => e.id !== eventId),
+					currentEvent: state.currentEvent?.id === eventId ? null : state.currentEvent,
+					pendingUploads: pendingWithoutEvent,
+				}));
+
+				return { success: true };
+			} catch (error) {
+				console.error("Leave event error:", error);
+				return { success: false };
+			}
+		},
+
+		removeParticipant: async (eventId: string, targetUserId: string, hostUserId: string) => {
+			try {
+				const { data: caller, error: callerError } = await supabase
+					.from("event_participants")
+					.select("role")
+					.eq("event_id", eventId)
+					.eq("user_id", hostUserId)
+					.single();
+
+				if (callerError || !caller || caller.role !== "host") {
+					return false;
+				}
+
+				const { data: target, error: targetError } = await supabase
+					.from("event_participants")
+					.select("role")
+					.eq("event_id", eventId)
+					.eq("user_id", targetUserId)
+					.single();
+
+				if (targetError || !target || target.role === "host") {
+					return false;
+				}
+
+				const { error: deleteError } = await supabase
+					.from("event_participants")
+					.delete()
+					.eq("event_id", eventId)
+					.eq("user_id", targetUserId);
+
+				if (deleteError) throw deleteError;
+
+				return true;
+			} catch (error) {
+				console.error("Remove participant error:", error);
 				return false;
 			}
 		},

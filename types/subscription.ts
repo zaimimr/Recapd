@@ -3,6 +3,9 @@ import type { SubscriptionTier } from "./database";
 export const FREE_PARTICIPANT_LIMIT = 12;
 export const PARTICIPANT_WARNING_THRESHOLD = 10;
 
+export const FREE_MAX_VIDEO_DURATION_MS = 30_000;
+export const PRO_MAX_VIDEO_DURATION_MS = 300_000;
+
 export interface TierLimits {
 	maxParticipants: number;
 	canUploadVideos: boolean;
@@ -17,7 +20,7 @@ export interface TierInfo {
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
 	free: {
 		maxParticipants: FREE_PARTICIPANT_LIMIT,
-		canUploadVideos: false,
+		canUploadVideos: true,
 	},
 	pro: {
 		maxParticipants: Infinity,
@@ -46,8 +49,12 @@ export function getTierInfo(tier: SubscriptionTier): TierInfo {
 	return TIER_INFO[tier];
 }
 
-export function canUploadVideos(userIsPro: boolean, hostIsPro: boolean): boolean {
-	return userIsPro || hostIsPro;
+export function canUploadVideos(_userIsPro: boolean, _hostIsPro: boolean): boolean {
+	return true;
+}
+
+export function getMaxVideoDurationMs(isPro: boolean, hostIsPro: boolean): number {
+	return isPro || hostIsPro ? PRO_MAX_VIDEO_DURATION_MS : FREE_MAX_VIDEO_DURATION_MS;
 }
 
 export function isAtParticipantLimit(count: number, hostIsPro: boolean): boolean {

@@ -15,21 +15,18 @@ import {
 	type ViewToken,
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
-import { InlineUpgradePrompt } from "@/components/UpgradePrompt";
 import { useColorScheme } from "@/components/useColorScheme";
 import {
-	FREE_MAX_VIDEO_DURATION_MS,
 	getMediaInTimeRange,
 	type LocalPhoto,
-	PRO_MAX_VIDEO_DURATION_MS,
 	pickMediaFromLibrary,
 	requestMediaPermissions,
 } from "@/lib/mediaLibrary";
 import { formatDuration } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
-import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
-import { canUploadVideos as checkCanUploadVideos } from "@/types/subscription";
+import { useIsPro } from "@/store/subscriptionStore";
+import { getMaxVideoDurationMs } from "@/types/subscription";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
@@ -134,13 +131,8 @@ export default function ContributeScreen() {
 	const isDark = colorScheme === "dark";
 
 	const isPro = useIsPro();
-	const { showPaywall } = useSubscriptionStore();
 	const hostIsPro = currentEvent?.hostIsPro || false;
-	const hostDisplayName = currentEvent?.hostDisplayName || "the host";
-	const canUploadVideos = checkCanUploadVideos(isPro, hostIsPro);
-	const maxVideoDurationMilliseconds = canUploadVideos
-		? PRO_MAX_VIDEO_DURATION_MS
-		: FREE_MAX_VIDEO_DURATION_MS;
+	const maxVideoDurationMilliseconds = getMaxVideoDurationMs(isPro, hostIsPro);
 
 	const [step, setStep] = useState<Step>("loading");
 	const [photos, setPhotos] = useState<LocalPhoto[]>([]);
@@ -191,7 +183,7 @@ export default function ContributeScreen() {
 			const startTime = new Date(event.starts_at);
 			const endTime = new Date(event.ends_at);
 
-			const foundMedia = await getMediaInTimeRange(startTime, endTime, 1000, canUploadVideos);
+			const foundMedia = await getMediaInTimeRange(startTime, endTime, 1000, true);
 
 			const filteredMedia = foundMedia.filter((item) => {
 				if (item.mediaType === "video" && maxVideoDurationMilliseconds > 0) {
@@ -226,7 +218,6 @@ export default function ContributeScreen() {
 		fetchEventById,
 		getUploadedPhotoIdsForEvent,
 		user,
-		canUploadVideos,
 		maxVideoDurationMilliseconds,
 	]);
 
@@ -259,28 +250,15 @@ export default function ContributeScreen() {
 	}
 
 	async function handleManualPick() {
-		const {
-			media: picked,
-			videosFiltered,
-			videosTooLong,
-		} = await pickMediaFromLibrary({
-			includeVideos: canUploadVideos,
+		const { media: picked, videosTooLong } = await pickMediaFromLibrary({
+			includeVideos: true,
 			maxVideoDuration: maxVideoDurationMilliseconds,
 		});
 
-		if (videosFiltered && !canUploadVideos) {
-			Alert.alert(
-				"Video Uploads Require Pro",
-				`Videos require Pro. Upgrade yourself or ask ${hostDisplayName} to upgrade.`,
-				[
-					{ text: "Not Now", style: "cancel" },
-					{ text: "Upgrade", onPress: () => showPaywall() },
-				]
-			);
-		} else if (videosTooLong > 0) {
+		if (videosTooLong > 0) {
 			Alert.alert(
 				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped because they exceed the ${formatVideoDuration(maxVideoDurationMilliseconds)} limit for your plan.`
+				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
 			);
 		}
 
@@ -294,28 +272,15 @@ export default function ContributeScreen() {
 	}
 
 	async function handleManualPickFromError() {
-		const {
-			media: picked,
-			videosFiltered,
-			videosTooLong,
-		} = await pickMediaFromLibrary({
-			includeVideos: canUploadVideos,
+		const { media: picked, videosTooLong } = await pickMediaFromLibrary({
+			includeVideos: true,
 			maxVideoDuration: maxVideoDurationMilliseconds,
 		});
 
-		if (videosFiltered && !canUploadVideos) {
-			Alert.alert(
-				"Video Uploads Require Pro",
-				`Videos require Pro. Upgrade yourself or ask ${hostDisplayName} to upgrade.`,
-				[
-					{ text: "Not Now", style: "cancel" },
-					{ text: "Upgrade", onPress: () => showPaywall() },
-				]
-			);
-		} else if (videosTooLong > 0) {
+		if (videosTooLong > 0) {
 			Alert.alert(
 				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped because they exceed the ${formatVideoDuration(maxVideoDurationMilliseconds)} limit for your plan.`
+				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
 			);
 		}
 
@@ -542,14 +507,6 @@ export default function ContributeScreen() {
 				/>
 
 				<View style={[styles.selectFooter, isDark && styles.selectFooterDark]}>
-					{!canUploadVideos && (
-						<View style={styles.upgradePromptContainer}>
-							<InlineUpgradePrompt
-								message="Upgrade to Pro to upload videos"
-								onPress={() => showPaywall()}
-							/>
-						</View>
-					)}
 					<TouchableOpacity
 						style={[styles.uploadButton, selectedIds.size === 0 && styles.uploadButtonDisabled]}
 						onPress={handleUpload}
@@ -790,20 +747,20 @@ const styles = StyleSheet.create({
 		borderTopColor: "#333",
 	},
 	uploadButton: {
-		backgroundColor: "#007AFF",
+		backgroundColor: "#3b82f6",
 		paddingVertical: 18,
 		borderRadius: 14,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#007AFF",
+		shadowColor: "#3b82f6",
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.3,
 		shadowRadius: 8,
 		elevation: 8,
 	},
 	uploadButtonDisabled: {
-		backgroundColor: "#c7c7cc",
+		opacity: 0.5,
 		shadowOpacity: 0,
 	},
 	uploadIcon: {
@@ -839,8 +796,5 @@ const styles = StyleSheet.create({
 		color: "#fff",
 		fontSize: 10,
 		fontWeight: "600",
-	},
-	upgradePromptContainer: {
-		marginBottom: 12,
 	},
 });

@@ -4,8 +4,10 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
+import { useIsPro } from "@/store/subscriptionStore";
 
 function getEventStatus(event: EventWithParticipants): {
 	label: string;
@@ -29,6 +31,7 @@ export default function HomeScreen() {
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
 	const user = useAuthStore((state) => state.user);
+	const isPro = useIsPro();
 	const { events, fetchUserEvents, subscribeToUserEvents } = useEventStore();
 
 	useEffect(() => {
@@ -61,7 +64,14 @@ export default function HomeScreen() {
 			contentContainerStyle={styles.contentContainer}
 		>
 			<View style={styles.header}>
-				<Text style={[styles.logo, isDark && styles.textDark]}>Recapd</Text>
+				<View style={styles.logoRow}>
+					<Text style={[styles.logo, isDark && styles.textDark]}>Recapd</Text>
+					{SUBSCRIPTIONS_ENABLED && isPro && (
+						<View style={styles.proBadge}>
+							<Text style={styles.proBadgeText}>PRO</Text>
+						</View>
+					)}
+				</View>
 				<Text style={[styles.tagline, isDark && styles.textMuted]}>
 					See the night from everyone's eyes
 				</Text>
@@ -140,11 +150,27 @@ const styles = StyleSheet.create({
 		marginTop: 60,
 		alignItems: "center",
 	},
+	logoRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 8,
+	},
 	logo: {
 		fontSize: 42,
 		fontWeight: "700",
 		color: "#000",
 		letterSpacing: -1,
+	},
+	proBadge: {
+		backgroundColor: "#f59e0b",
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		borderRadius: 6,
+	},
+	proBadgeText: {
+		fontSize: 12,
+		fontWeight: "700",
+		color: "#fff",
 	},
 	tagline: {
 		fontSize: 16,

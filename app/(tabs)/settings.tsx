@@ -6,6 +6,7 @@ import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
+	ActivityIndicator,
 	Alert,
 	Keyboard,
 	Linking,
@@ -42,8 +43,10 @@ export default function SettingsScreen() {
 		status,
 		showPaywall,
 		showCustomerCenter,
+		restore,
 		isLoading: subscriptionLoading,
 	} = useSubscriptionStore();
+	const [isRestoring, setIsRestoring] = useState(false);
 
 	const [isEditingName, setIsEditingName] = useState(false);
 	const [editedName, setEditedName] = useState(user?.display_name || "");
@@ -362,7 +365,7 @@ export default function SettingsScreen() {
 									? status.expiresAt
 										? `Renews ${status.expiresAt.toLocaleDateString()}`
 										: "Active subscription"
-									: "Upgrade for unlimited features"}
+									: "Longer videos & unlimited participants"}
 							</Text>
 						</View>
 						{isPro && (
@@ -384,32 +387,38 @@ export default function SettingsScreen() {
 							</Text>
 						</TouchableOpacity>
 					) : (
-						<TouchableOpacity
-							style={styles.upgradeButton}
-							onPress={showPaywall}
-							disabled={subscriptionLoading}
-						>
-							<FontAwesome name="star" size={16} color="#fff" />
-							<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
-						</TouchableOpacity>
-					)}
-
-					{!isPro && (
-						<View style={styles.featuresPreview}>
-							<Text style={[styles.featuresTitle, isDark && styles.textMuted]}>
-								Pro features include:
-							</Text>
-							<View style={styles.featureItem}>
-								<FontAwesome name="check" size={12} color="#22c55e" />
-								<Text style={[styles.featureText, isDark && styles.textMuted]}>
-									Unlimited participants
-								</Text>
-							</View>
-							<View style={styles.featureItem}>
-								<FontAwesome name="check" size={12} color="#22c55e" />
-								<Text style={[styles.featureText, isDark && styles.textMuted]}>Video uploads</Text>
-							</View>
-						</View>
+						<>
+							<TouchableOpacity
+								style={styles.upgradeButton}
+								onPress={showPaywall}
+								disabled={subscriptionLoading}
+							>
+								<FontAwesome name="star" size={16} color="#fff" />
+								<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								style={styles.restoreButton}
+								onPress={async () => {
+									setIsRestoring(true);
+									const result = await restore();
+									setIsRestoring(false);
+									if (result.success) {
+										Alert.alert("Restored", "Your purchases have been restored.");
+									} else if (result.error) {
+										Alert.alert("Restore Failed", result.error);
+									}
+								}}
+								disabled={isRestoring || subscriptionLoading}
+							>
+								{isRestoring ? (
+									<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
+								) : (
+									<Text style={[styles.restoreButtonText, isDark && styles.textMuted]}>
+										Restore Purchases
+									</Text>
+								)}
+							</TouchableOpacity>
+						</>
 					)}
 				</View>
 			)}
@@ -820,22 +829,11 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 		color: "#000",
 	},
-	featuresPreview: {
-		marginTop: 16,
-		gap: 8,
-	},
-	featuresTitle: {
-		fontSize: 13,
-		fontWeight: "500",
-		color: "#666",
-		marginBottom: 4,
-	},
-	featureItem: {
-		flexDirection: "row",
+	restoreButton: {
+		paddingVertical: 12,
 		alignItems: "center",
-		gap: 8,
 	},
-	featureText: {
+	restoreButtonText: {
 		fontSize: 14,
 		color: "#666",
 	},

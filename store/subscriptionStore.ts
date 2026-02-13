@@ -30,6 +30,7 @@ interface SubscriptionState {
 	isInitialized: boolean;
 	isLoading: boolean;
 	isPro: boolean;
+	userId: string | null;
 	status: SubscriptionStatus;
 	customerInfo: CustomerInfo | null;
 	offerings: PurchasesOffering | null;
@@ -60,6 +61,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 	isInitialized: false,
 	isLoading: false,
 	isPro: false,
+	userId: null,
 	status: DEFAULT_STATUS,
 	customerInfo: null,
 	offerings: null,
@@ -81,6 +83,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 				});
 				return;
 			}
+
+			set({ userId });
 
 			const [customerInfo, offerings] = await Promise.all([getCustomerInfo(), getOfferings()]);
 
@@ -150,6 +154,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 					customerInfo,
 					isLoading: false,
 				});
+
+				const { userId } = get();
+				if (userId) {
+					await syncSubscriptionToDatabase(userId, customerInfo);
+				}
 			} else {
 				set({ isLoading: false });
 			}
@@ -176,6 +185,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 				customerInfo: result.customerInfo,
 				isLoading: false,
 			});
+
+			const { userId } = get();
+			if (userId) {
+				await syncSubscriptionToDatabase(userId, result.customerInfo);
+			}
 		} else if (!result.userCancelled) {
 			set({
 				error: result.error || "Purchase failed",
@@ -203,6 +217,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 				customerInfo: result.customerInfo,
 				isLoading: false,
 			});
+
+			const { userId } = get();
+			if (userId) {
+				await syncSubscriptionToDatabase(userId, result.customerInfo);
+			}
 		} else {
 			set({
 				error: result.error || "No purchases to restore",
@@ -217,17 +236,28 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		const result = await presentPaywall();
 
 		if (result.customerInfo) {
-			const isPro = checkProEntitlement(result.customerInfo);
+			const newIsPro = checkProEntitlement(result.customerInfo);
 			const status = getSubscriptionStatus(result.customerInfo);
 
-			set({
-				isPro,
-				status,
-				customerInfo: result.customerInfo,
-			});
+			if (newIsPro || !get().isPro) {
+				set({
+					isPro: newIsPro,
+					status,
+					customerInfo: result.customerInfo,
+				});
+			}
+
+			const { userId } = get();
+			if (userId) {
+				await syncSubscriptionToDatabase(userId, result.customerInfo);
+			}
 		}
 
-		return result.presented && !!result.customerInfo;
+		if (result.purchased && !get().isPro) {
+			setTimeout(() => get().refreshSubscription(), 3000);
+		}
+
+		return result.purchased;
 	},
 
 	showPaywallIfNeeded: async () => {
@@ -240,13 +270,24 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 			const newIsPro = checkProEntitlement(result.customerInfo);
 			const status = getSubscriptionStatus(result.customerInfo);
 
-			set({
-				isPro: newIsPro,
-				status,
-				customerInfo: result.customerInfo,
-			});
+			if (newIsPro || !get().isPro) {
+				set({
+					isPro: newIsPro,
+					status,
+					customerInfo: result.customerInfo,
+				});
+			}
 
-			return newIsPro;
+			const { userId } = get();
+			if (userId) {
+				await syncSubscriptionToDatabase(userId, result.customerInfo);
+			}
+
+			if (result.purchased && !get().isPro) {
+				setTimeout(() => get().refreshSubscription(), 3000);
+			}
+
+			return newIsPro || get().isPro;
 		}
 
 		return false;

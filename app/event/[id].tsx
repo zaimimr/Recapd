@@ -54,6 +54,8 @@ export default function EventScreen() {
 		fetchParticipantStats,
 		markNoPhotosToUpload,
 		getNoPhotosToUpload,
+		leaveEvent,
+		removeParticipant,
 	} = useEventStore();
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
@@ -266,6 +268,50 @@ export default function EventScreen() {
 		} else {
 			Alert.alert("Error", "Failed to save your preference. Please try again.");
 		}
+	}
+
+	function handleRemoveParticipant(targetUserId: string, displayName: string) {
+		Alert.alert(`Remove ${displayName}?`, "They will no longer be part of this event.", [
+			{ text: "Cancel", style: "cancel" },
+			{
+				text: "Remove",
+				style: "destructive",
+				onPress: async () => {
+					if (!id || !user?.id) return;
+					const success = await removeParticipant(id, targetUserId, user.id);
+					if (success) {
+						const stats = await fetchParticipantStats(id);
+						setParticipants(stats);
+					}
+				},
+			},
+		]);
+	}
+
+	function handleLeaveEvent() {
+		if (!id || !user?.id) return;
+
+		const hostCount = participants.filter((p) => p.role === "host").length;
+		if (hostCount <= 1 && participants.some((p) => p.userId === user.id && p.role === "host")) {
+			Alert.alert("Can't Leave", "You're the only host. You must delete the event to leave.");
+			return;
+		}
+
+		Alert.alert("Leave Event?", "You will no longer have access to this event's photos.", [
+			{ text: "Cancel", style: "cancel" },
+			{
+				text: "Leave",
+				style: "destructive",
+				onPress: async () => {
+					const result = await leaveEvent(id, user.id);
+					if (result.success) {
+						router.replace("/(tabs)/events");
+					} else if (result.isLastHost) {
+						Alert.alert("Can't Leave", "You're the only host. You must delete the event to leave.");
+					}
+				},
+			},
+		]);
 	}
 
 	async function handleRemindGuests() {
@@ -520,6 +566,10 @@ export default function EventScreen() {
 					onClose={() => setGuestSheetVisible(false)}
 					participants={participants}
 					isDark={isDark}
+					isHost={isHost || false}
+					currentUserId={user?.id || ""}
+					onRemoveParticipant={handleRemoveParticipant}
+					onLeaveEvent={handleLeaveEvent}
 				/>
 
 				<NotificationPromptModal

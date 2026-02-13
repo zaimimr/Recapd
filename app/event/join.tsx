@@ -16,13 +16,10 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { useAuthStore } from "@/store/authStore";
-import { useEventStore } from "@/store/eventStore";
-import type { Event } from "@/types/database";
-
-interface EventPreview extends Event {
-	participant_count?: number;
-}
+import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
+import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
 
 export default function JoinEventScreen() {
 	const router = useRouter();
@@ -34,7 +31,7 @@ export default function JoinEventScreen() {
 	const isDark = colorScheme === "dark";
 
 	const [code, setCode] = useState("");
-	const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
+	const [eventPreview, setEventPreview] = useState<EventWithParticipants | null>(null);
 	const [step, setStep] = useState<"code" | "preview">("code");
 	const [displayName, setDisplayName] = useState("");
 	const [nameError, setNameError] = useState("");
@@ -162,6 +159,10 @@ export default function JoinEventScreen() {
 
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
+	const isEventFull =
+		SUBSCRIPTIONS_ENABLED &&
+		(eventPreview?.participant_count || 0) >= FREE_PARTICIPANT_LIMIT &&
+		!eventPreview?.hostIsPro;
 
 	if (step === "preview" && eventPreview) {
 		return (
@@ -189,7 +190,17 @@ export default function JoinEventScreen() {
 						</View>
 					</View>
 
-					{!user && (
+					{isEventFull && (
+						<View style={styles.eventFullBanner}>
+							<FontAwesome name="exclamation-circle" size={16} color="#ef4444" />
+							<Text style={styles.eventFullText}>
+								This event has reached the free plan limit of {FREE_PARTICIPANT_LIMIT} participants.
+								Ask the host to upgrade to Pro for unlimited spots.
+							</Text>
+						</View>
+					)}
+
+					{!user && !isEventFull && (
 						<View style={styles.nameSection}>
 							<Text style={[styles.nameLabel, isDark && styles.textDark]}>
 								What should we call you?
@@ -220,14 +231,17 @@ export default function JoinEventScreen() {
 
 					<View style={styles.actions}>
 						<TouchableOpacity
-							style={[styles.button, (!canJoin || isJoining) && styles.buttonDisabled]}
+							style={[
+								styles.button,
+								(!canJoin || isJoining || isEventFull) && styles.buttonDisabled,
+							]}
 							onPress={handleJoin}
-							disabled={!canJoin || isJoining}
+							disabled={!canJoin || isJoining || isEventFull}
 						>
 							{isJoining ? (
 								<ActivityIndicator color="#fff" />
 							) : (
-								<Text style={styles.buttonText}>Join Event</Text>
+								<Text style={styles.buttonText}>{isEventFull ? "Event Full" : "Join Event"}</Text>
 							)}
 						</TouchableOpacity>
 
@@ -441,6 +455,21 @@ const styles = StyleSheet.create({
 		fontSize: 18,
 		fontWeight: "600",
 		color: "#000",
+	},
+	eventFullBanner: {
+		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: 10,
+		backgroundColor: "#fef2f2",
+		borderRadius: 12,
+		padding: 14,
+		marginBottom: 24,
+	},
+	eventFullText: {
+		flex: 1,
+		fontSize: 14,
+		color: "#991b1b",
+		lineHeight: 20,
 	},
 	previewCard: {
 		backgroundColor: "#f5f5f5",

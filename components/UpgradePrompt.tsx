@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
 		width: "100%",
 		backgroundColor: "#3b82f6",
 		paddingVertical: 14,
-		borderRadius: 10,
+		borderRadius: 12,
 		alignItems: "center",
 	},
 	upgradeButtonText: {

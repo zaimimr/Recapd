@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 import Purchases, {
 	type CustomerInfo,
@@ -9,6 +10,8 @@ import Purchases, {
 } from "react-native-purchases";
 import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 import { supabase } from "./supabase";
+
+const isExpoGo = Constants.appOwnership === "expo";
 
 const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || "";
 const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || "";
@@ -30,6 +33,10 @@ let currentUserId: string | null = null;
 export async function configureRevenueCat(userId: string): Promise<boolean> {
 	if (!SUBSCRIPTIONS_ENABLED) {
 		console.warn("Subscriptions are disabled");
+		return false;
+	}
+	if (isExpoGo) {
+		console.warn("RevenueCat requires a development build — skipping in Expo Go");
 		return false;
 	}
 	if (isConfigured && currentUserId === userId) return true;
@@ -178,8 +185,9 @@ export async function restorePurchases(): Promise<PurchaseResult> {
 	try {
 		const customerInfo = await Purchases.restorePurchases();
 		const hasProAccess = checkProEntitlement(customerInfo);
+		const hasActiveSubscriptions = customerInfo.activeSubscriptions.length > 0;
 
-		if (hasProAccess) {
+		if (hasProAccess || hasActiveSubscriptions) {
 			return { success: true, customerInfo };
 		} else {
 			return {
@@ -195,6 +203,10 @@ export async function restorePurchases(): Promise<PurchaseResult> {
 }
 
 export function checkProEntitlement(customerInfo: CustomerInfo): boolean {
+	if (__DEV__) {
+		console.log("Active entitlements:", Object.keys(customerInfo.entitlements.active));
+		console.log("Active subscriptions:", customerInfo.activeSubscriptions);
+	}
 	const entitlement = customerInfo.entitlements.active[ENTITLEMENT_ID];
 	return entitlement?.isActive === true;
 }
@@ -271,40 +283,54 @@ export function setupCustomerInfoListener(
 	};
 }
 
+async function waitForProEntitlement(): Promise<CustomerInfo | null> {
+	const info = await getCustomerInfo();
+	if (info && checkProEntitlement(info)) return info;
+
+	await new Promise((resolve) => setTimeout(resolve, 1500));
+	const retryInfo = await getCustomerInfo();
+	if (retryInfo && checkProEntitlement(retryInfo)) return retryInfo;
+
+	return retryInfo;
+}
+
 export async function presentPaywall(): Promise<{
 	presented: boolean;
+	purchased: boolean;
 	customerInfo?: CustomerInfo;
 	error?: string;
 }> {
 	if (!isConfigured) {
-		return { presented: false, error: "RevenueCat not configured" };
+		return { presented: false, purchased: false, error: "RevenueCat not configured" };
 	}
 
 	try {
 		const result = await RevenueCatUI.presentPaywall();
 
 		if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-			const customerInfo = await getCustomerInfo();
+			const customerInfo = await waitForProEntitlement();
 			return {
 				presented: true,
+				purchased: true,
 				customerInfo: customerInfo || undefined,
 			};
 		}
 
-		return { presented: true };
+		return { presented: true, purchased: false };
 	} catch (error: any) {
 		console.error("Failed to present paywall:", error);
-		return { presented: false, error: error.message };
+		return { presented: false, purchased: false, error: error.message };
 	}
 }
 
 export async function presentPaywallIfNeeded(): Promise<{
 	presented: boolean;
+	purchased: boolean;
 	customerInfo?: CustomerInfo;
 	error?: string;
 }> {
 	if (!isConfigured) {
-		return { presented: false, error: "RevenueCat not configured" };
+		return { presented: false, purchased: false, error: "RevenueCat not configured" };
 	}
 
 	try {
@@ -313,21 +339,22 @@ export async function presentPaywallIfNeeded(): Promise<{
 		});
 
 		if (result === PAYWALL_RESULT.NOT_PRESENTED) {
-			return { presented: false };
+			return { presented: false, purchased: false };
 		}
 
 		if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-			const customerInfo = await getCustomerInfo();
+			const customerInfo = await waitForProEntitlement();
 			return {
 				presented: true,
+				purchased: true,
 				customerInfo: customerInfo || undefined,
 			};
 		}
 
-		return { presented: true };
+		return { presented: true, purchased: false };
 	} catch (error: any) {
 		console.error("Failed to present paywall:", error);
-		return { presented: false, error: error.message };
+		return { presented: false, purchased: false, error: error.message };
 	}
 }
 
