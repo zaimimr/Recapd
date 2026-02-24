@@ -322,13 +322,19 @@ export default function Home() {
 									</svg>
 									14-day photo storage
 								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Upload videos up to 30 seconds
+								</li>
 							</ul>
 						</div>
 						<div className="pricing-card featured">
 							<div className="pricing-badge">For Larger Events</div>
 							<h3>Pro</h3>
 							<div className="pricing-price">
-								$4.99 <span>/ month</span>
+								$2.99 <span>/ month</span>
 							</div>
 							<p className="pricing-description">
 								Host events of any size. Guests always join for free.
@@ -357,6 +363,12 @@ export default function Home() {
 										<polyline points="20 6 9 17 4 12" />
 									</svg>
 									14-day photo storage
+								</li>
+								<li>
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Upload videos up to 5 minutes
 								</li>
 							</ul>
 						</div>
