@@ -477,7 +477,9 @@ export default function SettingsScreen() {
 						activeOpacity={permission.status === "granted" ? 1 : 0.7}
 						accessibilityRole="button"
 						accessibilityLabel={`${permission.name}, ${getStatusText(permission.status)}`}
-						accessibilityHint={permission.status === "granted" ? undefined : "Tap to grant permission"}
+						accessibilityHint={
+							permission.status === "granted" ? undefined : "Tap to grant permission"
+						}
 					>
 						<View style={[styles.permissionIcon, isDark && styles.permissionIconDark]}>
 							<FontAwesome name={permission.icon} size={20} color={isDark ? "#fff" : "#000"} />

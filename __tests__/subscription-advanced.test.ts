@@ -82,13 +82,15 @@ jest.mock("@/lib/supabase", () => ({
 	},
 }));
 
-const makeCustomerInfo = (overrides: Partial<{
-	isPro: boolean;
-	expirationDate: string | null;
-	productIdentifier: string;
-	willRenew: boolean;
-	activeSubscriptions: string[];
-}> = {}): CustomerInfo => {
+const makeCustomerInfo = (
+	overrides: Partial<{
+		isPro: boolean;
+		expirationDate: string | null;
+		productIdentifier: string;
+		willRenew: boolean;
+		activeSubscriptions: string[];
+	}> = {}
+): CustomerInfo => {
 	const isPro = overrides.isPro ?? false;
 	return {
 		entitlements: {
@@ -153,9 +155,7 @@ describe("RevenueCat must be configured before any purchase operation", () => {
 		const result = await configureRevenueCat("user-1");
 
 		expect(result).toBe(true);
-		expect(mockConfigure).toHaveBeenCalledWith(
-			expect.objectContaining({ appUserID: "user-1" })
-		);
+		expect(mockConfigure).toHaveBeenCalledWith(expect.objectContaining({ appUserID: "user-1" }));
 		consoleSpy.mockRestore();
 	});
 

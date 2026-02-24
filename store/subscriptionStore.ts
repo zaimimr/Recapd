@@ -1,5 +1,5 @@
-import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import { Alert } from "react-native";
+import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import { create } from "zustand";
 import {
 	checkProEntitlement,

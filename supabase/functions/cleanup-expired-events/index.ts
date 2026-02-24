@@ -153,15 +153,10 @@ Deno.serve(async (req) => {
 			}
 
 			// 6. Delete the event record
-			const { error: deleteEventError } = await supabase
-				.from("events")
-				.delete()
-				.eq("id", event.id);
+			const { error: deleteEventError } = await supabase.from("events").delete().eq("id", event.id);
 
 			if (deleteEventError) {
-				results.errors.push(
-					`Failed to delete event ${event.id}: ${deleteEventError.message}`
-				);
+				results.errors.push(`Failed to delete event ${event.id}: ${deleteEventError.message}`);
 			} else {
 				results.deletedEvents++;
 				console.log(`Deleted event ${event.id}`);

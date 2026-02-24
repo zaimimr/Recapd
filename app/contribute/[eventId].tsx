@@ -1,17 +1,17 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { memo, useCallback, useEffect, useState } from "react";
 import { Image as ExpoImage } from "expo-image";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import { memo, useCallback, useEffect, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
 	FlatList,
+	type LayoutChangeEvent,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View,
-	type LayoutChangeEvent,
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
@@ -47,7 +47,9 @@ const VideoThumbnail = memo(function VideoThumbnail({
 				if (mounted) setThumbnailUri(thumbUri);
 			})
 			.catch(() => {});
-		return () => { mounted = false; };
+		return () => {
+			mounted = false;
+		};
 	}, [uri]);
 
 	if (!thumbnailUri) {
@@ -411,12 +413,14 @@ export default function ContributeScreen() {
 								disabled={isUploaded}
 							>
 								{isVideo ? (
-									<VideoThumbnail
-										uri={item.uri}
-										style={styles.selectPhotoImage}
-									/>
+									<VideoThumbnail uri={item.uri} style={styles.selectPhotoImage} />
 								) : (
-									<ExpoImage source={{ uri: item.uri }} style={styles.selectPhotoImage} contentFit="cover" cachePolicy="memory-disk" />
+									<ExpoImage
+										source={{ uri: item.uri }}
+										style={styles.selectPhotoImage}
+										contentFit="cover"
+										cachePolicy="memory-disk"
+									/>
 								)}
 								{isVideo && (
 									<View style={styles.videoIndicator}>

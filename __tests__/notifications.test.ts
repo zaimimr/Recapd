@@ -1,5 +1,7 @@
 const mockSetNotificationHandler = jest.fn();
-const mockAddNotificationResponseReceivedListener = jest.fn().mockReturnValue({ remove: jest.fn() });
+const mockAddNotificationResponseReceivedListener = jest
+	.fn()
+	.mockReturnValue({ remove: jest.fn() });
 const mockGetPermissionsAsync = jest.fn();
 const mockRequestPermissionsAsync = jest.fn();
 const mockSetNotificationChannelAsync = jest.fn();
@@ -287,9 +289,7 @@ describe("host sends upload reminders to participants", () => {
 
 	test("succeeds with zero sent when no participants have push tokens", async () => {
 		jest.resetModules();
-		const participants = [
-			{ user_id: "user1", users: { push_token: null } },
-		];
+		const participants = [{ user_id: "user1", users: { push_token: null } }];
 
 		const selectChain = {
 			eq: jest.fn().mockReturnValue({
@@ -350,8 +350,7 @@ describe("free tier participant limit notification", () => {
 				eq: jest.fn().mockReturnValue({
 					single: jest.fn().mockReturnValue({
 						// biome-ignore lint/suspicious/noThenProperty: mock
-						then: (resolve: any) =>
-							resolve({ data: { push_token: "host_token" }, error: null }),
+						then: (resolve: any) => resolve({ data: { push_token: "host_token" }, error: null }),
 						data: { push_token: "host_token" },
 						error: null,
 					}),
@@ -377,8 +376,7 @@ describe("free tier participant limit notification", () => {
 				eq: jest.fn().mockReturnValue({
 					single: jest.fn().mockReturnValue({
 						// biome-ignore lint/suspicious/noThenProperty: mock
-						then: (resolve: any) =>
-							resolve({ data: { push_token: null }, error: null }),
+						then: (resolve: any) => resolve({ data: { push_token: null }, error: null }),
 						data: { push_token: null },
 						error: null,
 					}),
@@ -401,8 +399,7 @@ describe("free tier participant limit notification", () => {
 				eq: jest.fn().mockReturnValue({
 					single: jest.fn().mockReturnValue({
 						// biome-ignore lint/suspicious/noThenProperty: mock
-						then: (resolve: any) =>
-							resolve({ data: null, error: { message: "Error" } }),
+						then: (resolve: any) => resolve({ data: null, error: { message: "Error" } }),
 						data: null,
 						error: { message: "Error" },
 					}),

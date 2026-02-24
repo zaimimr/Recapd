@@ -1,6 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
-import { Platform } from "react-native";
 
 export interface LocalPhoto {
 	id: string;

@@ -2,8 +2,16 @@ jest.mock("@/lib/supabase", () => {
 	const buildChain = (finalValue: any = { data: null, error: null }): any => {
 		const chain: any = {};
 		const methods = [
-			"select", "insert", "update", "delete", "eq", "in", "order",
-			"single", "filter", "limit",
+			"select",
+			"insert",
+			"update",
+			"delete",
+			"eq",
+			"in",
+			"order",
+			"single",
+			"filter",
+			"limit",
 		];
 		methods.forEach((m) => {
 			chain[m] = jest.fn().mockReturnValue(chain);
@@ -159,9 +167,7 @@ describe("host creates a new event", () => {
 
 	test("returns null and sets error when creation fails", async () => {
 		const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-		supabase.from.mockReturnValue(
-			buildChain({ data: null, error: { message: "DB error" } })
-		);
+		supabase.from.mockReturnValue(buildChain({ data: null, error: { message: "DB error" } }));
 
 		const result = await useEventStore.getState().createEvent(
 			{
@@ -404,9 +410,7 @@ describe("guest joins an event", () => {
 
 		await useEventStore.getState().joinEvent("event-1", "guest-1", "Bobby");
 
-		expect(insertChain.insert).toHaveBeenCalledWith(
-			expect.objectContaining({ nickname: "Bobby" })
-		);
+		expect(insertChain.insert).toHaveBeenCalledWith(expect.objectContaining({ nickname: "Bobby" }));
 	});
 });
 
@@ -520,11 +524,7 @@ describe("free tier participant limit (12 people)", () => {
 
 		await useEventStore.getState().joinEvent("event-1", "guest-12");
 
-		expect(sendParticipantLimitNotification).toHaveBeenCalledWith(
-			"event-1",
-			"Party",
-			"host-1"
-		);
+		expect(sendParticipantLimitNotification).toHaveBeenCalledWith("event-1", "Party", "host-1");
 	});
 });
 
@@ -646,9 +646,7 @@ describe("host removes a participant", () => {
 			return deleteChain;
 		});
 
-		const result = await useEventStore.getState().removeParticipant(
-			"event-1", "guest-1", "host-1"
-		);
+		const result = await useEventStore.getState().removeParticipant("event-1", "guest-1", "host-1");
 
 		expect(result).toBe(true);
 	});
@@ -663,9 +661,7 @@ describe("host removes a participant", () => {
 			return epCallIndex === 1 ? callerChain : targetChain;
 		});
 
-		const result = await useEventStore.getState().removeParticipant(
-			"event-1", "host-2", "host-1"
-		);
+		const result = await useEventStore.getState().removeParticipant("event-1", "host-2", "host-1");
 
 		expect(result).toBe(false);
 	});
@@ -675,9 +671,9 @@ describe("host removes a participant", () => {
 
 		supabase.from.mockReturnValue(callerChain);
 
-		const result = await useEventStore.getState().removeParticipant(
-			"event-1", "guest-2", "guest-1"
-		);
+		const result = await useEventStore
+			.getState()
+			.removeParticipant("event-1", "guest-2", "guest-1");
 
 		expect(result).toBe(false);
 	});

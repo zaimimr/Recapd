@@ -156,9 +156,7 @@ describe("first-time user opens the app", () => {
 
 	test("app remains usable even when database is unreachable", async () => {
 		const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-		supabase.from.mockReturnValue(
-			buildChain({ data: null, error: { message: "DB error" } })
-		);
+		supabase.from.mockReturnValue(buildChain({ data: null, error: { message: "DB error" } }));
 
 		await useAuthStore.getState().initializeAuth();
 
