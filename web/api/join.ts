@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		: "Share photos together, privately.";
 
 	const appStoreUrl = "https://apps.apple.com/no/app/recapd/id6758083751";
-	const playStoreUrl = "https://play.google.com/store/apps/details?id=app.recapd";
+	const playStoreUrl = "https://play.google.com/store/apps/details?id=com.zaimimran.recapd";
 	const deepLink = `recapd://join/${code}`;
 
 	const html = `<!DOCTYPE html>
