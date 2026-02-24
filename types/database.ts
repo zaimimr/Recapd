@@ -160,6 +160,8 @@ export interface Database {
 					thumbnail_path: string | null;
 					visibility: MediaVisibility;
 					deleted_at: string | null;
+					latitude: number | null;
+					longitude: number | null;
 				};
 				Insert: {
 					id?: string;
@@ -176,6 +178,8 @@ export interface Database {
 					thumbnail_path?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
+					latitude?: number | null;
+					longitude?: number | null;
 				};
 				Update: {
 					id?: string;
@@ -192,6 +196,8 @@ export interface Database {
 					thumbnail_path?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
+					latitude?: number | null;
+					longitude?: number | null;
 				};
 				Relationships: [
 					{

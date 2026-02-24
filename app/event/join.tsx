@@ -19,6 +19,7 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
+import { useSubscriptionStore } from "@/store/subscriptionStore";
 import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
 
 export default function JoinEventScreen() {
@@ -157,12 +158,14 @@ export default function JoinEventScreen() {
 		}
 	}
 
+	const isPro = useSubscriptionStore((state) => state.isPro);
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
 	const isEventFull =
 		SUBSCRIPTIONS_ENABLED &&
 		(eventPreview?.participant_count || 0) >= FREE_PARTICIPANT_LIMIT &&
-		!eventPreview?.hostIsPro;
+		!eventPreview?.hostIsPro &&
+		!isPro;
 
 	if (step === "preview" && eventPreview) {
 		return (
@@ -221,6 +224,8 @@ export default function JoinEventScreen() {
 								autoCapitalize="words"
 								autoCorrect={false}
 								maxLength={30}
+								accessibilityLabel="Your name"
+								accessibilityHint="Enter your display name"
 							/>
 							{nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
 							<Text style={[styles.nameHint, isDark && styles.textMuted]}>
@@ -237,6 +242,9 @@ export default function JoinEventScreen() {
 							]}
 							onPress={handleJoin}
 							disabled={!canJoin || isJoining || isEventFull}
+							accessibilityRole="button"
+							accessibilityLabel={isEventFull ? "Event Full" : "Join Event"}
+							accessibilityState={{ disabled: !canJoin || isJoining || isEventFull }}
 						>
 							{isJoining ? (
 								<ActivityIndicator color="#fff" />
@@ -245,7 +253,12 @@ export default function JoinEventScreen() {
 							)}
 						</TouchableOpacity>
 
-						<TouchableOpacity style={styles.backButton} onPress={handleBack}>
+						<TouchableOpacity
+							style={styles.backButton}
+							onPress={handleBack}
+							accessibilityRole="button"
+							accessibilityLabel="Enter Different Code"
+						>
 							<Text style={[styles.backButtonText, isDark && styles.textDark]}>
 								Enter Different Code
 							</Text>
@@ -282,6 +295,8 @@ export default function JoinEventScreen() {
 						keyboardType="default"
 						returnKeyType="go"
 						onSubmitEditing={() => handleLookup()}
+						accessibilityLabel="Event code"
+						accessibilityHint="Enter 6-character event code"
 					/>
 					{error && <Text style={styles.errorText}>{error}</Text>}
 				</View>
@@ -290,6 +305,10 @@ export default function JoinEventScreen() {
 					style={[styles.button, (code.length !== 6 || isLoading) && styles.buttonDisabled]}
 					onPress={() => handleLookup()}
 					disabled={code.length !== 6 || isLoading}
+					accessibilityRole="button"
+					accessibilityLabel="Find Event"
+					accessibilityHint="Look up event by code"
+					accessibilityState={{ disabled: code.length !== 6 || isLoading }}
 				>
 					{isLoading ? (
 						<ActivityIndicator color="#fff" />
@@ -307,6 +326,9 @@ export default function JoinEventScreen() {
 				<TouchableOpacity
 					style={[styles.scanButton, isDark && styles.scanButtonDark]}
 					onPress={handleOpenScanner}
+					accessibilityRole="button"
+					accessibilityLabel="Scan QR Code"
+					accessibilityHint="Opens camera to scan event QR code"
 				>
 					<FontAwesome name="qrcode" size={22} color={isDark ? "#fff" : "#000"} />
 					<Text style={[styles.scanButtonText, isDark && styles.textDark]}>Scan QR Code</Text>
@@ -333,6 +355,8 @@ export default function JoinEventScreen() {
 							<TouchableOpacity
 								style={styles.scannerCloseButton}
 								onPress={() => setScannerVisible(false)}
+								accessibilityRole="button"
+								accessibilityLabel="Close scanner"
 							>
 								<FontAwesome name="times" size={24} color="#fff" />
 							</TouchableOpacity>

@@ -1,5 +1,6 @@
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
+import { Platform } from "react-native";
 
 export interface LocalPhoto {
 	id: string;
@@ -10,6 +11,8 @@ export interface LocalPhoto {
 	height: number;
 	duration: number;
 	mediaType: "photo" | "video";
+	latitude?: number;
+	longitude?: number;
 }
 
 export async function requestMediaPermissions(): Promise<boolean> {
@@ -21,6 +24,16 @@ export { FREE_MAX_VIDEO_DURATION_MS, PRO_MAX_VIDEO_DURATION_MS } from "@/types/s
 
 // Batch size for processing asset info (prevents too many concurrent API calls)
 const ASSET_INFO_BATCH_SIZE = 10;
+
+// iOS MediaLibrary returns duration in seconds, Android also returns seconds.
+// ImagePicker on iOS returns duration in milliseconds, Android in seconds.
+function durationToMs(seconds: number): number {
+	if (!seconds) return 0;
+	// If value is already clearly in ms (>= 1000), don't convert.
+	// No phone video is realistically >= 1000 seconds (~17 min) from auto-scan.
+	if (seconds >= 1000) return seconds;
+	return seconds * 1000;
+}
 
 /**
  * Process items in batches to prevent memory issues and API overload
@@ -107,8 +120,10 @@ export async function getMediaInTimeRange(
 				creationTime: asset.creationTime,
 				width: asset.width,
 				height: asset.height,
-				duration: asset.duration,
+				duration: durationToMs(assetInfo?.duration || asset.duration),
 				mediaType: asset.mediaType === "photo" ? "photo" : ("video" as "photo" | "video"),
+				latitude: assetInfo?.location?.latitude,
+				longitude: assetInfo?.location?.longitude,
 			};
 		}
 	);
@@ -173,8 +188,8 @@ export async function pickMediaFromLibrary(
 			return false;
 		}
 		if (asset.type === "video" && maxVideoDuration > 0) {
-			const duration = asset.duration || 0;
-			if (duration > maxVideoDuration) {
+			const durationMs = durationToMs(asset.duration || 0);
+			if (durationMs > maxVideoDuration) {
 				videosTooLong++;
 				return false;
 			}
@@ -186,20 +201,26 @@ export async function pickMediaFromLibrary(
 
 	const media = validAssets.map((asset, index) => {
 		let creationTime = Date.now();
+		let latitude: number | undefined;
+		let longitude: number | undefined;
 
-		// Try to get the original capture date from EXIF
 		if (asset.exif) {
 			const exifDate =
 				asset.exif.DateTimeOriginal || asset.exif.DateTimeDigitized || asset.exif.DateTime;
 
 			if (exifDate && typeof exifDate === "string") {
-				// EXIF date format is typically "YYYY:MM:DD HH:MM:SS"
-				// Convert to ISO format "YYYY-MM-DDTHH:MM:SS"
 				const isoDate = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3").replace(" ", "T");
 				const parsed = new Date(isoDate).getTime();
 				if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 8640000000000000) {
 					creationTime = parsed;
 				}
+			}
+
+			const rawLat = asset.exif.GPSLatitude;
+			const rawLng = asset.exif.GPSLongitude;
+			if (typeof rawLat === "number" && typeof rawLng === "number") {
+				latitude = asset.exif.GPSLatitudeRef === "S" ? -rawLat : rawLat;
+				longitude = asset.exif.GPSLongitudeRef === "W" ? -rawLng : rawLng;
 			}
 		}
 
@@ -213,8 +234,10 @@ export async function pickMediaFromLibrary(
 			creationTime,
 			width: asset.width,
 			height: asset.height,
-			duration: asset.duration || 0,
+			duration: durationToMs(asset.duration || 0),
 			mediaType: (isVideo ? "video" : "photo") as "photo" | "video",
+			latitude,
+			longitude,
 		};
 	});
 

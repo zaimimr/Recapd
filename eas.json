@@ -20,7 +20,7 @@
 				"credentialsSource": "local"
 			},
 			"android": {
-				"credentialsSource": "local"
+				"credentialsSource": "remote"
 			}
 		},
 		"production": {
@@ -29,7 +29,7 @@
 				"credentialsSource": "local"
 			},
 			"android": {
-				"credentialsSource": "local"
+				"credentialsSource": "remote"
 			}
 		}
 	},

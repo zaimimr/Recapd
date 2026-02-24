@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
 			deletedThumbnails: 0,
 			deletedMediaItems: 0,
 			deletedParticipants: 0,
-			updatedEvents: 0,
+			deletedEvents: 0,
 			errors: [] as string[],
 		};
 
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 			.from("events")
 			.select("id, title, expires_at, status")
 			.lt("expires_at", new Date().toISOString())
-			.neq("status", "expired"); // Don't process already expired events
+			.neq("status", "expired");
 
 		if (eventsError) {
 			throw new Error(`Failed to fetch expired events: ${eventsError.message}`);
@@ -152,19 +152,19 @@ Deno.serve(async (req) => {
 				results.deletedParticipants++;
 			}
 
-			// 6. Update event status to 'expired' (keep event record for reference)
-			const { error: updateError } = await supabase
+			// 6. Delete the event record
+			const { error: deleteEventError } = await supabase
 				.from("events")
-				.update({ status: "expired" })
+				.delete()
 				.eq("id", event.id);
 
-			if (updateError) {
+			if (deleteEventError) {
 				results.errors.push(
-					`Failed to update event status for ${event.id}: ${updateError.message}`
+					`Failed to delete event ${event.id}: ${deleteEventError.message}`
 				);
 			} else {
-				results.updatedEvents++;
-				console.log(`Marked event ${event.id} as expired`);
+				results.deletedEvents++;
+				console.log(`Deleted event ${event.id}`);
 			}
 		}
 

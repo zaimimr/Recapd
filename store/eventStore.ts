@@ -3,7 +3,7 @@ import { addDays } from "date-fns";
 import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
-import { sendParticipantLimitNotification } from "@/lib/notifications";
+import { sendEventFullNotification, sendParticipantLimitNotification } from "@/lib/notifications";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { supabase } from "@/lib/supabase";
 import {
@@ -409,7 +409,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 					const { data: eventData } = await supabase
 						.from("events")
-						.select("created_by_user_id")
+						.select("created_by_user_id, title")
 						.eq("id", eventId)
 						.single();
 
@@ -424,8 +424,25 @@ export const useEventStore = create<EventState>((set, get) => {
 							(currentCount || 0) >= FREE_PARTICIPANT_LIMIT &&
 							hostUser?.subscription_tier !== "pro"
 						) {
-							set({ error: "Event is full", isLoading: false });
-							return false;
+							const { data: joiningUser } = await supabase
+								.from("users")
+								.select("display_name, subscription_tier")
+								.eq("id", userId)
+								.single();
+
+							if (joiningUser?.subscription_tier === "pro") {
+								// Pro users can bypass the free event limit
+							} else {
+								sendEventFullNotification(
+									eventId,
+									eventData.title,
+									eventData.created_by_user_id,
+									joiningUser?.display_name || "Someone"
+								);
+
+								set({ error: "Event is full", isLoading: false });
+								return false;
+							}
 						}
 					}
 				}
@@ -802,6 +819,8 @@ export const useEventStore = create<EventState>((set, get) => {
 				assetId: photo.id,
 				mediaType: photo.mediaType,
 				duration: photo.duration,
+				latitude: photo.latitude,
+				longitude: photo.longitude,
 			}));
 
 			const allUploads = [...get().pendingUploads, ...newUploads];
@@ -946,6 +965,8 @@ export const useEventStore = create<EventState>((set, get) => {
 					thumbnail_path: null,
 					visibility: "shared" as const,
 					deleted_at: null,
+					latitude: p.latitude ?? null,
+					longitude: p.longitude ?? null,
 					uploader: null,
 					isPending: true,
 					localUri: p.localUri,

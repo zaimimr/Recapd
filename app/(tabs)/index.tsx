@@ -87,6 +87,9 @@ export default function HomeScreen() {
 								key={event.id}
 								style={[styles.eventCard, isDark && styles.eventCardDark]}
 								onPress={() => router.push(`/event/${event.id}`)}
+								accessibilityRole="button"
+								accessibilityLabel={`${event.title}, ${format(new Date(event.starts_at), "MMM d, h:mm a")}, ${status.label}`}
+								accessibilityHint="Opens event details"
 							>
 								<View style={styles.eventInfo}>
 									<Text style={[styles.eventTitle, isDark && styles.textDark]} numberOfLines={1}>
@@ -113,6 +116,9 @@ export default function HomeScreen() {
 				<TouchableOpacity
 					style={[styles.button, styles.primaryButton]}
 					onPress={() => router.push("/event/join")}
+					accessibilityRole="button"
+					accessibilityLabel="Join Event"
+					accessibilityHint="Enter a code to join an existing event"
 				>
 					<Text style={styles.primaryButtonText}>Join Event</Text>
 				</TouchableOpacity>
@@ -120,6 +126,9 @@ export default function HomeScreen() {
 				<TouchableOpacity
 					style={[styles.button, styles.secondaryButton, isDark && styles.secondaryButtonDark]}
 					onPress={() => router.push("/event/create")}
+					accessibilityRole="button"
+					accessibilityLabel="Create Event"
+					accessibilityHint="Create a new event to share photos"
 				>
 					<Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>Create Event</Text>
 				</TouchableOpacity>

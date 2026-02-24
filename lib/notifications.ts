@@ -180,3 +180,27 @@ export async function sendParticipantLimitNotification(
 		{ type: "participant_limit", eventId }
 	);
 }
+
+export async function sendEventFullNotification(
+	eventId: string,
+	eventTitle: string,
+	hostUserId: string,
+	attemptedUserName: string
+): Promise<boolean> {
+	const { data: hostUser, error } = await supabase
+		.from("users")
+		.select("push_token")
+		.eq("id", hostUserId)
+		.single();
+
+	if (error || !hostUser?.push_token) {
+		return false;
+	}
+
+	return sendPushNotification(
+		[hostUser.push_token],
+		`Someone couldn't join ${eventTitle}`,
+		`${attemptedUserName} tried to join but your event is full. Upgrade to Pro for unlimited spots.`,
+		{ type: "event_full_attempt", eventId }
+	);
+}

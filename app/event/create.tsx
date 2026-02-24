@@ -159,6 +159,8 @@ export default function CreateEventScreen() {
 							setError("");
 						}}
 						maxLength={50}
+						accessibilityLabel="Event Name"
+						accessibilityHint="Enter a name for your event"
 					/>
 				</View>
 
@@ -167,6 +169,9 @@ export default function CreateEventScreen() {
 					<TouchableOpacity
 						style={[styles.dateButton, isDark && styles.dateButtonDark]}
 						onPress={openStartPicker}
+						accessibilityRole="button"
+						accessibilityLabel={`Start Time: ${format(startDate, "EEE, MMM d, yyyy")} at ${format(startDate, "h:mm a")}`}
+						accessibilityHint="Opens date and time picker"
 					>
 						<Text style={[styles.dateText, isDark && styles.textDark]}>
 							{format(startDate, "EEE, MMM d, yyyy")}
@@ -182,6 +187,9 @@ export default function CreateEventScreen() {
 					<TouchableOpacity
 						style={[styles.dateButton, isDark && styles.dateButtonDark]}
 						onPress={openEndPicker}
+						accessibilityRole="button"
+						accessibilityLabel={`End Time: ${format(endDate, "EEE, MMM d, yyyy")} at ${format(endDate, "h:mm a")}`}
+						accessibilityHint="Opens date and time picker"
 					>
 						<Text style={[styles.dateText, isDark && styles.textDark]}>
 							{format(endDate, "EEE, MMM d, yyyy")}
@@ -221,6 +229,10 @@ export default function CreateEventScreen() {
 				style={[styles.button, (!title.trim() || isLoading) && styles.buttonDisabled]}
 				onPress={handleCreate}
 				disabled={!title.trim() || isLoading}
+				accessibilityRole="button"
+				accessibilityLabel="Create Event"
+				accessibilityHint="Creates the event and generates a share code"
+				accessibilityState={{ disabled: !title.trim() || isLoading }}
 			>
 				{isLoading ? (
 					<ActivityIndicator color="#fff" />

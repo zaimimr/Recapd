@@ -1,4 +1,5 @@
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
+import { Alert } from "react-native";
 import { create } from "zustand";
 import {
 	checkProEntitlement,
@@ -222,11 +223,13 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 			if (userId) {
 				await syncSubscriptionToDatabase(userId, result.customerInfo);
 			}
-		} else {
+		} else if (!result.userCancelled) {
 			set({
 				error: result.error || "No purchases to restore",
 				isLoading: false,
 			});
+		} else {
+			set({ isLoading: false });
 		}
 
 		return result;
@@ -234,6 +237,14 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 
 	showPaywall: async () => {
 		const result = await presentPaywall();
+
+		if (!result.presented && result.error) {
+			Alert.alert(
+				"Unable to Load",
+				"The upgrade screen couldn't be loaded. Please check your internet connection and try again."
+			);
+			return false;
+		}
 
 		if (result.customerInfo) {
 			const newIsPro = checkProEntitlement(result.customerInfo);

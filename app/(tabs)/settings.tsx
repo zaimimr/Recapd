@@ -319,6 +319,8 @@ export default function SettingsScreen() {
 									style={styles.cancelButton}
 									onPress={handleCancelEdit}
 									disabled={isSaving}
+									accessibilityRole="button"
+									accessibilityLabel="Cancel editing name"
 								>
 									<FontAwesome name="times" size={18} color={isDark ? "#888" : "#666"} />
 								</TouchableOpacity>
@@ -326,6 +328,9 @@ export default function SettingsScreen() {
 									style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
 									onPress={handleSaveName}
 									disabled={isSaving}
+									accessibilityRole="button"
+									accessibilityLabel="Save name"
+									accessibilityState={{ disabled: isSaving }}
 								>
 									<FontAwesome name="check" size={18} color="#fff" />
 								</TouchableOpacity>
@@ -337,6 +342,8 @@ export default function SettingsScreen() {
 									setEditedName(user.display_name);
 									setIsEditingName(true);
 								}}
+								accessibilityRole="button"
+								accessibilityLabel="Edit display name"
 							>
 								<FontAwesome name="pencil" size={14} color={isDark ? "#fff" : "#000"} />
 							</TouchableOpacity>
@@ -363,7 +370,7 @@ export default function SettingsScreen() {
 							<Text style={[styles.subscriptionSubtext, isDark && styles.textMuted]}>
 								{isPro
 									? status.expiresAt
-										? `Renews ${status.expiresAt.toLocaleDateString()}`
+										? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
 										: "Active subscription"
 									: "Longer videos & unlimited participants"}
 							</Text>
@@ -392,6 +399,8 @@ export default function SettingsScreen() {
 								style={styles.upgradeButton}
 								onPress={showPaywall}
 								disabled={subscriptionLoading}
+								accessibilityRole="button"
+								accessibilityLabel="Upgrade to Pro"
 							>
 								<FontAwesome name="star" size={16} color="#fff" />
 								<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
@@ -404,11 +413,13 @@ export default function SettingsScreen() {
 									setIsRestoring(false);
 									if (result.success) {
 										Alert.alert("Restored", "Your purchases have been restored.");
-									} else if (result.error) {
+									} else if (!result.userCancelled && result.error) {
 										Alert.alert("Restore Failed", result.error);
 									}
 								}}
 								disabled={isRestoring || subscriptionLoading}
+								accessibilityRole="button"
+								accessibilityLabel="Restore Purchases"
 							>
 								{isRestoring ? (
 									<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
@@ -428,6 +439,9 @@ export default function SettingsScreen() {
 				<TouchableOpacity
 					style={[styles.feedbackButton, isDark && styles.feedbackButtonDark]}
 					onPress={() => Linking.openURL("https://forms.gle/Pt6DyHY4ZY6CZthm8")}
+					accessibilityRole="button"
+					accessibilityLabel="Send Feedback"
+					accessibilityHint="Opens feedback form"
 				>
 					<FontAwesome name="comment" size={18} color={isDark ? "#fff" : "#000"} />
 					<Text style={[styles.feedbackButtonText, isDark && styles.textDark]}>Send Feedback</Text>
@@ -461,6 +475,9 @@ export default function SettingsScreen() {
 						]}
 						onPress={() => handlePermissionPress(permission)}
 						activeOpacity={permission.status === "granted" ? 1 : 0.7}
+						accessibilityRole="button"
+						accessibilityLabel={`${permission.name}, ${getStatusText(permission.status)}`}
+						accessibilityHint={permission.status === "granted" ? undefined : "Tap to grant permission"}
 					>
 						<View style={[styles.permissionIcon, isDark && styles.permissionIconDark]}>
 							<FontAwesome name={permission.icon} size={20} color={isDark ? "#fff" : "#000"} />
@@ -509,6 +526,9 @@ export default function SettingsScreen() {
 				<TouchableOpacity
 					style={styles.aboutRow}
 					onPress={() => Linking.openURL("https://recapd.app/privacy")}
+					accessibilityRole="link"
+					accessibilityLabel="Privacy Policy"
+					accessibilityHint="Opens in browser"
 				>
 					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Privacy Policy</Text>
 					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
@@ -516,6 +536,9 @@ export default function SettingsScreen() {
 				<TouchableOpacity
 					style={styles.aboutRow}
 					onPress={() => Linking.openURL("https://recapd.app/terms")}
+					accessibilityRole="link"
+					accessibilityLabel="Terms of Service"
+					accessibilityHint="Opens in browser"
 				>
 					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Terms of Service</Text>
 					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />

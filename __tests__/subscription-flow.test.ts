@@ -693,6 +693,21 @@ describe("store/subscriptionStore", () => {
 			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
 		});
 
+		it("does not grant pro when restore succeeds via activeSubscriptions but entitlement is mismatched", async () => {
+			mockConfigure.mockResolvedValue(undefined);
+			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
+			mockRestorePurchases.mockResolvedValue(mismatchedEntitlementCustomerInfo);
+
+			const store = getStore();
+			await store.getState().initialize("user-1");
+
+			const result = await store.getState().restore();
+
+			expect(result.success).toBe(true);
+			expect(store.getState().isPro).toBe(false);
+		});
+
 		it("sets error when no active subscriptions found", async () => {
 			mockConfigure.mockResolvedValue(undefined);
 			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);

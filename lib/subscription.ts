@@ -197,7 +197,14 @@ export async function restorePurchases(): Promise<PurchaseResult> {
 			};
 		}
 	} catch (error: any) {
-		console.error("Restore failed:", error);
+		if (error.userCancelled) {
+			return {
+				success: false,
+				error: "Restore cancelled",
+				userCancelled: true,
+			};
+		}
+		console.warn("Restore failed:", error);
 		return { success: false, error: error.message || "Restore failed" };
 	}
 }
@@ -305,7 +312,9 @@ export async function presentPaywall(): Promise<{
 	}
 
 	try {
-		const result = await RevenueCatUI.presentPaywall();
+		const result = await RevenueCatUI.presentPaywall({
+			displayCloseButton: true,
+		});
 
 		if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
 			const customerInfo = await waitForProEntitlement();
@@ -336,6 +345,7 @@ export async function presentPaywallIfNeeded(): Promise<{
 	try {
 		const result = await RevenueCatUI.presentPaywallIfNeeded({
 			requiredEntitlementIdentifier: ENTITLEMENT_ID,
+			displayCloseButton: true,
 		});
 
 		if (result === PAYWALL_RESULT.NOT_PRESENTED) {

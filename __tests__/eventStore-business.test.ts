@@ -87,6 +87,8 @@ function makeMediaItem(overrides: Partial<MediaItemWithUser> = {}): MediaItemWit
 		thumbnail_path: null,
 		visibility: "shared",
 		deleted_at: null,
+		latitude: null,
+		longitude: null,
 		uploader: { display_name: "Test User" },
 		...overrides,
 	};

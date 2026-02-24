@@ -1,18 +1,17 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { memo, useCallback, useEffect, useState } from "react";
+import { Image as ExpoImage } from "expo-image";
 import * as VideoThumbnails from "expo-video-thumbnails";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
-	Dimensions,
 	FlatList,
-	Image,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View,
-	type ViewToken,
+	type LayoutChangeEvent,
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
@@ -28,86 +27,42 @@ import { useEventStore } from "@/store/eventStore";
 import { useIsPro } from "@/store/subscriptionStore";
 import { getMaxVideoDurationMs } from "@/types/subscription";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
-const PHOTO_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
-// Simple thumbnail cache to avoid regenerating
-const thumbnailCache = new Map<string, string>();
-
-// Video thumbnail component with lazy loading and caching
 const VideoThumbnail = memo(function VideoThumbnail({
 	uri,
 	style,
-	isVisible,
 }: {
 	uri: string;
 	style: object;
-	isVisible: boolean;
 }) {
-	const [thumbnailUri, setThumbnailUri] = useState<string | null>(() => {
-		// Check cache on mount
-		return thumbnailCache.get(uri) || null;
-	});
-	const [isGenerating, setIsGenerating] = useState(false);
+	const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
 
 	useEffect(() => {
-		// Skip if already have thumbnail or currently generating
-		if (thumbnailUri || isGenerating) return;
-
 		let mounted = true;
-		let timeoutId: ReturnType<typeof setTimeout>;
-
-		async function generateThumbnail() {
-			setIsGenerating(true);
-			try {
-				const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, {
-					time: 0,
-				});
-				if (mounted) {
-					thumbnailCache.set(uri, thumbUri);
-					setThumbnailUri(thumbUri);
-				}
-			} catch {
-				// Fall back to showing placeholder
-			} finally {
-				if (mounted) setIsGenerating(false);
-			}
-		}
-
-		// If visible, generate immediately; otherwise delay to prioritize visible items
-		if (isVisible) {
-			generateThumbnail();
-		} else {
-			timeoutId = setTimeout(generateThumbnail, 500);
-		}
-
-		return () => {
-			mounted = false;
-			if (timeoutId) clearTimeout(timeoutId);
-		};
-	}, [uri, isVisible, thumbnailUri, isGenerating]);
+		VideoThumbnails.getThumbnailAsync(uri, { time: 0, quality: 0.5 })
+			.then(({ uri: thumbUri }) => {
+				if (mounted) setThumbnailUri(thumbUri);
+			})
+			.catch(() => {});
+		return () => { mounted = false; };
+	}, [uri]);
 
 	if (!thumbnailUri) {
-		return (
-			<View
-				style={[
-					style,
-					{
-						backgroundColor: "#1a1a1a",
-						justifyContent: "center",
-						alignItems: "center",
-					},
-				]}
-			>
-				{isGenerating && <ActivityIndicator size="small" color="#666" />}
-			</View>
-		);
+		return <View style={[style, { backgroundColor: "#1a1a1a" }]} />;
 	}
 
-	return <Image source={{ uri: thumbnailUri }} style={style} />;
+	return (
+		<ExpoImage
+			source={{ uri: thumbnailUri }}
+			style={style}
+			contentFit="cover"
+			cachePolicy="memory-disk"
+			transition={150}
+		/>
+	);
 });
 
 function formatVideoDuration(milliseconds: number): string {
@@ -129,6 +84,10 @@ export default function ContributeScreen() {
 		useEventStore();
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
+	const [containerWidth, setContainerWidth] = useState(0);
+	const photoSize = containerWidth
+		? Math.floor((containerWidth - GRID_PADDING * 2 - GRID_GAP * NUM_COLUMNS) / NUM_COLUMNS)
+		: 0;
 
 	const isPro = useIsPro();
 	const hostIsPro = currentEvent?.hostIsPro || false;
@@ -142,23 +101,8 @@ export default function ContributeScreen() {
 	const [permissionDenied, setPermissionDenied] = useState(false);
 	const [scanError, setScanError] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-	// Track visible items for lazy thumbnail loading
-	const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
 
 	const allPhotos = [...photos, ...manualPhotos];
-
-	const onViewableItemsChanged = useCallback(
-		({ viewableItems }: { viewableItems: ViewToken[] }) => {
-			const newVisibleIds = new Set(viewableItems.map((item) => (item.item as LocalPhoto).id));
-			setVisibleIds(newVisibleIds);
-		},
-		[]
-	);
-
-	const viewabilityConfig = useRef({
-		itemVisiblePercentThreshold: 10,
-		minimumViewTime: 100,
-	}).current;
 
 	const loadPhotos = useCallback(async () => {
 		if (!eventId) return;
@@ -417,7 +361,10 @@ export default function ContributeScreen() {
 		<>
 			<Stack.Screen options={{ title: `Select Photos (${selectedIds.size})` }} />
 
-			<View style={[styles.container, isDark && styles.containerDark]}>
+			<View
+				style={[styles.container, isDark && styles.containerDark]}
+				onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
+			>
 				<View style={styles.selectHeader}>
 					<View>
 						<Text style={[styles.selectCount, isDark && styles.textMuted]}>{getCountText()}</Text>
@@ -447,8 +394,6 @@ export default function ContributeScreen() {
 					data={allPhotos}
 					keyExtractor={(item) => item.id}
 					numColumns={NUM_COLUMNS}
-					onViewableItemsChanged={onViewableItemsChanged}
-					viewabilityConfig={viewabilityConfig}
 					initialNumToRender={15}
 					maxToRenderPerBatch={9}
 					windowSize={5}
@@ -457,10 +402,9 @@ export default function ContributeScreen() {
 						const isSelected = selectedIds.has(item.id);
 						const isUploaded = uploadedIds.has(item.id);
 						const isVideo = item.mediaType === "video";
-						const isVisible = visibleIds.has(item.id);
 						return (
 							<TouchableOpacity
-								style={styles.selectPhotoItem}
+								style={[styles.selectPhotoItem, { width: photoSize, height: photoSize }]}
 								onPress={() => togglePhotoSelection(item.id)}
 								onLongPress={() => setPreviewIndex(index)}
 								delayLongPress={200}
@@ -470,10 +414,9 @@ export default function ContributeScreen() {
 									<VideoThumbnail
 										uri={item.uri}
 										style={styles.selectPhotoImage}
-										isVisible={isVisible}
 									/>
 								) : (
-									<Image source={{ uri: item.uri }} style={styles.selectPhotoImage} />
+									<ExpoImage source={{ uri: item.uri }} style={styles.selectPhotoImage} contentFit="cover" cachePolicy="memory-disk" />
 								)}
 								{isVideo && (
 									<View style={styles.videoIndicator}>
@@ -683,8 +626,6 @@ const styles = StyleSheet.create({
 		padding: GRID_PADDING,
 	},
 	selectPhotoItem: {
-		width: PHOTO_SIZE,
-		height: PHOTO_SIZE,
 		margin: GRID_GAP / 2,
 		borderRadius: 6,
 		overflow: "hidden",

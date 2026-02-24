@@ -16,6 +16,8 @@ export interface PendingUpload {
 	assetId?: string;
 	mediaType: MediaType;
 	duration?: number;
+	latitude?: number;
+	longitude?: number;
 }
 
 const MAX_RETRIES = 3;
@@ -49,6 +51,8 @@ export async function processUpload(upload: PendingUpload): Promise<boolean> {
 		height: upload.height,
 		mediaType: upload.mediaType,
 		duration: upload.duration,
+		latitude: upload.latitude,
+		longitude: upload.longitude,
 	});
 
 	if (result.success && result.path) {

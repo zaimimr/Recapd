@@ -377,6 +377,12 @@ export default function EventScreen() {
 			<Stack.Screen
 				options={{
 					title: currentEvent.title,
+					headerBackVisible: false,
+					headerLeft: () => (
+						<TouchableOpacity onPress={() => router.replace("/")} style={styles.headerButton}>
+							<FontAwesome name="angle-left" size={28} color={isDark ? "#fff" : "#000"} />
+						</TouchableOpacity>
+					),
 					headerRight: () => (
 						<View style={styles.headerRight}>
 							{isHost && (

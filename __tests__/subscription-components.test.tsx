@@ -25,13 +25,17 @@ const mockRestore = jest.fn().mockResolvedValue({ success: false });
 const mockShowPaywall = jest.fn();
 const mockShowCustomerCenter = jest.fn();
 
+let mockStatus = {
+	isActive: false,
+	expiresAt: null as Date | null,
+	productId: null as string | null,
+	willRenew: false,
+};
+
 jest.mock("@/store/subscriptionStore", () => ({
 	useSubscriptionStore: () => ({
-		status: {
-			isActive: false,
-			expiresAt: null,
-			productId: null,
-			willRenew: false,
+		get status() {
+			return mockStatus;
 		},
 		showPaywall: mockShowPaywall,
 		showCustomerCenter: mockShowCustomerCenter,
@@ -111,11 +115,64 @@ function makeEvent(overrides: Record<string, any> = {}) {
 	};
 }
 
+describe("Settings - Subscription Status Text", () => {
+	beforeEach(() => {
+		jest.clearAllMocks();
+		mockSubscriptionsEnabled = true;
+		mockStatus = { isActive: false, expiresAt: null, productId: null, willRenew: false };
+	});
+
+	it("shows 'Renews' with date when subscription is active and will renew", () => {
+		mockedUseIsPro.mockReturnValue(true);
+		mockStatus = {
+			isActive: true,
+			expiresAt: new Date("2026-03-24"),
+			productId: "monthly",
+			willRenew: true,
+		};
+		const { getByText } = render(<SettingsScreen />);
+		expect(getByText(/Renews/)).toBeTruthy();
+		expect(getByText(/Renews/)).not.toHaveTextContent(/Expires/);
+	});
+
+	it("shows 'Expires' with date when subscription is cancelled (willRenew false)", () => {
+		mockedUseIsPro.mockReturnValue(true);
+		mockStatus = {
+			isActive: true,
+			expiresAt: new Date("2026-03-24"),
+			productId: "monthly",
+			willRenew: false,
+		};
+		const { getByText } = render(<SettingsScreen />);
+		expect(getByText(/Expires/)).toBeTruthy();
+		expect(getByText(/Expires/)).not.toHaveTextContent(/Renews/);
+	});
+
+	it("shows 'Active subscription' when pro but no expiration date", () => {
+		mockedUseIsPro.mockReturnValue(true);
+		mockStatus = {
+			isActive: true,
+			expiresAt: null,
+			productId: "monthly",
+			willRenew: true,
+		};
+		const { getByText } = render(<SettingsScreen />);
+		expect(getByText("Active subscription")).toBeTruthy();
+	});
+
+	it("shows free plan description when not pro", () => {
+		mockedUseIsPro.mockReturnValue(false);
+		const { getByText } = render(<SettingsScreen />);
+		expect(getByText("Longer videos & unlimited participants")).toBeTruthy();
+	});
+});
+
 describe("Settings - Restore Button", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockSubscriptionsEnabled = true;
 		mockedUseIsPro.mockReturnValue(false);
+		mockStatus = { isActive: false, expiresAt: null, productId: null, willRenew: false };
 	});
 
 	it("renders Restore Purchases when user is not pro", () => {

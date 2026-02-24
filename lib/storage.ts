@@ -50,6 +50,8 @@ export interface UploadMediaOptions {
 	fileSize?: number;
 	mediaType?: MediaType;
 	duration?: number;
+	latitude?: number;
+	longitude?: number;
 }
 
 function getContentType(extension: string, mediaType: MediaType): string {
@@ -120,6 +122,8 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		fileSize,
 		mediaType = "photo",
 		duration,
+		latitude,
+		longitude,
 	} = options;
 
 	try {
@@ -167,6 +171,8 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			storage_path: uploadData.path,
 			thumbnail_path: thumbnailPath,
 			visibility: "shared",
+			latitude: latitude ?? null,
+			longitude: longitude ?? null,
 		};
 
 		const { error: dbError } = await supabase.from("media_items").insert(insertData);
