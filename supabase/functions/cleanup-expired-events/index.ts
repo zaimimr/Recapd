@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 			console.log("No expired events found");
 		}
 
-		for (const event of (expiredEvents || [])) {
+		for (const event of expiredEvents || []) {
 			console.log(`Processing expired event: ${event.title} (${event.id})`);
 
 			results.expiredEvents.push({
@@ -142,10 +142,7 @@ Deno.serve(async (req) => {
 			}
 
 			// 6. Delete the event record entirely (CASCADE handles remaining media_items and participants)
-			const { error: deleteEventError } = await supabase
-				.from("events")
-				.delete()
-				.eq("id", event.id);
+			const { error: deleteEventError } = await supabase.from("events").delete().eq("id", event.id);
 
 			if (deleteEventError) {
 				results.errors.push(`Failed to delete event ${event.id}: ${deleteEventError.message}`);
@@ -167,7 +164,9 @@ Deno.serve(async (req) => {
 				.list("", { limit: 1000 });
 
 			if (topError || !topLevel) {
-				results.errors.push(`Failed to list ${bucket} for orphan sweep: ${topError?.message || "no data"}`);
+				results.errors.push(
+					`Failed to list ${bucket} for orphan sweep: ${topError?.message || "no data"}`
+				);
 				continue;
 			}
 
@@ -193,12 +192,12 @@ Deno.serve(async (req) => {
 				await collectFiles(folder.name);
 
 				if (filePaths.length > 0) {
-					const { error: removeError } = await supabase.storage
-						.from(bucket)
-						.remove(filePaths);
+					const { error: removeError } = await supabase.storage.from(bucket).remove(filePaths);
 
 					if (removeError) {
-						results.errors.push(`Failed to delete orphaned files in ${bucket}/${folder.name}: ${removeError.message}`);
+						results.errors.push(
+							`Failed to delete orphaned files in ${bucket}/${folder.name}: ${removeError.message}`
+						);
 					} else {
 						results.orphanedStorageFiles += filePaths.length;
 						console.log(`Deleted ${filePaths.length} orphaned files from ${bucket}/${folder.name}`);
@@ -207,7 +206,9 @@ Deno.serve(async (req) => {
 			}
 		}
 
-		console.log(`Cleanup complete. Processed ${results.expiredEvents.length} expired events, deleted ${results.orphanedStorageFiles} orphaned storage files`);
+		console.log(
+			`Cleanup complete. Processed ${results.expiredEvents.length} expired events, deleted ${results.orphanedStorageFiles} orphaned storage files`
+		);
 
 		return new Response(
 			JSON.stringify({
