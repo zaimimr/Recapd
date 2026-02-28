@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
 				const placeholderPng = createPlaceholderPng();
 
 				const { data: uploadData, error: uploadError } = await supabase.storage
-					.from("event-photos")
+					.from("thumbnails")
 					.upload(thumbnailPath, placeholderPng, {
 						contentType: "image/png",
 						upsert: false,
@@ -173,7 +173,7 @@ function generateThumbnailPath(videoPath: string): string {
 	// e.g., "eventId/userId/123456.mp4" -> "eventId/userId/123456_thumb.jpg"
 	const pathParts = videoPath.split(".");
 	pathParts.pop(); // Remove extension
-	return `${pathParts.join(".")}_thumb.jpg`;
+	return `${pathParts.join(".")}_thumb.png`;
 }
 
 function createPlaceholderPng(): Uint8Array {

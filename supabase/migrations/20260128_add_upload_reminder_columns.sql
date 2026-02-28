@@ -13,6 +13,8 @@ WHERE no_photos_to_upload = FALSE;
 
 -- Schedule the daily upload reminder cron job (runs every hour)
 -- This checks which events are at 09:00 in their local timezone
+-- PREREQUISITE: Store your anon key in Vault:
+--   SELECT vault.create_secret('YOUR_ANON_JWT_KEY', 'anon_key');
 SELECT cron.schedule(
   'daily-upload-reminder',
   '0 * * * *',  -- Every hour at :00
@@ -20,7 +22,7 @@ SELECT cron.schedule(
   SELECT net.http_post(
     url := 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/daily-upload-reminder',
     headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key'),
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
       'Content-Type', 'application/json'
     ),
     body := '{}'::jsonb

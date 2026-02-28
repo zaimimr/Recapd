@@ -19,7 +19,7 @@ Processes events that have passed their `expires_at` date.
 - Deletes all thumbnails from `thumbnails` bucket  
 - Deletes `media_items` records
 - Deletes `event_participants` records
-- Updates event status to 'expired'
+- Marks event status as 'expired' (preserves event record)
 
 ## Deployment
 
@@ -54,7 +54,7 @@ SELECT cron.schedule(
   SELECT net.http_post(
     url := 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/cleanup-expired-events',
     headers := jsonb_build_object(
-      'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
       'Content-Type', 'application/json'
     ),
     body := '{}'::jsonb
@@ -70,7 +70,7 @@ SELECT cron.schedule(
   SELECT net.http_post(
     url := 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/cleanup-orphaned-storage',
     headers := jsonb_build_object(
-      'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY',
+      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
       'Content-Type', 'application/json'
     ),
     body := '{}'::jsonb
