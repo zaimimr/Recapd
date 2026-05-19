@@ -225,6 +225,24 @@ export interface ReminderLogRow {
   payload: Json;
 }
 
+export interface EventProUnlockRow {
+  user_id: string;
+  event_id: string;
+  unlocked_at: string;
+  rc_transaction_id: string | null;
+  rc_product_id: string | null;
+  platform: Platform | null;
+}
+
+export type EventProUnlockInsert = {
+  user_id: string;
+  event_id: string;
+  unlocked_at?: string;
+  rc_transaction_id?: string | null;
+  rc_product_id?: string | null;
+  platform?: Platform | null;
+};
+
 export interface EventStorageUsage {
   event_id: string;
   total_bytes: number;
@@ -290,6 +308,11 @@ export interface Database {
         Insert: Omit<ReminderLogRow, "id" | "sent_at"> & { sent_at?: string };
         Update: Partial<ReminderLogRow>;
       };
+      event_pro_unlocks: {
+        Row: EventProUnlockRow;
+        Insert: EventProUnlockInsert;
+        Update: Partial<EventProUnlockInsert>;
+      };
     };
     Functions: {
       current_entitlement: {
@@ -309,6 +332,10 @@ export interface Database {
         Returns: EventStorageUsage[];
       };
       can_download_full_resolution: {
+        Args: { target_event_id: string };
+        Returns: boolean;
+      };
+      event_is_pro: {
         Args: { target_event_id: string };
         Returns: boolean;
       };

@@ -164,6 +164,18 @@ DO $$ BEGIN
     FOREIGN KEY (cover_media_id) REFERENCES media_items(id) ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+CREATE TABLE IF NOT EXISTS event_pro_unlocks (
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  unlocked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  rc_transaction_id TEXT,
+  rc_product_id TEXT,
+  platform TEXT CHECK (platform IN ('ios', 'android', 'web')),
+  PRIMARY KEY (user_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_pro_unlocks_event ON event_pro_unlocks(event_id);
+
 CREATE TABLE IF NOT EXISTS nudges (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -434,16 +446,25 @@ $$;
 
 GRANT EXECUTE ON FUNCTION event_storage_usage(UUID) TO authenticated;
 
-CREATE OR REPLACE FUNCTION can_download_full_resolution(target_event_id UUID)
+CREATE OR REPLACE FUNCTION event_is_pro(target_event_id UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT COALESCE(sl.allows_full_resolution_download, FALSE)
+  SELECT
+    public.current_entitlement(e.host_id) = 'pro'
+    OR EXISTS (
+      SELECT 1 FROM public.event_pro_unlocks u
+      WHERE u.event_id = e.id AND u.user_id = e.host_id
+    )
   FROM public.events e
-  JOIN public.subscription_limits sl
-    ON sl.entitlement = public.current_entitlement(e.host_id)
   WHERE e.id = target_event_id;
 $$;
 
+CREATE OR REPLACE FUNCTION can_download_full_resolution(target_event_id UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT COALESCE(public.event_is_pro(target_event_id), FALSE);
+$$;
+
 GRANT EXECUTE ON FUNCTION can_download_full_resolution(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION event_is_pro(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION current_entitlement(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION limits_for(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION is_event_member(UUID) TO authenticated;
@@ -529,6 +550,7 @@ ALTER TABLE event_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nudges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reminders_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_pro_unlocks ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS profiles_select_self_or_co_member ON profiles;
 CREATE POLICY profiles_select_self_or_co_member ON profiles FOR SELECT
@@ -645,6 +667,14 @@ CREATE POLICY reminders_log_select_self_or_host ON reminders_log FOR SELECT
     OR (event_id IS NOT NULL AND is_event_host(event_id))
   );
 
+DROP POLICY IF EXISTS event_pro_unlocks_select_self_or_host ON event_pro_unlocks;
+CREATE POLICY event_pro_unlocks_select_self_or_host ON event_pro_unlocks FOR SELECT
+  USING (user_id = auth.uid() OR is_event_host(event_id));
+
+DROP POLICY IF EXISTS event_pro_unlocks_insert_self ON event_pro_unlocks;
+CREATE POLICY event_pro_unlocks_insert_self ON event_pro_unlocks FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
 GRANT SELECT, INSERT, UPDATE ON profiles TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON subscriptions TO authenticated;
 GRANT SELECT ON subscription_limits TO anon, authenticated;
@@ -653,3 +683,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON event_members TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON media_items TO authenticated;
 GRANT SELECT, INSERT ON nudges TO authenticated;
 GRANT SELECT ON reminders_log TO authenticated;
+GRANT SELECT, INSERT ON event_pro_unlocks TO authenticated;
