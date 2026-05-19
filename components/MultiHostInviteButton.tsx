@@ -10,7 +10,7 @@ type Props = {
 };
 
 export function MultiHostInviteButton({ eventId, onInvite }: Props) {
-	const entitlement = useEntitlement();
+	const entitlement = useEntitlement(eventId);
 	const [promptVisible, setPromptVisible] = useState(false);
 	const locked = !entitlement.allowsMultiHost;
 

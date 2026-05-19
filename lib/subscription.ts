@@ -146,6 +146,41 @@ export async function canDownloadFullResolution(eventId: string): Promise<boolea
 	return Boolean(data);
 }
 
+export async function isEventPro(eventId: string): Promise<boolean> {
+	const { data, error } = await supabase.rpc("event_is_pro", {
+		target_event_id: eventId,
+	});
+	if (error || data == null) return false;
+	return Boolean(data);
+}
+
+export async function fetchUserEventUnlocks(userId: string): Promise<string[]> {
+	const { data, error } = await supabase
+		.from("event_pro_unlocks")
+		.select("event_id")
+		.eq("user_id", userId);
+	if (error || !data) return [];
+	return data.map((row) => row.event_id as string);
+}
+
+export async function recordEventProUnlock(
+	userId: string,
+	eventId: string,
+	rcTransactionId: string | null,
+): Promise<void> {
+	const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+	const { error } = await supabase.from("event_pro_unlocks").insert({
+		user_id: userId,
+		event_id: eventId,
+		rc_transaction_id: rcTransactionId,
+		rc_product_id: PRODUCT_PER_EVENT_PRO,
+		platform,
+	});
+	if (error && error.code !== "23505") {
+		console.warn("recordEventProUnlock failed", error.message);
+	}
+}
+
 export async function fetchSubscriptionLimits(): Promise<SubscriptionLimits[]> {
 	const { data, error } = await supabase
 		.from("subscription_limits")

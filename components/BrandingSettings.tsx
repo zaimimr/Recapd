@@ -20,7 +20,7 @@ type Props = {
 };
 
 export function BrandingSettings({ eventId, value, onChange }: Props) {
-	const entitlement = useEntitlement();
+	const entitlement = useEntitlement(eventId);
 	const [promptVisible, setPromptVisible] = useState(false);
 	const locked = !entitlement.allowsCustomBranding;
 

@@ -12,7 +12,7 @@ type Props = {
 };
 
 export function ExpiryBanner({ eventId, eventCreatedAt, onExport }: Props) {
-	const entitlement = useEntitlement();
+	const entitlement = useEntitlement(eventId);
 	const [promptVisible, setPromptVisible] = useState(false);
 
 	const createdAt = useMemo(

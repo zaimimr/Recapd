@@ -77,18 +77,23 @@ function resolveSummary(
 	};
 }
 
-export function buildEntitlement(): EntitlementSummary {
+export function buildEntitlement(eventId?: string): EntitlementSummary {
 	const state = useSubscriptionStore.getState();
-	const isPro = state.entitlement === "pro";
+	const subscriptionPro = state.entitlement === "pro";
+	const eventUnlocked = eventId ? state.unlockedEventIds.includes(eventId) : false;
+	const isPro = subscriptionPro || eventUnlocked;
 	const limits = isPro ? state.limits.pro : state.limits.free;
 	return resolveSummary(isPro, state.billingPeriod, limits);
 }
 
-export function useEntitlement(): EntitlementSummary {
+export function useEntitlement(eventId?: string): EntitlementSummary {
 	const entitlement = useSubscriptionStore((s) => s.entitlement);
 	const billingPeriod = useSubscriptionStore((s) => s.billingPeriod);
 	const limits = useSubscriptionStore((s) => s.limits);
-	const isPro = entitlement === "pro";
+	const unlockedEventIds = useSubscriptionStore((s) => s.unlockedEventIds);
+	const subscriptionPro = entitlement === "pro";
+	const eventUnlocked = eventId ? unlockedEventIds.includes(eventId) : false;
+	const isPro = subscriptionPro || eventUnlocked;
 	return resolveSummary(isPro, billingPeriod, isPro ? limits.pro : limits.free);
 }
 

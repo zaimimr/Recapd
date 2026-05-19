@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function FullResDownloadButton({ eventId, onDownload }: Props) {
-	const entitlement = useEntitlement();
+	const entitlement = useEntitlement(eventId);
 	const [promptVisible, setPromptVisible] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const locked = !entitlement.allowsFullResDownload;

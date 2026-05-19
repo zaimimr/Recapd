@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function ParticipantLimitBanner({ eventId, guestCount }: Props) {
-	const entitlement = useEntitlement();
+	const entitlement = useEntitlement(eventId);
 	const [promptVisible, setPromptVisible] = useState(false);
 
 	if (entitlement.isPro) return null;
