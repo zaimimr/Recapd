@@ -59,25 +59,43 @@ export async function registerForPushNotifications(): Promise<string | null> {
 	}
 }
 
-export async function persistPushToken(token: string): Promise<void> {
+export async function persistPushTokenForEvent(eventId: string, token: string): Promise<void> {
 	const { data: userResult } = await supabase.auth.getUser();
 	const userId = userResult.user?.id;
 	if (!userId) return;
-	await supabase.from("push_tokens").upsert(
-		{
-			user_id: userId,
-			expo_token: token,
-			platform: Platform.OS,
-		},
-		{ onConflict: "user_id,expo_token" }
-	);
+	await supabase
+		.from("event_members")
+		.update({ push_token: token, notifications_opt_in: true })
+		.eq("event_id", eventId)
+		.eq("user_id", userId);
 }
 
-export async function clearPushTokensForCurrentUser(): Promise<void> {
+export async function persistPushTokenForAllEvents(token: string): Promise<void> {
 	const { data: userResult } = await supabase.auth.getUser();
 	const userId = userResult.user?.id;
 	if (!userId) return;
-	await supabase.from("push_tokens").delete().eq("user_id", userId);
+	await supabase
+		.from("event_members")
+		.update({ push_token: token, notifications_opt_in: true })
+		.eq("user_id", userId);
+}
+
+export async function setEventNotificationsOptIn(eventId: string, optIn: boolean): Promise<void> {
+	const { data: userResult } = await supabase.auth.getUser();
+	const userId = userResult.user?.id;
+	if (!userId) return;
+	await supabase
+		.from("event_members")
+		.update({ notifications_opt_in: optIn })
+		.eq("event_id", eventId)
+		.eq("user_id", userId);
+}
+
+export async function clearPushTokenForCurrentUser(): Promise<void> {
+	const { data: userResult } = await supabase.auth.getUser();
+	const userId = userResult.user?.id;
+	if (!userId) return;
+	await supabase.from("event_members").update({ push_token: null }).eq("user_id", userId);
 }
 
 export type DeepLinkPayload = {

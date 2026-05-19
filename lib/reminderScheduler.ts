@@ -11,10 +11,9 @@ export type CooldownInfo = {
 
 export async function getHostNudgeCooldown(eventId: string): Promise<CooldownInfo> {
 	const { data } = await supabase
-		.from("nudge_log")
+		.from("nudges")
 		.select("sent_at")
 		.eq("event_id", eventId)
-		.eq("kind", "host_broadcast")
 		.order("sent_at", { ascending: false })
 		.limit(1)
 		.maybeSingle();

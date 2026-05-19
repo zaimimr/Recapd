@@ -8,7 +8,16 @@ type Event = {
 	id: string;
 	title: string | null;
 	host_id: string;
-	end_time: string;
+	ends_at: string;
+};
+
+type Member = {
+	user_id: string;
+	role: "host" | "guest";
+	push_token: string | null;
+	notifications_opt_in: boolean;
+	last_uploaded_at: string | null;
+	no_photos_to_upload: boolean;
 };
 
 Deno.serve(async (req: Request) => {
@@ -28,9 +37,10 @@ Deno.serve(async (req: Request) => {
 
 	const { data: events } = await admin
 		.from("events")
-		.select("id, title, host_id, end_time")
-		.gte("end_time", windowStart)
-		.lte("end_time", windowEnd)
+		.select("id, title, host_id, ends_at")
+		.gte("ends_at", windowStart)
+		.lte("ends_at", windowEnd)
+		.is("archived_at", null)
 		.returns<Event[]>();
 
 	let totalSent = 0;
@@ -38,24 +48,12 @@ Deno.serve(async (req: Request) => {
 	const skipped: string[] = [];
 
 	for (const event of events ?? []) {
-		const { count: existing } = await admin
-			.from("nudge_log")
-			.select("id", { count: "exact", head: true })
-			.eq("event_id", event.id)
-			.eq("kind", "day_after_auto");
-		if ((existing ?? 0) > 0) {
+		const result = await deliverEventReminders(admin, event);
+		if (result.skipped) {
 			skipped.push(event.id);
 			continue;
 		}
-
-		const sent = await deliverReminder(admin, event);
-		await admin.from("nudge_log").insert({
-			event_id: event.id,
-			host_id: event.host_id,
-			kind: "day_after_auto",
-			recipient_count: sent,
-		});
-		totalSent += sent;
+		totalSent += result.sent;
 		processedEvents += 1;
 	}
 
@@ -70,40 +68,52 @@ Deno.serve(async (req: Request) => {
 	);
 });
 
-async function deliverReminder(
+async function deliverEventReminders(
 	admin: ReturnType<typeof createClient>,
 	event: Event
-): Promise<number> {
-	const { data: participants } = await admin
-		.from("event_participants")
-		.select("user_id")
-		.eq("event_id", event.id);
-	const userIds = (participants ?? [])
-		.map((p: { user_id: string | null }) => p.user_id)
-		.filter((id): id is string => !!id);
-	if (userIds.length === 0) return 0;
-
-	const { data: tokens } = await admin
-		.from("push_tokens")
-		.select("expo_token")
-		.in("user_id", userIds);
-	const unique = Array.from(
-		new Set(
-			(tokens ?? [])
-				.map((t: { expo_token: string | null }) => t.expo_token)
-				.filter((t): t is string => !!t)
+): Promise<{ sent: number; skipped: boolean }> {
+	const { data: members } = await admin
+		.from("event_members")
+		.select(
+			"user_id, role, push_token, notifications_opt_in, last_uploaded_at, no_photos_to_upload"
 		)
+		.eq("event_id", event.id)
+		.returns<Member[]>();
+
+	const eligible = (members ?? []).filter(
+		(m) =>
+			m.role === "guest" &&
+			m.notifications_opt_in &&
+			!m.no_photos_to_upload &&
+			!m.last_uploaded_at &&
+			!!m.push_token
 	);
-	if (unique.length === 0) return 0;
+	if (eligible.length === 0) return { sent: 0, skipped: false };
+
+	const userIds = eligible.map((m) => m.user_id);
+	const { data: alreadySent } = await admin
+		.from("reminders_log")
+		.select("user_id")
+		.eq("event_id", event.id)
+		.eq("kind", "day_after_auto")
+		.in("user_id", userIds);
+
+	const sentSet = new Set(
+		(alreadySent ?? [])
+			.map((r: { user_id: string | null }) => r.user_id)
+			.filter((id): id is string => !!id)
+	);
+	const targets = eligible.filter((m) => !sentSet.has(m.user_id));
+	if (targets.length === 0) return { sent: 0, skipped: true };
 
 	const deepLink = buildContributeDeepLink(event.id);
 	const title = event.title ? `Recap from ${event.title}` : "Add your photos";
-	const body = "Pick the keepers from yesterday. We'll group them with the rest.";
+	const bodyText = "Pick the keepers from yesterday. We'll group them with the rest.";
 
-	const messages = unique.map((token) => ({
-		to: token,
+	const messages = targets.map((m) => ({
+		to: m.push_token as string,
 		title,
-		body,
+		body: bodyText,
 		sound: "default" as const,
 		channelId: "default",
 		priority: "high" as const,
@@ -111,5 +121,22 @@ async function deliverReminder(
 	}));
 
 	const tickets = await sendExpoPush(messages);
-	return tickets.filter((t) => t.status === "ok").length;
+
+	const logRows = targets.map((m, idx) => {
+		const ticket = tickets[idx];
+		const delivered = ticket?.status === "ok";
+		return {
+			event_id: event.id,
+			user_id: m.user_id,
+			kind: "day_after_auto" as const,
+			channel: "push" as const,
+			delivered,
+			error: delivered ? null : (ticket?.message ?? "unknown"),
+			payload: { deep_link: deepLink },
+		};
+	});
+	if (logRows.length > 0) await admin.from("reminders_log").insert(logRows);
+
+	const sent = tickets.filter((t) => t.status === "ok").length;
+	return { sent, skipped: false };
 }

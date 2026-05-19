@@ -6,13 +6,23 @@ const QUIET_HOURS = 4;
 
 type RequestBody = {
 	event_id?: string;
+	message?: string;
 };
 
 type Event = {
 	id: string;
-	title?: string | null;
+	title: string | null;
 	host_id: string;
-	end_time?: string | null;
+	ends_at: string | null;
+};
+
+type Member = {
+	user_id: string;
+	role: "host" | "guest";
+	push_token: string | null;
+	notifications_opt_in: boolean;
+	last_uploaded_at: string | null;
+	no_photos_to_upload: boolean;
 };
 
 Deno.serve(async (req: Request) => {
@@ -45,7 +55,7 @@ Deno.serve(async (req: Request) => {
 
 	const { data: event, error: eventError } = await admin
 		.from("events")
-		.select("id, title, host_id, end_time")
+		.select("id, title, host_id, ends_at")
 		.eq("id", eventId)
 		.maybeSingle<Event>();
 	if (eventError || !event) return json({ error: "event not found" }, 404);
@@ -53,94 +63,92 @@ Deno.serve(async (req: Request) => {
 
 	const cooldownSince = new Date(Date.now() - COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
 	const { count: recentCount } = await admin
-		.from("nudge_log")
+		.from("nudges")
 		.select("id", { count: "exact", head: true })
 		.eq("event_id", eventId)
-		.eq("kind", "host_broadcast")
 		.gte("sent_at", cooldownSince);
 	if ((recentCount ?? 0) > 0) {
 		return json({ error: "cooldown" }, 429);
 	}
 
-	const recipients = await collectInactiveGuests(admin, eventId, event.host_id);
-	if (recipients.length === 0) {
-		await admin.from("nudge_log").insert({
-			event_id: eventId,
-			host_id: event.host_id,
-			kind: "host_broadcast",
-			recipient_count: 0,
-		});
-		return json({ ok: true, recipient_count: 0 });
-	}
+	const inactiveSince = new Date(Date.now() - QUIET_HOURS * 60 * 60 * 1000).toISOString();
+	const { data: members } = await admin
+		.from("event_members")
+		.select(
+			"user_id, role, push_token, notifications_opt_in, last_uploaded_at, no_photos_to_upload"
+		)
+		.eq("event_id", eventId)
+		.returns<Member[]>();
+
+	const tokens = (members ?? [])
+		.filter((m) => m.role === "guest")
+		.filter((m) => m.notifications_opt_in)
+		.filter((m) => !m.no_photos_to_upload)
+		.filter((m) => !m.last_uploaded_at || m.last_uploaded_at < inactiveSince)
+		.map((m) => m.push_token)
+		.filter((t): t is string => !!t);
+
+	const uniqueTokens = Array.from(new Set(tokens));
+	const missingTokenCount = (members ?? []).filter(
+		(m) => m.role === "guest" && m.notifications_opt_in && !m.push_token
+	).length;
 
 	const title = event.title ? `Photos from ${event.title}` : "Add your photos";
-	const body_text = "Your host is waiting on the rest of your shots. Tap to drop them in.";
+	const bodyText =
+		body.message ?? "Your host is waiting on the rest of your shots. Tap to drop them in.";
 	const deepLink = buildContributeDeepLink(eventId);
 
-	const messages = recipients.map((token) => ({
-		to: token,
-		title,
-		body: body_text,
-		sound: "default" as const,
-		channelId: "default",
-		priority: "high" as const,
-		data: { deep_link: deepLink, event_id: eventId, kind: "host_broadcast" },
-	}));
+	let delivered = 0;
+	const errors: string[] = [];
 
-	const tickets = await sendExpoPush(messages);
-	const delivered = tickets.filter((t) => t.status === "ok").length;
+	if (uniqueTokens.length > 0) {
+		const messages = uniqueTokens.map((token) => ({
+			to: token,
+			title,
+			body: bodyText,
+			sound: "default" as const,
+			channelId: "default",
+			priority: "high" as const,
+			data: { deep_link: deepLink, event_id: eventId, kind: "host_nudge" },
+		}));
+		const tickets = await sendExpoPush(messages);
+		delivered = tickets.filter((t) => t.status === "ok").length;
+		for (const t of tickets) {
+			if (t.status !== "ok" && t.message) errors.push(t.message);
+		}
+	}
 
-	await admin.from("nudge_log").insert({
+	await admin.from("nudges").insert({
 		event_id: eventId,
-		host_id: event.host_id,
-		kind: "host_broadcast",
+		sent_by: event.host_id,
+		message: body.message ?? null,
 		recipient_count: delivered,
 	});
 
-	return json({ ok: true, recipient_count: delivered, attempted: recipients.length });
+	if (uniqueTokens.length > 0) {
+		await admin.from("reminders_log").insert({
+			event_id: eventId,
+			user_id: null,
+			kind: "host_nudge",
+			channel: "push",
+			delivered: delivered > 0,
+			error: errors.length > 0 ? errors.slice(0, 3).join("; ") : null,
+			payload: {
+				attempted: uniqueTokens.length,
+				delivered,
+				deep_link: deepLink,
+				message: body.message ?? null,
+			},
+		});
+	}
+
+	return json({
+		ok: true,
+		recipient_count: delivered,
+		attempted: uniqueTokens.length,
+		without_push_token: missingTokenCount,
+	});
 });
-
-async function collectInactiveGuests(
-	admin: ReturnType<typeof createClient>,
-	eventId: string,
-	hostId: string
-): Promise<string[]> {
-	const inactiveSince = new Date(Date.now() - QUIET_HOURS * 60 * 60 * 1000).toISOString();
-
-	const { data: participants } = await admin
-		.from("event_participants")
-		.select("user_id")
-		.eq("event_id", eventId);
-	const participantIds = (participants ?? [])
-		.map((p: { user_id: string | null }) => p.user_id)
-		.filter((id): id is string => !!id && id !== hostId);
-	if (participantIds.length === 0) return [];
-
-	const { data: recentUploads } = await admin
-		.from("media_items")
-		.select("uploader_id")
-		.eq("event_id", eventId)
-		.gte("created_at", inactiveSince);
-	const activeIds = new Set(
-		(recentUploads ?? [])
-			.map((m: { uploader_id: string | null }) => m.uploader_id)
-			.filter((id): id is string => !!id)
-	);
-
-	const inactive = participantIds.filter((id) => !activeIds.has(id));
-	if (inactive.length === 0) return [];
-
-	const { data: tokens } = await admin
-		.from("push_tokens")
-		.select("expo_token")
-		.in("user_id", inactive);
-	const unique = new Set(
-		(tokens ?? [])
-			.map((t: { expo_token: string | null }) => t.expo_token)
-			.filter((t): t is string => !!t)
-	);
-	return Array.from(unique);
-}
 
 function json(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {

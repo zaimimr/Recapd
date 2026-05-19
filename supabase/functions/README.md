@@ -2,7 +2,7 @@
 
 ## nudge-broadcast
 
-Host-triggered. Pushes a reminder to event guests who haven't uploaded in the last 4 hours. Enforces a 6h cooldown per event via `nudge_log`.
+Host-triggered. Pushes a reminder to event guests who haven't uploaded in the last 4 hours, are opted in, and have a `push_token` on `event_members`. Enforces a 6h cooldown per event via `nudges`. Logs delivery to `reminders_log` with `kind='host_nudge'`.
 
 Deploy:
 
@@ -18,7 +18,7 @@ Environment:
 
 ## daily-reminder
 
-Cron-triggered. Scans events whose `end_time` was 18-24h ago and pushes the day-after auto-reminder once per event.
+Cron-triggered. Scans events whose `ends_at` was 18-24h ago and pushes the day-after auto-reminder. Idempotent per (event, user) via `reminders_log` row with `kind='day_after_auto'`. Only targets guests with `notifications_opt_in=true`, `no_photos_to_upload=false`, no `last_uploaded_at`, and a `push_token`.
 
 Deploy:
 
@@ -48,6 +48,15 @@ select cron.schedule(
 );
 ```
 
+## Schema dependencies
+
+Owned by the db slice (`feat/db`):
+
+- `events(id, host_id, title, ends_at, archived_at)`
+- `event_members(event_id, user_id, role, push_token, notifications_opt_in, last_uploaded_at, no_photos_to_upload)`
+- `nudges(event_id, sent_by, sent_at, message, recipient_count)` for cooldown
+- `reminders_log(event_id, user_id, kind, channel, delivered, error, payload)` for audit + idempotency
+
 ## TODO
 
-- SMS fallback for guests without push tokens (Twilio or similar). Currently no-op.
+- SMS fallback for guests without `push_token` (Twilio or similar). Currently the response surfaces `without_push_token` so the host UI can show a fallback hint.

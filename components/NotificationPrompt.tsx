@@ -3,7 +3,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import {
 	getPermissionState,
 	type PermissionState,
-	persistPushToken,
+	persistPushTokenForAllEvents,
+	persistPushTokenForEvent,
 	registerForPushNotifications,
 	requestSystemPermission,
 } from "../lib/notifications";
@@ -13,6 +14,7 @@ type Reason = "initial" | "post_first_upload";
 type Props = {
 	visible: boolean;
 	reason?: Reason;
+	eventId?: string;
 	onResolved: (state: PermissionState) => void;
 	onDismiss: () => void;
 };
@@ -30,7 +32,13 @@ const COPY: Record<Reason, { title: string; body: string; cta: string }> = {
 	},
 };
 
-export function NotificationPrompt({ visible, reason = "initial", onResolved, onDismiss }: Props) {
+export function NotificationPrompt({
+	visible,
+	reason = "initial",
+	eventId,
+	onResolved,
+	onDismiss,
+}: Props) {
 	const [busy, setBusy] = useState(false);
 	const copy = COPY[reason];
 
@@ -44,7 +52,10 @@ export function NotificationPrompt({ visible, reason = "initial", onResolved, on
 		const next = current === "granted" ? "granted" : await requestSystemPermission();
 		if (next === "granted") {
 			const token = await registerForPushNotifications();
-			if (token) await persistPushToken(token);
+			if (token) {
+				if (eventId) await persistPushTokenForEvent(eventId, token);
+				else await persistPushTokenForAllEvents(token);
+			}
 		}
 		onResolved(next);
 		setBusy(false);
