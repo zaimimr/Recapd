@@ -19,7 +19,18 @@ function inferMimeType(filename: string, mediaType: string): string {
 	return "image/jpeg";
 }
 
-async function resolveCaptureTime(asset: MediaLibrary.Asset): Promise<number> {
+type AssetDetails = {
+	captureTime: number;
+	latitude: number | null;
+	longitude: number | null;
+	localUri: string;
+};
+
+async function resolveAssetDetails(asset: MediaLibrary.Asset): Promise<AssetDetails> {
+	let captureTime = asset.creationTime ?? Date.now();
+	let latitude: number | null = null;
+	let longitude: number | null = null;
+	let localUri = asset.uri;
 	try {
 		const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
 		const exif = (info as any).exif as Record<string, unknown> | undefined;
@@ -27,10 +38,17 @@ async function resolveCaptureTime(asset: MediaLibrary.Asset): Promise<number> {
 		if (exifDate) {
 			const normalized = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3");
 			const parsed = Date.parse(normalized);
-			if (!Number.isNaN(parsed)) return parsed;
+			if (!Number.isNaN(parsed)) captureTime = parsed;
 		}
+		const location = (info as any).location as { latitude?: number; longitude?: number } | null | undefined;
+		if (location && typeof location.latitude === "number" && typeof location.longitude === "number") {
+			latitude = location.latitude;
+			longitude = location.longitude;
+		}
+		const localUriCandidate = (info as any).localUri as string | undefined;
+		if (localUriCandidate) localUri = localUriCandidate;
 	} catch {}
-	return asset.creationTime ?? Date.now();
+	return { captureTime, latitude, longitude, localUri };
 }
 
 export async function ensureMediaPermission(): Promise<boolean> {
@@ -63,23 +81,25 @@ export async function scanAssetsForWindow(window: EventWindow): Promise<ScannedA
 			if (!window.allowOutsideWindow && creation < stopBefore) {
 				return out;
 			}
-			const captureTime = await resolveCaptureTime(asset);
-			const inWindow = captureTime >= window.startsAt && captureTime <= window.endsAt;
+			const details = await resolveAssetDetails(asset);
+			const inWindow = details.captureTime >= window.startsAt && details.captureTime <= window.endsAt;
 			if (!window.allowOutsideWindow && !inWindow) continue;
 
 			const filename = asset.filename ?? `${asset.id}`;
 			const isVideo = asset.mediaType === "video";
 			out.push({
 				assetId: asset.id,
-				uri: asset.uri,
+				uri: details.localUri,
 				filename,
 				mimeType: inferMimeType(filename, asset.mediaType),
 				width: asset.width ?? 0,
 				height: asset.height ?? 0,
-				captureTime,
+				captureTime: details.captureTime,
 				durationMs: Math.round((asset.duration ?? 0) * 1000),
 				isVideo,
 				inWindow,
+				latitude: details.latitude,
+				longitude: details.longitude,
 			});
 		}
 

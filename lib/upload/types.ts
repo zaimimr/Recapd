@@ -11,6 +11,8 @@ export type ScannedAsset = {
 	durationMs: number;
 	isVideo: boolean;
 	inWindow: boolean;
+	latitude?: number | null;
+	longitude?: number | null;
 };
 
 export type QueueItem = {
@@ -25,17 +27,21 @@ export type QueueItem = {
 	isVideo: boolean;
 	durationMs: number;
 	sizeBytes: number | null;
+	thumbSizeBytes: number | null;
 	width: number;
 	height: number;
+	outsideWindow: boolean;
+	latitude: number | null;
+	longitude: number | null;
 	status: UploadStatus;
 	attempts: number;
 	progress: number;
 	error?: string;
-	originalUploadedAt?: number;
-	thumbUploadedAt?: number;
+	mediaItemId?: string;
 	storagePath?: string;
 	thumbPath?: string;
-	mediaItemId?: string;
+	originalUploadedAt?: number;
+	thumbUploadedAt?: number;
 };
 
 export type EventWindow = {

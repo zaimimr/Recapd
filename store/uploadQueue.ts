@@ -90,24 +90,59 @@ function pickNext(state: State): QueueItem | undefined {
 	return undefined;
 }
 
-async function insertMediaRow(item: QueueItem): Promise<string> {
+async function reserveMediaRow(item: QueueItem): Promise<{ id: string; storagePath: string; thumbPath: string }> {
+	const provisionalId = Crypto.randomUUID();
+	const storagePath = originalObjectPath(item.eventId, item.ownerId, provisionalId, item.filename, item.mimeType);
+	const thumbPath = thumbObjectPath(item.eventId, item.ownerId, provisionalId);
 	const { data, error } = await supabase
 		.from("media_items")
 		.insert({
+			id: provisionalId,
 			event_id: item.eventId,
 			owner_id: item.ownerId,
 			capture_time: new Date(item.captureTime).toISOString(),
 			is_video: item.isVideo,
-			duration_ms: item.durationMs,
-			storage_path: item.storagePath,
-			thumb_path: item.thumbPath,
-			size_bytes: item.sizeBytes,
-			status: "ready",
+			duration_ms: item.isVideo ? item.durationMs : null,
+			width: item.width || null,
+			height: item.height || null,
+			storage_path: storagePath,
+			thumb_path: thumbPath,
+			content_type: item.mimeType,
+			status: "pending",
+			outside_window: item.outsideWindow,
+			latitude: item.latitude,
+			longitude: item.longitude,
 		})
-		.select("id")
+		.select("id, storage_path, thumb_path")
 		.single();
 	if (error) throw error;
-	return (data as { id: string }).id;
+	const row = data as { id: string; storage_path: string; thumb_path: string };
+	return { id: row.id, storagePath: row.storage_path, thumbPath: row.thumb_path };
+}
+
+async function markMediaReady(
+	mediaItemId: string,
+	sizeBytes: number,
+	thumbSizeBytes: number
+): Promise<void> {
+	const { error } = await supabase
+		.from("media_items")
+		.update({
+			status: "ready",
+			size_bytes: sizeBytes,
+			thumb_size_bytes: thumbSizeBytes,
+		})
+		.eq("id", mediaItemId);
+	if (error) throw error;
+}
+
+async function markMediaFailed(mediaItemId: string): Promise<void> {
+	try {
+		await supabase
+			.from("media_items")
+			.update({ status: "failed" })
+			.eq("id", mediaItemId);
+	} catch {}
 }
 
 export const useUploadQueue = create<UploadQueueStore>((set, get) => ({
@@ -139,8 +174,12 @@ export const useUploadQueue = create<UploadQueueStore>((set, get) => ({
 				isVideo: asset.isVideo,
 				durationMs: asset.durationMs,
 				sizeBytes: null,
+				thumbSizeBytes: null,
 				width: asset.width,
 				height: asset.height,
+				outsideWindow: !asset.inWindow,
+				latitude: asset.latitude ?? null,
+				longitude: asset.longitude ?? null,
 				status: "queued",
 				attempts: 0,
 				progress: 0,
@@ -228,9 +267,23 @@ async function runItem(id: string) {
 	useUploadQueue.setState({ running: nextRunning });
 	setItem(id, { status: "uploading", attempts: item.attempts + 1, error: undefined, progress: 0 });
 
+	let mediaItemId = item.mediaItemId;
 	try {
-		const originalPath = item.storagePath ?? originalObjectPath(item.eventId, item.id, item.filename);
-		const thumbPath = item.thumbPath ?? thumbObjectPath(item.eventId, item.id);
+		if (!mediaItemId) {
+			const reserved = await reserveMediaRow(item);
+			mediaItemId = reserved.id;
+			setItem(id, {
+				mediaItemId: reserved.id,
+				storagePath: reserved.storagePath,
+				thumbPath: reserved.thumbPath,
+			});
+		}
+
+		const refreshed = useUploadQueue.getState().items[id];
+		if (!refreshed) throw new Error("queue item disappeared");
+		const originalPath = refreshed.storagePath;
+		const thumbPath = refreshed.thumbPath;
+		if (!originalPath || !thumbPath) throw new Error("missing storage paths");
 
 		const captureIso = new Date(item.captureTime).toISOString();
 
@@ -243,6 +296,7 @@ async function runItem(id: string) {
 				capture_time: captureIso,
 				event_id: item.eventId,
 				owner_id: item.ownerId,
+				media_id: mediaItemId,
 				asset_id: item.assetId,
 			},
 			onProgress: (loaded, total) => {
@@ -252,7 +306,6 @@ async function runItem(id: string) {
 		});
 
 		setItem(id, {
-			storagePath: originalResult.storagePath,
 			sizeBytes: originalResult.sizeBytes,
 			originalUploadedAt: Date.now(),
 		});
@@ -260,23 +313,22 @@ async function runItem(id: string) {
 		const thumb = await generateThumb(item.localUri, item.isVideo);
 		setProgress(id, 0.9);
 
-		await uploadFile({
+		const thumbResult = await uploadFile({
 			bucket: THUMBS_BUCKET,
 			objectPath: thumbPath,
 			localUri: thumb.uri,
 			mimeType: thumb.mimeType,
-			metadata: { event_id: item.eventId, owner_id: item.ownerId },
+			metadata: { event_id: item.eventId, owner_id: item.ownerId, media_id: mediaItemId },
 		});
-		setItem(id, { thumbPath, thumbUploadedAt: Date.now() });
+		setItem(id, { thumbSizeBytes: thumbResult.sizeBytes, thumbUploadedAt: Date.now() });
 		setProgress(id, 0.95);
 
-		const updated = useUploadQueue.getState().items[id];
-		if (!updated) throw new Error("queue item disappeared");
-		const mediaItemId = await insertMediaRow(updated);
-		setItem(id, { mediaItemId, status: "done", progress: 1 });
+		await markMediaReady(mediaItemId, originalResult.sizeBytes, thumbResult.sizeBytes);
+		setItem(id, { status: "done", progress: 1 });
 	} catch (err) {
 		const message = (err as { message?: string })?.message ?? "upload failed";
 		setItem(id, { status: "failed", error: message });
+		if (mediaItemId) markMediaFailed(mediaItemId);
 	} finally {
 		const current = useUploadQueue.getState();
 		const stillRunning = new Set(current.running);

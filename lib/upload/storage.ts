@@ -120,11 +120,32 @@ export async function uploadFile(input: UploadInput): Promise<UploadResult> {
 	throw new Error("upload exhausted retries");
 }
 
-export function originalObjectPath(eventId: string, itemId: string, filename: string): string {
-	const safe = filename.replace(/[^A-Za-z0-9._-]/g, "_");
-	return `${eventId}/${itemId}/${safe}`;
+export function extensionFor(filename: string, mimeType: string): string {
+	const fromName = filename.split(".").pop()?.toLowerCase();
+	if (fromName && /^[a-z0-9]{2,5}$/.test(fromName)) return fromName;
+	if (mimeType === "image/heic") return "heic";
+	if (mimeType === "image/heif") return "heif";
+	if (mimeType === "image/png") return "png";
+	if (mimeType === "image/webp") return "webp";
+	if (mimeType === "image/gif") return "gif";
+	if (mimeType === "image/jpeg") return "jpg";
+	if (mimeType === "video/quicktime") return "mov";
+	if (mimeType === "video/x-m4v") return "m4v";
+	if (mimeType === "video/mp4") return "mp4";
+	return "bin";
 }
 
-export function thumbObjectPath(eventId: string, itemId: string): string {
-	return `${eventId}/${itemId}.jpg`;
+export function originalObjectPath(
+	eventId: string,
+	ownerId: string,
+	mediaId: string,
+	filename: string,
+	mimeType: string
+): string {
+	const ext = extensionFor(filename, mimeType);
+	return `${eventId}/${ownerId}/${mediaId}.${ext}`;
+}
+
+export function thumbObjectPath(eventId: string, ownerId: string, mediaId: string): string {
+	return `${eventId}/${ownerId}/${mediaId}_thumb.jpg`;
 }
