@@ -339,6 +339,10 @@ export interface Database {
         Args: { target_event_id: string };
         Returns: boolean;
       };
+      cleanup_stale_media_rows: {
+        Args: { pending_older_than?: string; failed_older_than?: string };
+        Returns: { deleted_pending: number; deleted_failed: number }[];
+      };
       event_preview_by_code: {
         Args: { p_code: string };
         Returns: EventPreview[];
