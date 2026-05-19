@@ -65,7 +65,7 @@ export function listenCustomerInfo(cb: (info: CustomerInfo) => void): () => void
 
 export async function purchase(
 	pkg: PurchasesPackage,
-	eventId?: string,
+	eventId?: string
 ): Promise<provider.PurchaseResult> {
 	return provider.purchasePackage(pkg, eventId);
 }
@@ -130,9 +130,7 @@ export function readProState(info: CustomerInfo | null): ProState {
 	};
 }
 
-export async function fetchCurrentEntitlement(
-	userId: string,
-): Promise<SubscriptionEntitlement> {
+export async function fetchCurrentEntitlement(userId: string): Promise<SubscriptionEntitlement> {
 	const { data, error } = await supabase.rpc("current_entitlement", {
 		target_user_id: userId,
 	});
@@ -152,7 +150,7 @@ export async function fetchSubscriptionLimits(): Promise<SubscriptionLimits[]> {
 	const { data, error } = await supabase
 		.from("subscription_limits")
 		.select(
-			"entitlement, max_guests, max_event_window_hours, max_video_duration_ms, max_active_events, media_ttl_days, allows_full_resolution_download, allows_multi_host, allows_custom_branding, allows_live_slideshow",
+			"entitlement, max_guests, max_event_window_hours, max_video_duration_ms, max_active_events, media_ttl_days, allows_full_resolution_download, allows_multi_host, allows_custom_branding, allows_live_slideshow"
 		);
 	if (error || !data) return [];
 	return data.map((row) => ({
@@ -172,7 +170,7 @@ export async function fetchSubscriptionLimits(): Promise<SubscriptionLimits[]> {
 export async function syncProStateToSupabase(
 	userId: string,
 	state: ProState,
-	revenueCatAppUserId: string | null,
+	revenueCatAppUserId: string | null
 ): Promise<void> {
 	const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
 
@@ -188,7 +186,7 @@ export async function syncProStateToSupabase(
 			product_id: state.productId,
 			last_synced_at: new Date().toISOString(),
 		},
-		{ onConflict: "user_id" },
+		{ onConflict: "user_id" }
 	);
 
 	if (error) {

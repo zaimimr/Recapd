@@ -35,7 +35,7 @@ function unboundedOr(value: number | null): number {
 function resolveSummary(
 	isPro: boolean,
 	billingPeriod: BillingPeriod,
-	limits: SubscriptionLimits | null,
+	limits: SubscriptionLimits | null
 ): EntitlementSummary {
 	if (limits) {
 		return {
