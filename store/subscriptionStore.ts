@@ -41,7 +41,7 @@ type Actions = {
 	loadUnlocks: () => Promise<void>;
 	purchase: (
 		pkg: PaywallPackage,
-		eventId?: string,
+		eventId?: string
 	) => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
 	restore: () => Promise<{ success: boolean; error?: string }>;
 	hasProForEvent: (eventId: string) => boolean;
@@ -181,7 +181,7 @@ export const useSubscriptionStore = create<State & Actions>((set, get) => ({
 async function applyInfo(
 	info: CustomerInfo | null,
 	userId: string | null,
-	set: (partial: Partial<State>) => void,
+	set: (partial: Partial<State>) => void
 ): Promise<void> {
 	const state = readProState(info);
 	const rcAppUserId = info?.originalAppUserId ?? null;

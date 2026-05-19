@@ -166,7 +166,7 @@ export async function fetchUserEventUnlocks(userId: string): Promise<string[]> {
 export async function recordEventProUnlock(
 	userId: string,
 	eventId: string,
-	rcTransactionId: string | null,
+	rcTransactionId: string | null
 ): Promise<void> {
 	const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
 	const { error } = await supabase.from("event_pro_unlocks").insert({
