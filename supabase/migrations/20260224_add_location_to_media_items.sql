@@ -1,3 +1,0 @@
-ALTER TABLE media_items
-  ADD COLUMN latitude DOUBLE PRECISION,
-  ADD COLUMN longitude DOUBLE PRECISION;

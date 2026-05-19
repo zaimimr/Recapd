@@ -1,13 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import Constants from "expo-constants";
 
-// Note: URL polyfill removed - React Native 0.81+ has built-in URL support
+const url = Constants.expoConfig?.extra?.supabaseUrl as string | undefined;
+const anonKey = Constants.expoConfig?.extra?.supabaseAnonKey as string | undefined;
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+if (!url || !anonKey) {
+	throw new Error("Missing supabaseUrl / supabaseAnonKey in app.json extra");
+}
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(url, anonKey, {
 	auth: {
 		storage: AsyncStorage,
 		autoRefreshToken: true,
