@@ -10,7 +10,7 @@ type State = {
 };
 
 const MEDIA_COLUMNS =
-	"id,event_id,owner_id,capture_time,upload_time,is_video,duration_ms,storage_path,thumb_path,width,height,status,hidden_by_host_at";
+	"id,event_id,owner_id,capture_time,upload_time,is_video,duration_ms,storage_path,thumb_path,width,height,status,hidden_by_host_at,deleted_at";
 
 export function useEventGalleryData(eventId: string | null | undefined) {
 	const [state, setState] = useState<State>({ items: [], moments: [], loading: true, error: null });
@@ -23,6 +23,7 @@ export function useEventGalleryData(eventId: string | null | undefined) {
 			.select(MEDIA_COLUMNS)
 			.eq("event_id", eventId)
 			.is("hidden_by_host_at", null)
+			.is("deleted_at", null)
 			.eq("status", "ready")
 			.order("capture_time", { ascending: true });
 		setState({

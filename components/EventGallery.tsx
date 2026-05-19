@@ -30,7 +30,7 @@ export function EventGallery({
 	const [openId, setOpenId] = useState<string | null>(null);
 
 	const visibleItems = useMemo(
-		() => items.filter((it) => it.status === "ready" && !it.hidden_by_host_at),
+		() => items.filter((it) => it.status === "ready" && !it.hidden_by_host_at && !it.deleted_at),
 		[items]
 	);
 	const viewerItems = useMemo(

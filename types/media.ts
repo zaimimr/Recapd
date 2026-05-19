@@ -14,6 +14,7 @@ export type GalleryMediaItem = {
 	height: number | null;
 	status: GalleryMediaStatus;
 	hidden_by_host_at: string | null;
+	deleted_at: string | null;
 };
 
 export type Moment = {

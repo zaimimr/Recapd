@@ -16,6 +16,7 @@ function makeItem(
 		height: 1000,
 		status: "ready",
 		hidden_by_host_at: null,
+		deleted_at: null,
 		...overrides,
 	};
 }
