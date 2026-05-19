@@ -5,15 +5,7 @@ import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useEntitlement } from "@/lib/entitlement";
 import { UpgradePrompt } from "./UpgradePrompt";
 
-const PRESET_COLORS = [
-	"#111111",
-	"#7c3aed",
-	"#2563eb",
-	"#059669",
-	"#dc2626",
-	"#f59e0b",
-	"#ec4899",
-];
+const PRESET_COLORS = ["#111111", "#7c3aed", "#2563eb", "#059669", "#dc2626", "#f59e0b", "#ec4899"];
 
 export type BrandingValue = {
 	titleColor: string;

@@ -1,9 +1,5 @@
 import { Platform } from "react-native";
-import type {
-	CustomerInfo,
-	PurchasesOffering,
-	PurchasesPackage,
-} from "react-native-purchases";
+import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import {
 	ENTITLEMENT_PRO,
 	PRODUCT_ANNUAL,
@@ -49,15 +45,13 @@ export async function fetchCustomerInfo(): Promise<CustomerInfo | null> {
 	return provider.getCustomerInfo();
 }
 
-export function listenCustomerInfo(
-	cb: (info: CustomerInfo) => void,
-): () => void {
+export function listenCustomerInfo(cb: (info: CustomerInfo) => void): () => void {
 	return provider.addCustomerInfoListener(cb);
 }
 
 export async function purchase(
 	pkg: PurchasesPackage,
-	eventId?: string,
+	eventId?: string
 ): Promise<provider.PurchaseResult> {
 	return provider.purchasePackage(pkg, eventId);
 }
@@ -91,10 +85,7 @@ export function classifyOffering(offering: PurchasesOffering): PaywallPackage[] 
 	return out;
 }
 
-export function readProState(
-	info: CustomerInfo | null,
-	perEventPro: string[] = [],
-): ProState {
+export function readProState(info: CustomerInfo | null, perEventPro: string[] = []): ProState {
 	if (!info) {
 		return {
 			tier: "free",
@@ -129,27 +120,21 @@ export async function fetchPerEventPro(userId: string): Promise<string[]> {
 	return data.map((r) => r.event_id as string);
 }
 
-export async function recordPerEventPro(
-	userId: string,
-	eventId: string,
-): Promise<void> {
+export async function recordPerEventPro(userId: string, eventId: string): Promise<void> {
 	const { error } = await supabase.from("event_pro_unlocks").upsert(
 		{
 			user_id: userId,
 			event_id: eventId,
 			unlocked_at: new Date().toISOString(),
 		},
-		{ onConflict: "user_id,event_id" },
+		{ onConflict: "user_id,event_id" }
 	);
 	if (error) {
 		console.warn("recordPerEventPro failed", error.message);
 	}
 }
 
-export async function syncProStateToSupabase(
-	userId: string,
-	state: ProState,
-): Promise<void> {
+export async function syncProStateToSupabase(userId: string, state: ProState): Promise<void> {
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 	const tier = state.subscriptionActive ? "pro" : "free";
 
@@ -164,7 +149,7 @@ export async function syncProStateToSupabase(
 			per_event_pro: state.perEventPro,
 			updated_at: new Date().toISOString(),
 		},
-		{ onConflict: "user_id" },
+		{ onConflict: "user_id" }
 	);
 
 	if (error) {

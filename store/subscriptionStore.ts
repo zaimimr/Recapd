@@ -33,7 +33,7 @@ type Actions = {
 	loadOfferings: () => Promise<void>;
 	purchase: (
 		pkg: PaywallPackage,
-		eventId?: string,
+		eventId?: string
 	) => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
 	restore: () => Promise<{ success: boolean; error?: string }>;
 	hasProForEvent: (eventId: string) => boolean;
@@ -137,7 +137,7 @@ async function applyInfo(
 	info: CustomerInfo | null,
 	userId: string | null,
 	set: (partial: Partial<State>) => void,
-	get: () => State & Actions,
+	get: () => State & Actions
 ): Promise<void> {
 	let perEventIds = get().perEventPro;
 	if (userId) {

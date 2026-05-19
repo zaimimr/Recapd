@@ -1,18 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
-import {
-	ActivityIndicator,
-	Modal,
-	Pressable,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
-import {
-	MONTHLY_PRICE_LABEL,
-	PER_EVENT_PRICE_LABEL,
-} from "@/lib/billing/config";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { MONTHLY_PRICE_LABEL, PER_EVENT_PRICE_LABEL } from "@/lib/billing/config";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
 
 export type UpgradeReason =
@@ -78,13 +68,7 @@ type Props = {
 	onUnlocked?: () => void;
 };
 
-export function UpgradePrompt({
-	visible,
-	reason,
-	eventId,
-	onClose,
-	onUnlocked,
-}: Props) {
+export function UpgradePrompt({ visible, reason, eventId, onClose, onUnlocked }: Props) {
 	const [busy, setBusy] = useState(false);
 	const packages = useSubscriptionStore((s) => s.packages);
 	const loadOfferings = useSubscriptionStore((s) => s.loadOfferings);
@@ -98,9 +82,7 @@ export function UpgradePrompt({
 		if (packages.length === 0) {
 			await loadOfferings();
 		}
-		const fresh = useSubscriptionStore.getState().packages.find(
-			(p) => p.kind === "per_event",
-		);
+		const fresh = useSubscriptionStore.getState().packages.find((p) => p.kind === "per_event");
 		if (!fresh) {
 			setBusy(false);
 			return openFullPaywall();
@@ -119,12 +101,7 @@ export function UpgradePrompt({
 	};
 
 	return (
-		<Modal
-			visible={visible}
-			animationType="slide"
-			transparent
-			onRequestClose={onClose}
-		>
+		<Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
 			<Pressable style={styles.backdrop} onPress={onClose}>
 				<Pressable style={styles.sheet} onPress={() => {}}>
 					<View style={styles.handle} />
@@ -149,9 +126,7 @@ export function UpgradePrompt({
 					) : null}
 
 					<Pressable style={styles.secondary} onPress={openFullPaywall}>
-						<Text style={styles.secondaryText}>
-							See all plans, from {MONTHLY_PRICE_LABEL}/mo
-						</Text>
+						<Text style={styles.secondaryText}>See all plans, from {MONTHLY_PRICE_LABEL}/mo</Text>
 					</Pressable>
 
 					<Pressable onPress={onClose}>

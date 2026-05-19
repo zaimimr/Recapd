@@ -17,7 +17,7 @@ export function ExpiryBanner({ eventId, eventCreatedAt, onExport }: Props) {
 
 	const createdAt = useMemo(
 		() => (eventCreatedAt instanceof Date ? eventCreatedAt : new Date(eventCreatedAt)),
-		[eventCreatedAt],
+		[eventCreatedAt]
 	);
 
 	if (entitlement.hasProForEvent(eventId)) return null;
@@ -30,11 +30,7 @@ export function ExpiryBanner({ eventId, eventCreatedAt, onExport }: Props) {
 	return (
 		<>
 			<View style={[styles.banner, expired ? styles.expired : styles.warn]}>
-				<Ionicons
-					name="time-outline"
-					size={18}
-					color={expired ? "#fff" : "#9a3412"}
-				/>
+				<Ionicons name="time-outline" size={18} color={expired ? "#fff" : "#9a3412"} />
 				<View style={styles.text}>
 					<Text style={[styles.title, expired && styles.textInverse]}>
 						{expired
@@ -46,10 +42,7 @@ export function ExpiryBanner({ eventId, eventCreatedAt, onExport }: Props) {
 					</Text>
 				</View>
 				<View style={styles.actions}>
-					<Pressable
-						style={[styles.btn, styles.btnPrimary]}
-						onPress={() => setPromptVisible(true)}
-					>
+					<Pressable style={[styles.btn, styles.btnPrimary]} onPress={() => setPromptVisible(true)}>
 						<Text style={styles.btnPrimaryText}>Extend</Text>
 					</Pressable>
 					{onExport ? (

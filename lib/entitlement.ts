@@ -1,3 +1,4 @@
+import { useSubscriptionStore } from "@/store/subscriptionStore";
 import {
 	FREE_ACTIVE_EVENT_LIMIT,
 	FREE_EVENT_WINDOW_HOURS,
@@ -7,7 +8,6 @@ import {
 	PRO_EVENT_WINDOW_DAYS,
 	PRO_VIDEO_SECONDS,
 } from "./billing/config";
-import { useSubscriptionStore } from "@/store/subscriptionStore";
 
 export type EntitlementSummary = {
 	isPro: boolean;
@@ -90,10 +90,7 @@ export function canAddGuest(currentCount: number, isPro: boolean): boolean {
 	return currentCount < FREE_GUEST_CAP;
 }
 
-export function canCreateAnotherEvent(
-	activeEventCount: number,
-	isPro: boolean,
-): boolean {
+export function canCreateAnotherEvent(activeEventCount: number, isPro: boolean): boolean {
 	if (isPro) return true;
 	return activeEventCount < FREE_ACTIVE_EVENT_LIMIT;
 }

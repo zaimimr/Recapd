@@ -20,14 +20,8 @@ export function MultiHostInviteButton({ eventId, onInvite }: Props) {
 				style={[styles.btn, locked && styles.locked]}
 				onPress={() => (locked ? setPromptVisible(true) : onInvite())}
 			>
-				<Ionicons
-					name="people-outline"
-					size={18}
-					color={locked ? "#7c3aed" : "#0f172a"}
-				/>
-				<Text style={[styles.label, locked && styles.labelLocked]}>
-					Invite a co-host
-				</Text>
+				<Ionicons name="people-outline" size={18} color={locked ? "#7c3aed" : "#0f172a"} />
+				<Text style={[styles.label, locked && styles.labelLocked]}>Invite a co-host</Text>
 				{locked ? <Text style={styles.chip}>Pro</Text> : null}
 			</Pressable>
 			<UpgradePrompt

@@ -30,19 +30,11 @@ export function FullResDownloadButton({ eventId, onDownload }: Props) {
 
 	return (
 		<>
-			<Pressable
-				style={[styles.btn, locked && styles.locked]}
-				onPress={handle}
-				disabled={busy}
-			>
+			<Pressable style={[styles.btn, locked && styles.locked]} onPress={handle} disabled={busy}>
 				{busy ? (
 					<ActivityIndicator color="#0f172a" />
 				) : (
-					<Ionicons
-						name={locked ? "lock-closed" : "download"}
-						size={18}
-						color="#0f172a"
-					/>
+					<Ionicons name={locked ? "lock-closed" : "download"} size={18} color="#0f172a" />
 				)}
 				<Text style={styles.label}>
 					{locked ? "Download originals (Pro)" : "Download all originals"}

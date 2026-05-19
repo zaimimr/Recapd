@@ -20,11 +20,7 @@ export function LiveSlideshowButton({ eventId, onLaunch }: Props) {
 				style={[styles.btn, locked && styles.btnLocked]}
 				onPress={() => (locked ? setPromptVisible(true) : onLaunch())}
 			>
-				<Ionicons
-					name={locked ? "lock-closed" : "tv"}
-					size={18}
-					color="#fff"
-				/>
+				<Ionicons name={locked ? "lock-closed" : "tv"} size={18} color="#fff" />
 				<Text style={styles.label}>Live slideshow</Text>
 				{locked ? <Text style={styles.chip}>Pro</Text> : null}
 			</Pressable>

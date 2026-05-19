@@ -6,11 +6,7 @@ import Purchases, {
 	type PurchasesOffering,
 	type PurchasesPackage,
 } from "react-native-purchases";
-import {
-	REVENUECAT_ANDROID_KEY,
-	REVENUECAT_IOS_KEY,
-	SUBSCRIPTIONS_ENABLED,
-} from "./config";
+import { REVENUECAT_ANDROID_KEY, REVENUECAT_IOS_KEY, SUBSCRIPTIONS_ENABLED } from "./config";
 
 export type PurchaseResult = {
 	success: boolean;
@@ -20,10 +16,7 @@ export type PurchaseResult = {
 };
 
 function isExpoGo(): boolean {
-	return (
-		Constants.executionEnvironment === "storeClient" ||
-		Constants.appOwnership === "expo"
-	);
+	return Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
 }
 
 let configured = false;
@@ -67,7 +60,7 @@ export async function getCustomerInfo(): Promise<CustomerInfo | null> {
 
 export async function purchasePackage(
 	pkg: PurchasesPackage,
-	eventId?: string,
+	eventId?: string
 ): Promise<PurchaseResult> {
 	if (!configured) {
 		return { success: false, error: "Billing not configured" };
@@ -100,9 +93,7 @@ export async function restorePurchases(): Promise<PurchaseResult> {
 	}
 }
 
-export function addCustomerInfoListener(
-	cb: (info: CustomerInfo) => void,
-): () => void {
+export function addCustomerInfoListener(cb: (info: CustomerInfo) => void): () => void {
 	if (!configured) return () => {};
 	Purchases.addCustomerInfoUpdateListener(cb);
 	return () => {

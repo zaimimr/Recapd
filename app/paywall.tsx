@@ -1,14 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-	ActivityIndicator,
-	Pressable,
-	ScrollView,
-	StyleSheet,
-	Text,
-	View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
 	ANNUAL_PRICE_LABEL,
@@ -62,9 +55,7 @@ export default function PaywallScreen() {
 
 	const [busyKind, setBusyKind] = useState<ProductKind | null>(null);
 	const [restoring, setRestoring] = useState(false);
-	const [selected, setSelected] = useState<ProductKind>(
-		eventId ? "per_event" : "annual",
-	);
+	const [selected, setSelected] = useState<ProductKind>(eventId ? "per_event" : "annual");
 	const [loaded, setLoaded] = useState(false);
 
 	useEffect(() => {
@@ -91,10 +82,7 @@ export default function PaywallScreen() {
 		const pkg = byKind.get(selected);
 		if (!pkg) return;
 		setBusyKind(selected);
-		const result = await purchaseAction(
-			pkg,
-			selected === "per_event" ? eventId : undefined,
-		);
+		const result = await purchaseAction(pkg, selected === "per_event" ? eventId : undefined);
 		setBusyKind(null);
 		if (result.success) {
 			router.back();
@@ -170,9 +158,7 @@ export default function PaywallScreen() {
 						<Text style={styles.heroBadgeText}>Recapd Pro</Text>
 					</View>
 					<Text style={styles.heroTitle}>
-						{subscriptionActive
-							? "You're a Pro member"
-							: "Make every event unforgettable"}
+						{subscriptionActive ? "You're a Pro member" : "Make every event unforgettable"}
 					</Text>
 					<Text style={styles.heroSubtitle}>
 						Unlimited guests, longer events, full-resolution downloads, custom branding.
@@ -195,12 +181,7 @@ export default function PaywallScreen() {
 									size={18}
 									color={included ? "#10b981" : "#d1d5db"}
 								/>
-								<Text
-									style={[
-										styles.featureLabel,
-										!included && styles.featureLabelMuted,
-									]}
-								>
+								<Text style={[styles.featureLabel, !included && styles.featureLabelMuted]}>
 									{f.label}
 								</Text>
 							</View>
@@ -237,9 +218,7 @@ export default function PaywallScreen() {
 				</View>
 
 				<Pressable onPress={handleRestore} disabled={restoring}>
-					<Text style={styles.restore}>
-						{restoring ? "Restoring..." : "Restore purchases"}
-					</Text>
+					<Text style={styles.restore}>{restoring ? "Restoring..." : "Restore purchases"}</Text>
 				</Pressable>
 
 				{lastError ? <Text style={styles.error}>{lastError}</Text> : null}
