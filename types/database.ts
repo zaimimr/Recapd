@@ -87,6 +87,7 @@ export interface EventRow {
   timezone: string;
   join_code: string;
   allow_outside_window: boolean;
+  cover_image_url: string | null;
   cover_media_id: string | null;
   archived_at: string | null;
   media_expires_at: string | null;
@@ -104,6 +105,7 @@ export type EventInsert = {
   timezone?: string;
   join_code: string;
   allow_outside_window?: boolean;
+  cover_image_url?: string | null;
   cover_media_id?: string | null;
 };
 
@@ -233,6 +235,18 @@ export interface EventStorageUsage {
   video_count: number;
 }
 
+export interface EventPreview {
+  id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  timezone: string;
+  cover_image_url: string | null;
+  host_display_name: string;
+  guest_count: number;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -297,6 +311,14 @@ export interface Database {
       can_download_full_resolution: {
         Args: { target_event_id: string };
         Returns: boolean;
+      };
+      event_preview_by_code: {
+        Args: { p_code: string };
+        Returns: EventPreview[];
+      };
+      rpc_join_event: {
+        Args: { p_code: string; p_display_name: string };
+        Returns: EventRow;
       };
     };
     Enums: {
