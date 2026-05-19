@@ -13,7 +13,7 @@ type Props = {
 export function OutsideWindowToggle({ eventId, value, onChange }: Props) {
 	const entitlement = useEntitlement();
 	const [promptVisible, setPromptVisible] = useState(false);
-	const locked = !entitlement.allowsOutsideWindowUploads(eventId);
+	const locked = !entitlement.allowsOutsideWindowUploads;
 
 	return (
 		<>

@@ -3,16 +3,17 @@ import { create } from "zustand";
 import {
 	classifyOffering,
 	configureBilling,
+	fetchCurrentEntitlement,
 	fetchCustomerInfo,
 	fetchOfferings,
-	fetchPerEventPro,
+	fetchSubscriptionLimits,
 	listenCustomerInfo,
 	type PaywallPackage,
 	type ProState,
 	purchase,
 	readProState,
-	recordPerEventPro,
 	restorePurchases,
+	type SubscriptionLimits,
 	syncProStateToSupabase,
 	teardownBilling,
 } from "@/lib/subscription";
@@ -23,6 +24,8 @@ type State = ProState & {
 	offering: PurchasesOffering | null;
 	packages: PaywallPackage[];
 	userId: string | null;
+	revenueCatAppUserId: string | null;
+	limits: Record<"free" | "pro", SubscriptionLimits | null>;
 	lastError: string | null;
 };
 
@@ -31,25 +34,27 @@ type Actions = {
 	teardown: () => Promise<void>;
 	refresh: () => Promise<void>;
 	loadOfferings: () => Promise<void>;
+	loadLimits: () => Promise<void>;
 	purchase: (
 		pkg: PaywallPackage,
-		eventId?: string
+		eventId?: string,
 	) => Promise<{ success: boolean; cancelled?: boolean; error?: string }>;
 	restore: () => Promise<{ success: boolean; error?: string }>;
-	hasProForEvent: (eventId: string) => boolean;
 };
 
 const initialState: State = {
-	tier: "free",
-	subscriptionActive: false,
+	entitlement: "free",
+	billingPeriod: null,
 	expiresAt: null,
 	willRenew: false,
-	perEventPro: [],
+	productId: null,
 	ready: false,
 	configuring: false,
 	offering: null,
 	packages: [],
 	userId: null,
+	revenueCatAppUserId: null,
+	limits: { free: null, pro: null },
 	lastError: null,
 };
 
@@ -63,15 +68,20 @@ export const useSubscriptionStore = create<State & Actions>((set, get) => ({
 		set({ configuring: true, userId, lastError: null });
 		const ok = await configureBilling(userId);
 		if (!ok) {
-			set({ configuring: false, ready: true });
+			const entitlement = await fetchCurrentEntitlement(userId);
+			set({
+				configuring: false,
+				ready: true,
+				entitlement,
+			});
 			return;
 		}
 		listenerCleanup?.();
 		listenerCleanup = listenCustomerInfo((info) => {
-			void applyInfo(info, userId, set, get);
+			void applyInfo(info, userId, set);
 		});
 		const info = await fetchCustomerInfo();
-		await applyInfo(info, userId, set, get);
+		await applyInfo(info, userId, set);
 		set({ configuring: false, ready: true });
 	},
 
@@ -85,7 +95,7 @@ export const useSubscriptionStore = create<State & Actions>((set, get) => ({
 	refresh: async () => {
 		const { userId } = get();
 		const info = await fetchCustomerInfo();
-		await applyInfo(info, userId, set, get);
+		await applyInfo(info, userId, set);
 	},
 
 	loadOfferings: async () => {
@@ -96,15 +106,18 @@ export const useSubscriptionStore = create<State & Actions>((set, get) => ({
 		});
 	},
 
+	loadLimits: async () => {
+		const rows = await fetchSubscriptionLimits();
+		const free = rows.find((r) => r.entitlement === "free") ?? null;
+		const pro = rows.find((r) => r.entitlement === "pro") ?? null;
+		set({ limits: { free, pro } });
+	},
+
 	purchase: async (pkg, eventId) => {
 		const result = await purchase(pkg.package, eventId);
 		const userId = get().userId;
-		if (result.success && pkg.kind === "per_event" && userId && eventId) {
-			await recordPerEventPro(userId, eventId);
-			set({ perEventPro: [...get().perEventPro, eventId] });
-		}
 		if (result.success && result.customerInfo) {
-			await applyInfo(result.customerInfo, userId, set, get);
+			await applyInfo(result.customerInfo, userId, set);
 		}
 		if (!result.success && !result.cancelled) {
 			set({ lastError: result.error ?? "Purchase failed" });
@@ -119,17 +132,12 @@ export const useSubscriptionStore = create<State & Actions>((set, get) => ({
 	restore: async () => {
 		const result = await restorePurchases();
 		if (result.success && result.customerInfo) {
-			await applyInfo(result.customerInfo, get().userId, set, get);
+			await applyInfo(result.customerInfo, get().userId, set);
 		}
 		if (!result.success) {
 			set({ lastError: result.error ?? "Restore failed" });
 		}
 		return { success: result.success, error: result.error };
-	},
-
-	hasProForEvent: (eventId) => {
-		const { subscriptionActive, perEventPro } = get();
-		return subscriptionActive || perEventPro.includes(eventId);
 	},
 }));
 
@@ -137,18 +145,11 @@ async function applyInfo(
 	info: CustomerInfo | null,
 	userId: string | null,
 	set: (partial: Partial<State>) => void,
-	get: () => State & Actions
 ): Promise<void> {
-	let perEventIds = get().perEventPro;
+	const state = readProState(info);
+	const rcAppUserId = info?.originalAppUserId ?? null;
+	set({ ...state, revenueCatAppUserId: rcAppUserId });
 	if (userId) {
-		const fetched = await fetchPerEventPro(userId);
-		if (fetched.length > 0 || perEventIds.length === 0) {
-			perEventIds = fetched;
-		}
-	}
-	const state = readProState(info, perEventIds);
-	set(state);
-	if (userId) {
-		await syncProStateToSupabase(userId, state);
+		await syncProStateToSupabase(userId, state, rcAppUserId);
 	}
 }

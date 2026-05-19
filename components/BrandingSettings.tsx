@@ -22,7 +22,7 @@ type Props = {
 export function BrandingSettings({ eventId, value, onChange }: Props) {
 	const entitlement = useEntitlement();
 	const [promptVisible, setPromptVisible] = useState(false);
-	const locked = !entitlement.allowsCustomBranding && !entitlement.hasProForEvent(eventId);
+	const locked = !entitlement.allowsCustomBranding;
 
 	const guard = (fn: () => void) => () => {
 		if (locked) {

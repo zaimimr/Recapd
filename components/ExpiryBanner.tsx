@@ -20,7 +20,7 @@ export function ExpiryBanner({ eventId, eventCreatedAt, onExport }: Props) {
 		[eventCreatedAt]
 	);
 
-	if (entitlement.hasProForEvent(eventId)) return null;
+	if (entitlement.isPro) return null;
 
 	const daysLeft = daysUntilExpiry(createdAt, FREE_MEDIA_TTL_DAYS);
 	if (daysLeft > EXPIRY_WARNING_DAYS) return null;

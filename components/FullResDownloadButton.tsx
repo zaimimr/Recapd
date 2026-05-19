@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 import { useEntitlement } from "@/lib/entitlement";
+import { canDownloadFullResolution } from "@/lib/subscription";
 import { UpgradePrompt } from "./UpgradePrompt";
 
 type Props = {
@@ -13,7 +14,7 @@ export function FullResDownloadButton({ eventId, onDownload }: Props) {
 	const entitlement = useEntitlement();
 	const [promptVisible, setPromptVisible] = useState(false);
 	const [busy, setBusy] = useState(false);
-	const locked = !entitlement.allowsFullResDownload(eventId);
+	const locked = !entitlement.allowsFullResDownload;
 
 	const handle = async () => {
 		if (locked) {
@@ -22,6 +23,11 @@ export function FullResDownloadButton({ eventId, onDownload }: Props) {
 		}
 		setBusy(true);
 		try {
+			const allowed = await canDownloadFullResolution(eventId);
+			if (!allowed) {
+				setPromptVisible(true);
+				return;
+			}
 			await onDownload();
 		} finally {
 			setBusy(false);

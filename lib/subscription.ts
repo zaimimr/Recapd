@@ -9,14 +9,15 @@ import {
 import * as provider from "./billing/provider";
 import { supabase } from "./supabase";
 
-export type SubscriptionTier = "free" | "monthly" | "annual";
+export type SubscriptionEntitlement = "free" | "pro";
+export type SubscriptionBillingPeriod = "per_event" | "monthly" | "yearly";
 
 export type ProState = {
-	tier: SubscriptionTier;
-	subscriptionActive: boolean;
+	entitlement: SubscriptionEntitlement;
+	billingPeriod: SubscriptionBillingPeriod | null;
 	expiresAt: Date | null;
 	willRenew: boolean;
-	perEventPro: string[];
+	productId: string | null;
 };
 
 export type ProductKind = "per_event" | "monthly" | "annual";
@@ -27,6 +28,19 @@ export type PaywallPackage = {
 	rawPrice: number;
 	currencyCode: string;
 	package: PurchasesPackage;
+};
+
+export type SubscriptionLimits = {
+	entitlement: SubscriptionEntitlement;
+	maxGuests: number | null;
+	maxEventWindowHours: number | null;
+	maxVideoDurationMs: number | null;
+	maxActiveEvents: number | null;
+	mediaTtlDays: number | null;
+	allowsFullResolutionDownload: boolean;
+	allowsMultiHost: boolean;
+	allowsCustomBranding: boolean;
+	allowsLiveSlideshow: boolean;
 };
 
 export async function configureBilling(userId: string): Promise<boolean> {
@@ -51,7 +65,7 @@ export function listenCustomerInfo(cb: (info: CustomerInfo) => void): () => void
 
 export async function purchase(
 	pkg: PurchasesPackage,
-	eventId?: string
+	eventId?: string,
 ): Promise<provider.PurchaseResult> {
 	return provider.purchasePackage(pkg, eventId);
 }
@@ -64,6 +78,14 @@ function productKindFor(productId: string): ProductKind | null {
 	if (productId === PRODUCT_PER_EVENT_PRO) return "per_event";
 	if (productId === PRODUCT_MONTHLY) return "monthly";
 	if (productId === PRODUCT_ANNUAL) return "annual";
+	return null;
+}
+
+function billingPeriodFor(productId: string | null): SubscriptionBillingPeriod | null {
+	if (!productId) return null;
+	if (productId === PRODUCT_PER_EVENT_PRO) return "per_event";
+	if (productId === PRODUCT_MONTHLY) return "monthly";
+	if (productId === PRODUCT_ANNUAL) return "yearly";
 	return null;
 }
 
@@ -85,71 +107,88 @@ export function classifyOffering(offering: PurchasesOffering): PaywallPackage[] 
 	return out;
 }
 
-export function readProState(info: CustomerInfo | null, perEventPro: string[] = []): ProState {
+export function readProState(info: CustomerInfo | null): ProState {
 	if (!info) {
 		return {
-			tier: "free",
-			subscriptionActive: false,
+			entitlement: "free",
+			billingPeriod: null,
 			expiresAt: null,
 			willRenew: false,
-			perEventPro,
+			productId: null,
 		};
 	}
 	const sub = info.entitlements.active[ENTITLEMENT_PRO];
-
-	let tier: SubscriptionTier = "free";
-	if (sub?.isActive) {
-		tier = sub.productIdentifier === PRODUCT_ANNUAL ? "annual" : "monthly";
-	}
+	const productId = sub?.productIdentifier ?? null;
+	const isActive = Boolean(sub?.isActive);
 
 	return {
-		tier,
-		subscriptionActive: Boolean(sub?.isActive),
+		entitlement: isActive ? "pro" : "free",
+		billingPeriod: isActive ? billingPeriodFor(productId) : null,
 		expiresAt: sub?.expirationDate ? new Date(sub.expirationDate) : null,
 		willRenew: Boolean(sub?.willRenew),
-		perEventPro,
+		productId,
 	};
 }
 
-export async function fetchPerEventPro(userId: string): Promise<string[]> {
+export async function fetchCurrentEntitlement(
+	userId: string,
+): Promise<SubscriptionEntitlement> {
+	const { data, error } = await supabase.rpc("current_entitlement", {
+		target_user_id: userId,
+	});
+	if (error || !data) return "free";
+	return data as SubscriptionEntitlement;
+}
+
+export async function canDownloadFullResolution(eventId: string): Promise<boolean> {
+	const { data, error } = await supabase.rpc("can_download_full_resolution", {
+		target_event_id: eventId,
+	});
+	if (error || data == null) return false;
+	return Boolean(data);
+}
+
+export async function fetchSubscriptionLimits(): Promise<SubscriptionLimits[]> {
 	const { data, error } = await supabase
-		.from("event_pro_unlocks")
-		.select("event_id")
-		.eq("user_id", userId);
+		.from("subscription_limits")
+		.select(
+			"entitlement, max_guests, max_event_window_hours, max_video_duration_ms, max_active_events, media_ttl_days, allows_full_resolution_download, allows_multi_host, allows_custom_branding, allows_live_slideshow",
+		);
 	if (error || !data) return [];
-	return data.map((r) => r.event_id as string);
+	return data.map((row) => ({
+		entitlement: row.entitlement as SubscriptionEntitlement,
+		maxGuests: row.max_guests,
+		maxEventWindowHours: row.max_event_window_hours,
+		maxVideoDurationMs: row.max_video_duration_ms,
+		maxActiveEvents: row.max_active_events,
+		mediaTtlDays: row.media_ttl_days,
+		allowsFullResolutionDownload: row.allows_full_resolution_download,
+		allowsMultiHost: row.allows_multi_host,
+		allowsCustomBranding: row.allows_custom_branding,
+		allowsLiveSlideshow: row.allows_live_slideshow,
+	}));
 }
 
-export async function recordPerEventPro(userId: string, eventId: string): Promise<void> {
-	const { error } = await supabase.from("event_pro_unlocks").upsert(
-		{
-			user_id: userId,
-			event_id: eventId,
-			unlocked_at: new Date().toISOString(),
-		},
-		{ onConflict: "user_id,event_id" }
-	);
-	if (error) {
-		console.warn("recordPerEventPro failed", error.message);
-	}
-}
-
-export async function syncProStateToSupabase(userId: string, state: ProState): Promise<void> {
-	const platform = Platform.OS === "ios" ? "ios" : "android";
-	const tier = state.subscriptionActive ? "pro" : "free";
+export async function syncProStateToSupabase(
+	userId: string,
+	state: ProState,
+	revenueCatAppUserId: string | null,
+): Promise<void> {
+	const platform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
 
 	const { error } = await supabase.from("subscriptions").upsert(
 		{
 			user_id: userId,
-			tier,
-			subscription_kind: state.subscriptionActive ? state.tier : null,
+			entitlement: state.entitlement,
+			billing_period: state.billingPeriod,
 			expires_at: state.expiresAt?.toISOString() ?? null,
-			will_renew: state.willRenew,
-			platform: state.subscriptionActive ? platform : null,
-			per_event_pro: state.perEventPro,
-			updated_at: new Date().toISOString(),
+			revenuecat_app_user_id: revenueCatAppUserId,
+			revenuecat_entitlement_id: state.entitlement === "pro" ? ENTITLEMENT_PRO : null,
+			platform: state.entitlement === "pro" ? platform : null,
+			product_id: state.productId,
+			last_synced_at: new Date().toISOString(),
 		},
-		{ onConflict: "user_id" }
+		{ onConflict: "user_id" },
 	);
 
 	if (error) {

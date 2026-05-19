@@ -12,7 +12,7 @@ type Props = {
 export function LiveSlideshowButton({ eventId, onLaunch }: Props) {
 	const entitlement = useEntitlement();
 	const [promptVisible, setPromptVisible] = useState(false);
-	const locked = !entitlement.allowsLiveSlideshow(eventId);
+	const locked = !entitlement.allowsLiveSlideshow;
 
 	return (
 		<>

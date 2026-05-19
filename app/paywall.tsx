@@ -51,7 +51,8 @@ export default function PaywallScreen() {
 	const purchaseAction = useSubscriptionStore((s) => s.purchase);
 	const restoreAction = useSubscriptionStore((s) => s.restore);
 	const lastError = useSubscriptionStore((s) => s.lastError);
-	const subscriptionActive = useSubscriptionStore((s) => s.subscriptionActive);
+	const isPro = useSubscriptionStore((s) => s.entitlement === "pro");
+	const loadLimits = useSubscriptionStore((s) => s.loadLimits);
 
 	const [busyKind, setBusyKind] = useState<ProductKind | null>(null);
 	const [restoring, setRestoring] = useState(false);
@@ -59,8 +60,8 @@ export default function PaywallScreen() {
 	const [loaded, setLoaded] = useState(false);
 
 	useEffect(() => {
-		void loadOfferings().finally(() => setLoaded(true));
-	}, [loadOfferings]);
+		void Promise.all([loadOfferings(), loadLimits()]).finally(() => setLoaded(true));
+	}, [loadOfferings, loadLimits]);
 
 	const byKind = useMemo(() => {
 		const map = new Map<ProductKind, PaywallPackage>();
@@ -158,7 +159,7 @@ export default function PaywallScreen() {
 						<Text style={styles.heroBadgeText}>Recapd Pro</Text>
 					</View>
 					<Text style={styles.heroTitle}>
-						{subscriptionActive ? "You're a Pro member" : "Make every event unforgettable"}
+						{isPro ? "You're a Pro member" : "Make every event unforgettable"}
 					</Text>
 					<Text style={styles.heroSubtitle}>
 						Unlimited guests, longer events, full-resolution downloads, custom branding.

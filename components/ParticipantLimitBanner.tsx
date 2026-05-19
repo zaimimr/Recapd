@@ -14,7 +14,7 @@ export function ParticipantLimitBanner({ eventId, guestCount }: Props) {
 	const entitlement = useEntitlement();
 	const [promptVisible, setPromptVisible] = useState(false);
 
-	if (entitlement.hasProForEvent(eventId)) return null;
+	if (entitlement.isPro) return null;
 
 	const remaining = FREE_GUEST_CAP - guestCount;
 	const isFull = remaining <= 0;
