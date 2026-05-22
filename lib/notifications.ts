@@ -89,21 +89,3 @@ export async function savePushToken(userId: string, token: string): Promise<void
 		logger.error("Failed to save push token", error, { userId });
 	}
 }
-
-export async function sendReminderToParticipants(): Promise<{
-	success: boolean;
-	sentCount: number;
-}> {
-	logger.warn("Client-side reminder fanout has been disabled");
-	return { success: false, sentCount: 0 };
-}
-
-export async function sendParticipantLimitNotification(): Promise<boolean> {
-	logger.warn("Client-side participant limit notifications have been disabled");
-	return false;
-}
-
-export async function sendEventFullNotification(): Promise<boolean> {
-	logger.warn("Client-side event full notifications have been disabled");
-	return false;
-}

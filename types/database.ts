@@ -6,7 +6,6 @@ export type MediaType = "photo" | "video";
 export type MediaVisibility = "shared" | "hidden" | "deleted";
 export type SubscriptionTier = "free" | "pro";
 export type SubscriptionPlatform = "ios" | "android" | "web";
-export type SubscriptionUnlockScope = "none" | "self" | "event" | "both";
 export type TelemetryEventKind = "error" | "trace";
 export type TelemetrySeverity = "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -47,7 +46,6 @@ export interface Database {
 					description: string | null;
 					is_active: boolean;
 					sort_order: number;
-					unlock_scope: SubscriptionUnlockScope;
 					revenuecat_entitlement_identifier: string | null;
 					revenuecat_offering_identifier: string | null;
 					capabilities: Json;
@@ -60,7 +58,6 @@ export interface Database {
 					description?: string | null;
 					is_active?: boolean;
 					sort_order?: number;
-					unlock_scope?: SubscriptionUnlockScope;
 					revenuecat_entitlement_identifier?: string | null;
 					revenuecat_offering_identifier?: string | null;
 					capabilities?: Json;
@@ -73,7 +70,6 @@ export interface Database {
 					description?: string | null;
 					is_active?: boolean;
 					sort_order?: number;
-					unlock_scope?: SubscriptionUnlockScope;
 					revenuecat_entitlement_identifier?: string | null;
 					revenuecat_offering_identifier?: string | null;
 					capabilities?: Json;
@@ -379,12 +375,6 @@ export interface Database {
 				Args: Record<string, never>;
 				Returns: boolean;
 			};
-			get_subscription_plan_capabilities: {
-				Args: {
-					plan_id_input: string;
-				};
-				Returns: Json;
-			};
 			get_event_preview: {
 				Args: {
 					join_code_input: string;
@@ -406,29 +396,8 @@ export interface Database {
 					host_is_pro: boolean;
 				}[];
 			};
-			resolve_event_subscription_policy: {
-				Args: {
-					host_plan_id_input: string;
-					viewer_plan_id_input: string;
-				};
-				Returns: {
-					host_plan_id: string;
-					viewer_plan_id: string;
-					host_unlock_scope: SubscriptionUnlockScope;
-					viewer_unlock_scope: SubscriptionUnlockScope;
-					event_capabilities: Json;
-					viewer_capabilities: Json;
-					event_max_participants: number | null;
-					participant_warning_threshold: number | null;
-					event_max_single_video_duration_ms: number | null;
-					viewer_max_single_video_duration_ms: number | null;
-					event_can_upload_videos: boolean;
-					viewer_can_upload_videos: boolean;
-				}[];
-			};
 		};
 		Enums: {
-			subscription_unlock_scope: SubscriptionUnlockScope;
 			telemetry_event_kind: TelemetryEventKind;
 			telemetry_severity: TelemetrySeverity;
 		};

@@ -89,7 +89,7 @@ export async function processUpload(
 		failureReason: undefined,
 	});
 
-	let result;
+	let result: Awaited<ReturnType<typeof uploadMedia>> | undefined;
 	try {
 		result = await withTimeout(
 			uploadMedia({

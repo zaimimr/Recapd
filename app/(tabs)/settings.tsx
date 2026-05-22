@@ -22,7 +22,6 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { useEventStore } from "@/store/eventStore";
 import {
 	useIsPro,
 	useSubscriptionPlanId,
@@ -46,7 +45,6 @@ export default function SettingsScreen() {
 	const isDark = colorScheme === "dark";
 	const user = useAuthStore((state) => state.user);
 	const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
-	const { isDemoMode, enableDemoMode, disableDemoMode } = useEventStore();
 	const isPro = useIsPro();
 	const planId = useSubscriptionPlanId();
 	const plans = useSubscriptionPlans();
@@ -590,28 +588,6 @@ export default function SettingsScreen() {
 					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
 				</TouchableOpacity>
 			</View>
-			{__DEV__ && (
-				<View style={[styles.section, isDark && styles.sectionDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Developer</Text>
-					<TouchableOpacity
-						style={[styles.aboutRow, { paddingVertical: 14 }]}
-						onPress={isDemoMode ? disableDemoMode : enableDemoMode}
-						accessibilityLabel="Toggle Demo Mode"
-					>
-						<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>
-							{isDemoMode ? "Disable Demo Mode" : "Enable Demo Mode"}
-						</Text>
-						<View
-							style={{
-								width: 10,
-								height: 10,
-								borderRadius: 5,
-								backgroundColor: isDemoMode ? "#22c55e" : "#6b7280",
-							}}
-						/>
-					</TouchableOpacity>
-				</View>
-			)}
 		</ScrollView>
 	);
 }
