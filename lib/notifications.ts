@@ -83,10 +83,7 @@ export async function savePushToken(userId: string, token: string): Promise<void
 	}
 }
 
-export async function persistPushTokenForEvent(
-	eventId: string,
-	userId: string
-): Promise<boolean> {
+export async function persistPushTokenForEvent(eventId: string, userId: string): Promise<boolean> {
 	const token = await registerForPushNotifications();
 	if (!token) {
 		return false;

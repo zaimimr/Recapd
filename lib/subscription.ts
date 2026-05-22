@@ -23,9 +23,14 @@ export const SUBSCRIPTIONS_ENABLED = process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABL
 export const PRODUCT_IDS = {
 	MONTHLY: "monthly",
 	YEARLY: "yearly",
+	EVENT_PRO: "recapd_event_pro",
 } as const;
 
 export type ProductId = (typeof PRODUCT_IDS)[keyof typeof PRODUCT_IDS];
+
+export function isEventProProduct(productIdentifier: string): boolean {
+	return productIdentifier === PRODUCT_IDS.EVENT_PRO;
+}
 
 let isConfigured = false;
 let currentUserId: string | null = null;
@@ -253,6 +258,82 @@ export function getSubscriptionStatus(customerInfo: CustomerInfo): {
 	};
 }
 
+export async function unlockProForEvent(
+	eventId: string,
+	userId: string,
+	transactionId?: string
+): Promise<boolean> {
+	const platform = Platform.OS === "ios" ? "ios" : "android";
+
+	const { error } = await supabase.from("event_pro_unlocks").upsert(
+		{
+			event_id: eventId,
+			user_id: userId,
+			purchased_at: new Date().toISOString(),
+			platform,
+			transaction_id: transactionId ?? null,
+		},
+		{ onConflict: "event_id,user_id" }
+	);
+
+	if (error) {
+		console.error("Failed to record event pro unlock:", error);
+		return false;
+	}
+	return true;
+}
+
+export async function hasProForEvent(eventId: string, userId: string): Promise<boolean> {
+	const { data: userData } = await supabase
+		.from("users")
+		.select("subscription_tier, subscription_expires_at")
+		.eq("id", userId)
+		.maybeSingle();
+
+	if (userData?.subscription_tier === "pro") {
+		if (!userData.subscription_expires_at) return true;
+		if (new Date(userData.subscription_expires_at).getTime() > Date.now()) return true;
+	}
+
+	const { data: unlock } = await supabase
+		.from("event_pro_unlocks")
+		.select("id")
+		.eq("event_id", eventId)
+		.eq("user_id", userId)
+		.maybeSingle();
+
+	return !!unlock;
+}
+
+export async function purchaseEventProUnlock(
+	eventId: string,
+	userId: string,
+	pkg: PurchasesPackage
+): Promise<PurchaseResult> {
+	if (!isEventProProduct(pkg.product.identifier)) {
+		return {
+			success: false,
+			error: "Package is not an event pro unlock product",
+		};
+	}
+
+	const result = await purchasePackage(pkg);
+
+	if (result.success) {
+		const transactionId =
+			result.customerInfo?.nonSubscriptionTransactions?.find(
+				(t) => t.productIdentifier === pkg.product.identifier
+			)?.transactionIdentifier ?? undefined;
+
+		const recorded = await unlockProForEvent(eventId, userId, transactionId);
+		if (!recorded) {
+			console.warn("Purchase succeeded but failed to record event pro unlock");
+		}
+	}
+
+	return result;
+}
+
 export async function syncSubscriptionToDatabase(
 	userId: string,
 	customerInfo: CustomerInfo
@@ -260,13 +341,21 @@ export async function syncSubscriptionToDatabase(
 	const status = getSubscriptionStatus(customerInfo);
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 
+	const isFromRecurringProduct =
+		status.isActive &&
+		status.productId !== null &&
+		!isEventProProduct(status.productId) &&
+		customerInfo.activeSubscriptions.length > 0;
+
 	try {
 		const { error } = await supabase
 			.from("users")
 			.update({
-				subscription_tier: status.isActive ? "pro" : "free",
-				subscription_expires_at: status.expiresAt?.toISOString() || null,
-				subscription_platform: status.isActive ? platform : null,
+				subscription_tier: isFromRecurringProduct ? "pro" : "free",
+				subscription_expires_at: isFromRecurringProduct
+					? (status.expiresAt?.toISOString() ?? null)
+					: null,
+				subscription_platform: isFromRecurringProduct ? platform : null,
 				subscription_id: customerInfo.originalAppUserId,
 			})
 			.eq("id", userId);
