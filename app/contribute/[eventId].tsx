@@ -24,8 +24,8 @@ import {
 import { formatDuration } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
-import { useIsPro } from "@/store/subscriptionStore";
-import { getMaxVideoDurationMs } from "@/types/subscription";
+import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
+import { getMaxVideoDurationMs, PRO_MAX_VIDEO_DURATION_MS } from "@/types/subscription";
 
 const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
@@ -92,8 +92,11 @@ export default function ContributeScreen() {
 		: 0;
 
 	const isPro = useIsPro();
+	const showPaywall = useSubscriptionStore((state) => state.showPaywall);
 	const hostIsPro = currentEvent?.hostIsPro || false;
 	const maxVideoDurationMilliseconds = getMaxVideoDurationMs(isPro, hostIsPro);
+	const canUnlockLongerVideos =
+		!isPro && !hostIsPro && maxVideoDurationMilliseconds < PRO_MAX_VIDEO_DURATION_MS;
 
 	const [step, setStep] = useState<Step>("loading");
 	const [photos, setPhotos] = useState<LocalPhoto[]>([]);
@@ -195,18 +198,42 @@ export default function ContributeScreen() {
 		setSelectedIds(new Set());
 	}
 
+	function notifyVideosTooLong(videosTooLong: number) {
+		if (videosTooLong <= 0) return;
+		const plural = videosTooLong > 1 ? "s were" : " was";
+		const limitLabel = formatVideoDuration(maxVideoDurationMilliseconds);
+		const baseMessage = `${videosTooLong} video${plural} skipped (over ${limitLabel}).`;
+
+		if (canUnlockLongerVideos) {
+			Alert.alert(
+				"Upgrade for longer videos",
+				`${baseMessage} Pro lets you share videos up to ${formatVideoDuration(PRO_MAX_VIDEO_DURATION_MS)}.`,
+				[
+					{ text: "Not now", style: "cancel" },
+					{
+						text: "Upgrade to Pro",
+						style: "default",
+						onPress: () => {
+							showPaywall().catch((error: unknown) => {
+								console.warn("Failed to present paywall", error);
+							});
+						},
+					},
+				]
+			);
+			return;
+		}
+
+		Alert.alert("Videos Too Long", baseMessage);
+	}
+
 	async function handleManualPick() {
 		const { media: picked, videosTooLong } = await pickMediaFromLibrary({
 			includeVideos: true,
 			maxVideoDuration: maxVideoDurationMilliseconds,
 		});
 
-		if (videosTooLong > 0) {
-			Alert.alert(
-				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
-			);
-		}
+		notifyVideosTooLong(videosTooLong);
 
 		if (picked.length > 0) {
 			const existingUris = new Set(allPhotos.map((p) => p.uri));
@@ -223,12 +250,7 @@ export default function ContributeScreen() {
 			maxVideoDuration: maxVideoDurationMilliseconds,
 		});
 
-		if (videosTooLong > 0) {
-			Alert.alert(
-				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
-			);
-		}
+		notifyVideosTooLong(videosTooLong);
 
 		if (picked.length > 0) {
 			setManualPhotos(picked);
@@ -271,6 +293,25 @@ export default function ContributeScreen() {
 	function handleUpload() {
 		if (!user || !eventId || selectedIds.size === 0) return;
 		const selectedPhotos = allPhotos.filter((p) => selectedIds.has(p.id));
+
+		const blockedByDurationCap = selectedPhotos.filter(
+			(p) =>
+				p.mediaType === "video" &&
+				maxVideoDurationMilliseconds > 0 &&
+				p.duration > maxVideoDurationMilliseconds
+		);
+
+		if (blockedByDurationCap.length > 0) {
+			notifyVideosTooLong(blockedByDurationCap.length);
+			const allowedPhotos = selectedPhotos.filter(
+				(p) => !blockedByDurationCap.some((b) => b.id === p.id)
+			);
+			if (allowedPhotos.length === 0) return;
+			addPendingUploads(allowedPhotos, eventId, user.id);
+			router.replace(`/event/${eventId}`);
+			return;
+		}
+
 		addPendingUploads(selectedPhotos, eventId, user.id);
 		router.replace(`/event/${eventId}`);
 	}

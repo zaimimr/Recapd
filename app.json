@@ -75,7 +75,8 @@
 			],
 			"@react-native-community/datetimepicker",
 			"expo-secure-store",
-			"expo-video"
+			"expo-video",
+			"./plugins/withStoreKitConfiguration"
 		],
 		"experiments": {
 			"typedRoutes": true
