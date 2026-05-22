@@ -534,11 +534,6 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		subscribeToMediaItems: (eventId: string) => {
 			const channelName = `media_items:${eventId}`;
-			for (const existing of supabase.getChannels()) {
-				if (existing.topic === `realtime:${channelName}`) {
-					supabase.removeChannel(existing);
-				}
-			}
 			const channel = supabase
 				.channel(channelName)
 				.on(
@@ -614,11 +609,6 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		subscribeToParticipants: (eventId: string) => {
 			const channelName = `participants:${eventId}`;
-			for (const existing of supabase.getChannels()) {
-				if (existing.topic === `realtime:${channelName}`) {
-					supabase.removeChannel(existing);
-				}
-			}
 			const channel = supabase
 				.channel(channelName)
 				.on(
@@ -684,11 +674,6 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		subscribeToEvent: (eventId: string) => {
 			const channelName = `event:${eventId}`;
-			for (const existing of supabase.getChannels()) {
-				if (existing.topic === `realtime:${channelName}`) {
-					supabase.removeChannel(existing);
-				}
-			}
 			const channel = supabase
 				.channel(channelName)
 				.on(
@@ -750,15 +735,6 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		subscribeToUserEvents: (userId: string) => {
 			const participantChannelName = `user_participations:${userId}`;
-			const eventsChannelName = `user_events_updates:${userId}`;
-			for (const existing of supabase.getChannels()) {
-				if (
-					existing.topic === `realtime:${participantChannelName}` ||
-					existing.topic === `realtime:${eventsChannelName}`
-				) {
-					supabase.removeChannel(existing);
-				}
-			}
 			const participantChannel = supabase
 				.channel(participantChannelName)
 				.on(
@@ -831,6 +807,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					});
 				});
 
+			const eventsChannelName = `user_events_updates:${userId}`;
 			const eventsChannel = supabase
 				.channel(eventsChannelName)
 				.on(
