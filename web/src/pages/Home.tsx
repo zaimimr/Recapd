@@ -176,7 +176,11 @@ export default function Home() {
 												alt="Recapd event feed showing photos and videos in a scrollable timeline"
 												fetchPriority="high"
 											/>
-											<div className="media-badge" aria-label="Video duration: 1 minute 5 seconds">
+											<div
+												className="media-badge"
+												role="img"
+												aria-label="Video duration: 1 minute 5 seconds"
+											>
 												VIDEO 00:01:05
 											</div>
 										</div>
@@ -538,7 +542,7 @@ export default function Home() {
 				</section>
 			</main>
 
-			<footer className="footer" role="contentinfo">
+			<footer className="footer">
 				<div className="container footer-content">
 					<div>
 						<img src="/icon.png" alt="Recapd" className="footer-icon" width="56" height="56" />

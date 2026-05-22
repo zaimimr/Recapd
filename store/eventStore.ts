@@ -3,7 +3,6 @@ import { addDays } from "date-fns";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
-import { DEMO_EVENTS, DEMO_MEDIA } from "@/lib/demoData";
 import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import type { UploadFailureReason } from "@/lib/storage";
@@ -239,15 +238,12 @@ export interface ParticipantWithStats {
 }
 
 interface EventState {
-	isDemoMode: boolean;
 	events: EventWithParticipants[];
 	currentEvent: EventWithParticipants | null;
 	mediaItems: MediaItemWithUser[];
 	pendingUploads: PendingUpload[];
 	isLoading: boolean;
 	error: string | null;
-	enableDemoMode: () => void;
-	disableDemoMode: () => void;
 	fetchUserEvents: (userId: string) => Promise<void>;
 	fetchEventByCode: (joinCode: string) => Promise<EventWithParticipants | null>;
 	fetchEventById: (eventId: string) => Promise<EventWithParticipants | null>;
@@ -366,7 +362,6 @@ export const useEventStore = create<EventState>((set, get) => {
 	});
 
 	return {
-		isDemoMode: false,
 		events: [],
 		currentEvent: null,
 		mediaItems: [],
@@ -374,36 +369,7 @@ export const useEventStore = create<EventState>((set, get) => {
 		isLoading: false,
 		error: null,
 
-		enableDemoMode: () => {
-			AsyncStorage.setItem("recapd_demo_mode", "true");
-			set({
-				isDemoMode: true,
-				events: DEMO_EVENTS,
-				isLoading: false,
-				error: null,
-			});
-		},
-
-		disableDemoMode: () => {
-			AsyncStorage.removeItem("recapd_demo_mode");
-			set({
-				isDemoMode: false,
-				events: [],
-				currentEvent: null,
-				mediaItems: [],
-			});
-		},
-
 		fetchUserEvents: async (userId: string) => {
-			if (get().isDemoMode) {
-				set({ events: DEMO_EVENTS, isLoading: false });
-				return;
-			}
-			const demoFlag = await AsyncStorage.getItem("recapd_demo_mode");
-			if (demoFlag === "true") {
-				get().enableDemoMode();
-				return;
-			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -485,11 +451,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		fetchEventById: async (eventId: string) => {
-			if (get().isDemoMode) {
-				const demoEvent = DEMO_EVENTS.find((e) => e.id === eventId) || null;
-				set({ currentEvent: demoEvent, isLoading: false });
-				return demoEvent;
-			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -691,10 +652,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		fetchMediaItems: async (eventId: string) => {
-			if (get().isDemoMode) {
-				set({ mediaItems: DEMO_MEDIA[eventId] || [], isLoading: false });
-				return;
-			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -718,7 +675,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToMediaItems: (eventId: string) => {
-			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`media_items:${eventId}`)
 				.on(
@@ -772,7 +728,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToParticipants: (eventId: string) => {
-			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`participants:${eventId}`)
 				.on(
@@ -838,7 +793,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToEvent: (eventId: string) => {
-			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`event:${eventId}`)
 				.on(
@@ -893,7 +847,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToUserEvents: (userId: string) => {
-			if (get().isDemoMode) return () => {};
 			const participantChannel = supabase
 				.channel(`user_participations:${userId}`)
 				.on(
@@ -1161,7 +1114,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		fetchParticipantStats: async (eventId: string) => {
-			if (get().isDemoMode) return [];
 			const { data: participants, error: partError } = await supabase
 				.from("event_participants")
 				.select("*, user:users(id, display_name)")
@@ -1299,11 +1251,6 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		initializePendingUploads: async (userId?: string | null) => {
-			const demoFlag = await AsyncStorage.getItem("recapd_demo_mode");
-			if (demoFlag === "true") {
-				get().enableDemoMode();
-				return;
-			}
 			const activeUserId = userId ?? useAuthStore.getState().user?.id ?? null;
 			if (!activeUserId) {
 				set({ pendingUploads: [] });

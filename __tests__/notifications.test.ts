@@ -187,38 +187,3 @@ describe("saving a push token to private user data", () => {
 		consoleSpy.mockRestore();
 	});
 });
-
-describe("client-side notification fanout", () => {
-	test("disables participant reminder fanout on the client", async () => {
-		jest.resetModules();
-		const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-		const { sendReminderToParticipants } = require("@/lib/notifications");
-
-		const result = await sendReminderToParticipants("evt1", "My Event", "host1");
-
-		expect(result).toEqual({ success: false, sentCount: 0 });
-		consoleSpy.mockRestore();
-	});
-
-	test("disables free-tier participant limit notifications on the client", async () => {
-		jest.resetModules();
-		const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-		const { sendParticipantLimitNotification } = require("@/lib/notifications");
-
-		const result = await sendParticipantLimitNotification("evt1", "Party", "host1");
-
-		expect(result).toBe(false);
-		consoleSpy.mockRestore();
-	});
-
-	test("disables event-full notifications on the client", async () => {
-		jest.resetModules();
-		const consoleSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-		const { sendEventFullNotification } = require("@/lib/notifications");
-
-		const result = await sendEventFullNotification("evt1", "Party");
-
-		expect(result).toBe(false);
-		consoleSpy.mockRestore();
-	});
-});

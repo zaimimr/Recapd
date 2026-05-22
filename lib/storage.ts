@@ -528,27 +528,6 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 	}
 }
 
-export async function uploadPhoto(
-	uri: string,
-	eventId: string,
-	userId: string,
-	capturedAt: Date,
-	width?: number,
-	height?: number,
-	fileSize?: number
-): Promise<UploadResult> {
-	return uploadMedia({
-		uri,
-		eventId,
-		userId,
-		capturedAt,
-		width,
-		height,
-		fileSize,
-		mediaType: "photo",
-	});
-}
-
 function getBucketForPath(storagePath: string) {
 	return storagePath.endsWith("_thumb.jpg") || storagePath.endsWith("_thumb.png")
 		? "thumbnails"

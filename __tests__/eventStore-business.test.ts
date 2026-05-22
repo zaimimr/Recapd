@@ -52,9 +52,7 @@ jest.mock("@/lib/uploadQueue", () => ({
 	processUploadQueue: jest.fn().mockResolvedValue(undefined),
 	setUploadCallbacks: jest.fn(),
 }));
-jest.mock("@/lib/notifications", () => ({
-	sendParticipantLimitNotification: jest.fn(),
-}));
+jest.mock("@/lib/notifications", () => ({}));
 jest.mock("@/lib/subscription", () => ({
 	SUBSCRIPTIONS_ENABLED: true,
 }));

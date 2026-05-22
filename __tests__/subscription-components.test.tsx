@@ -32,7 +32,6 @@ const mockPlans = {
 		description: null,
 		isActive: true,
 		sortOrder: 0,
-		unlockScope: "none",
 		revenueCatEntitlementIdentifier: null,
 		revenueCatOfferingIdentifier: null,
 		capabilities: {
@@ -48,7 +47,6 @@ const mockPlans = {
 		description: null,
 		isActive: true,
 		sortOrder: 1,
-		unlockScope: "both",
 		revenueCatEntitlementIdentifier: "Recapd Pro",
 		revenueCatOfferingIdentifier: null,
 		capabilities: {

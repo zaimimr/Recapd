@@ -82,9 +82,7 @@ jest.mock("@/lib/dateUtils", () => ({
 	safeDate: (d: any) => (d instanceof Date ? d : new Date(d)),
 }));
 
-jest.mock("@/lib/notifications", () => ({
-	sendParticipantLimitNotification: jest.fn().mockResolvedValue(true),
-}));
+jest.mock("@/lib/notifications", () => ({}));
 
 jest.mock("@/lib/subscription", () => ({
 	SUBSCRIPTIONS_ENABLED: true,

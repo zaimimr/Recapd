@@ -1,9 +1,4 @@
-import type {
-	SubscriptionPlan as DbSubscriptionPlan,
-	Json,
-	SubscriptionTier,
-	SubscriptionUnlockScope,
-} from "./database";
+import type { SubscriptionPlan as DbSubscriptionPlan, Json, SubscriptionTier } from "./database";
 
 export interface SubscriptionPlanCapabilities {
 	maxParticipants: number | null;
@@ -33,7 +28,6 @@ export interface SubscriptionPlan {
 	description: string | null;
 	isActive: boolean;
 	sortOrder: number;
-	unlockScope: SubscriptionUnlockScope;
 	revenueCatEntitlementIdentifier: string | null;
 	revenueCatOfferingIdentifier: string | null;
 	capabilities: SubscriptionPlanCapabilities;
@@ -49,7 +43,6 @@ const DEFAULT_PLAN_CATALOG: SubscriptionPlanCatalog = {
 		description: "Baseline plan for small events and limited uploads.",
 		isActive: true,
 		sortOrder: 0,
-		unlockScope: "none",
 		revenueCatEntitlementIdentifier: null,
 		revenueCatOfferingIdentifier: null,
 		capabilities: {
@@ -66,7 +59,6 @@ const DEFAULT_PLAN_CATALOG: SubscriptionPlanCatalog = {
 		description: "Paid plan for unlocked events and longer uploads.",
 		isActive: true,
 		sortOrder: 1,
-		unlockScope: "both",
 		revenueCatEntitlementIdentifier: "Recapd Pro",
 		revenueCatOfferingIdentifier: null,
 		capabilities: {
@@ -140,7 +132,6 @@ export function createSubscriptionPlanCatalog(
 			description: row.description,
 			isActive: row.is_active,
 			sortOrder: row.sort_order,
-			unlockScope: row.unlock_scope,
 			revenueCatEntitlementIdentifier: row.revenuecat_entitlement_identifier,
 			revenueCatOfferingIdentifier: row.revenuecat_offering_identifier,
 			capabilities: normalizeCapabilities(row.capabilities, fallback.capabilities),
@@ -194,22 +185,14 @@ function resolveEventCapabilities(
 	hostPlanId: SubscriptionPlanLike,
 	catalog: SubscriptionPlanCatalog
 ): SubscriptionPlanCapabilities {
-	const freeCapabilities = catalog.free.capabilities;
-	const hostPlan = catalog[normalizePlanId(hostPlanId)];
-	return hostPlan.unlockScope === "event" || hostPlan.unlockScope === "both"
-		? hostPlan.capabilities
-		: freeCapabilities;
+	return catalog[normalizePlanId(hostPlanId)].capabilities;
 }
 
 function resolveViewerCapabilities(
 	userPlanId: SubscriptionPlanLike,
 	catalog: SubscriptionPlanCatalog
 ): SubscriptionPlanCapabilities {
-	const freeCapabilities = catalog.free.capabilities;
-	const userPlan = catalog[normalizePlanId(userPlanId)];
-	return userPlan.unlockScope === "self" || userPlan.unlockScope === "both"
-		? userPlan.capabilities
-		: freeCapabilities;
+	return catalog[normalizePlanId(userPlanId)].capabilities;
 }
 
 export function getSubscriptionPlan(
