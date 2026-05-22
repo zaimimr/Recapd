@@ -1,6 +1,5 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { format } from "date-fns";
 import {
 	ActivityIndicator,
 	Dimensions,
@@ -12,8 +11,8 @@ import {
 	View,
 } from "react-native";
 import { getAvatarColor } from "@/lib/colors";
-import { getPhotoUrl } from "@/lib/storage";
-import { formatDuration } from "@/lib/utils";
+import { usePhotoThumbnailUrl, useStorageUrl } from "@/lib/storage";
+import { formatDuration, formatLocalizedTime } from "@/lib/utils";
 import type { MediaItemWithUser } from "@/types/database";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -23,7 +22,14 @@ const CLUSTER_THRESHOLD_MS = 60000;
 export interface MergedMediaItem extends MediaItemWithUser {
 	isPending?: boolean;
 	localUri?: string;
+	localThumbnailUri?: string | null;
 	syncStatus?: string;
+	retryCount?: number;
+	error?: string;
+	failureReason?: string;
+	startedAt?: string;
+	lastAttemptAt?: string;
+	finishedAt?: string;
 }
 
 export interface Cluster {
@@ -46,6 +52,41 @@ interface ClusterRowProps {
 	onPhotoPress: (photo: MergedMediaItem, index: number, allPhotos: MergedMediaItem[]) => void;
 	onRetry?: (id: string) => void;
 	isDark: boolean;
+}
+
+function ClusterMediaThumbnail({ photo }: { photo: MergedMediaItem }) {
+	const signedThumbnailUrl = useStorageUrl(photo.thumbnail_path);
+	const signedPhotoUrl = usePhotoThumbnailUrl(photo.storage_path);
+
+	const imageUri = (() => {
+		if (photo.isPending && photo.localThumbnailUri) {
+			return photo.localThumbnailUri;
+		}
+		if (photo.isPending && photo.localUri && photo.media_type !== "video") {
+			return photo.localUri;
+		}
+		if (photo.media_type === "video") {
+			return signedThumbnailUrl;
+		}
+		return signedPhotoUrl;
+	})();
+
+	if (!imageUri) {
+		return (
+			<View style={styles.videoPlaceholder}>
+				<Ionicons name="videocam" size={32} color="#666" />
+			</View>
+		);
+	}
+
+	return (
+		<Image
+			source={{ uri: imageUri }}
+			style={[styles.clusterImage, photo.isPending && styles.pendingImage]}
+			resizeMode="cover"
+			blurRadius={photo.isPending && photo.syncStatus !== "failed" ? 2 : 0}
+		/>
+	);
 }
 
 export function clusterPhotos(photos: MergedMediaItem[]): Cluster[] {
@@ -87,7 +128,7 @@ function ClusterRow({
 	return (
 		<View style={styles.clusterContainer}>
 			<Text style={[styles.clusterTime, isDark && styles.textMuted]}>
-				{format(new Date(cluster.time), "h:mm a")}
+				{formatLocalizedTime(cluster.time)}
 			</Text>
 			<ScrollView
 				horizontal
@@ -102,20 +143,6 @@ function ClusterRow({
 						? SCREEN_WIDTH - 48
 						: Math.min(CLUSTER_PHOTO_HEIGHT * aspectRatio, SCREEN_WIDTH * 0.7);
 
-					// For videos, use thumbnail_path if available
-					const getImageUri = () => {
-						if (photo.isPending && photo.localUri) {
-							return photo.localUri;
-						}
-						if (photo.media_type === "video") {
-							// Only return thumbnail if available, otherwise null
-							return photo.thumbnail_path ? getPhotoUrl(photo.thumbnail_path) : null;
-						}
-						return getPhotoUrl(photo.storage_path);
-					};
-
-					const imageUri = getImageUri();
-
 					const isSyncing = photo.isPending && photo.syncStatus === "syncing";
 					const isFailed = photo.isPending && photo.syncStatus === "failed";
 
@@ -126,18 +153,7 @@ function ClusterRow({
 							onPress={() => onPhotoPress(photo, globalIndex, allPhotos)}
 							activeOpacity={0.9}
 						>
-							{imageUri ? (
-								<Image
-									source={{ uri: imageUri }}
-									style={[styles.clusterImage, photo.isPending && styles.pendingImage]}
-									resizeMode="cover"
-									blurRadius={photo.isPending && photo.syncStatus !== "failed" ? 2 : 0}
-								/>
-							) : (
-								<View style={styles.videoPlaceholder}>
-									<Ionicons name="videocam" size={32} color="#666" />
-								</View>
-							)}
+							<ClusterMediaThumbnail photo={photo} />
 
 							{photo.isPending && (
 								<View style={styles.syncOverlay}>

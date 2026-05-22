@@ -63,13 +63,22 @@ jest.mock("@/lib/dateUtils", () => ({
 		v instanceof Date ? v : new Date(typeof v === "number" ? v : Date.now())
 	),
 }));
+jest.mock("@/lib/storage", () => ({
+	createVideoThumbnailUri: jest.fn().mockResolvedValue("file:///thumb.jpg"),
+}));
+jest.mock("@/store/authStore", () => ({
+	useAuthStore: {
+		getState: jest.fn(() => ({ user: null })),
+	},
+}));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEventStore } from "@/store/eventStore";
 import type { MediaItemWithUser } from "@/types/database";
 
 const { supabase, buildChain } = require("@/lib/supabase");
-const { generateUploadId } = require("@/lib/uploadQueue");
+const { generateUploadId, setUploadCallbacks } = require("@/lib/uploadQueue");
+const { useAuthStore } = require("@/store/authStore");
 
 function makeMediaItem(overrides: Partial<MediaItemWithUser> = {}): MediaItemWithUser {
 	return {
@@ -105,6 +114,7 @@ beforeEach(() => {
 	});
 	jest.clearAllMocks();
 	supabase.from.mockReturnValue(buildChain());
+	useAuthStore.getState.mockReturnValue({ user: null });
 });
 
 describe("addPendingUploads", () => {
@@ -284,6 +294,29 @@ describe("addPendingUploads", () => {
 		const pending = useEventStore.getState().pendingUploads[0];
 		expect(pending.mediaType).toBe("video");
 		expect(pending.duration).toBe(15000);
+		expect(pending.thumbnailUri).toBe("file:///thumb.jpg");
+	});
+
+	test("video upload persistence omits transient thumbnail URIs", async () => {
+		const videoPhoto = {
+			id: "video-1",
+			uri: "file://v1.mp4",
+			filename: "v1.mp4",
+			creationTime: 5000,
+			width: 1920,
+			height: 1080,
+			duration: 15000,
+			mediaType: "video" as const,
+		};
+
+		await useEventStore.getState().addPendingUploads([videoPhoto], "evt1", "user1");
+
+		const [, payload] = (AsyncStorage.setItem as jest.Mock).mock.calls.at(-1) ?? [];
+		const persisted = JSON.parse(String(payload));
+
+		expect(persisted).toHaveLength(1);
+		expect(persisted[0].thumbnailUri).toBeNull();
+		expect(persisted[0].localUri).toBe("file://v1.mp4");
 	});
 });
 
@@ -325,7 +358,34 @@ describe("getMergedTimeline", () => {
 		expect(timeline[0].localUri).toBe("file://local.jpg");
 	});
 
-	test("mixed items sorted by captured_at ascending", () => {
+	test("pending video uploads preserve media type and duration in the merged timeline", () => {
+		useEventStore.setState({
+			mediaItems: [],
+			pendingUploads: [
+				{
+					id: "pending-video",
+					localUri: "file://local.mp4",
+					eventId: "evt1",
+					userId: "user1",
+					capturedAt: new Date(3000),
+					width: 1920,
+					height: 1080,
+					status: "pending" as const,
+					retryCount: 0,
+					mediaType: "video" as const,
+					duration: 18000,
+				},
+			],
+		});
+
+		const timeline = useEventStore.getState().getMergedTimeline("evt1");
+
+		expect(timeline).toHaveLength(1);
+		expect(timeline[0].media_type).toBe("video");
+		expect(timeline[0].duration_milliseconds).toBe(18000);
+	});
+
+	test("mixed items sorted by captured_at descending", () => {
 		const dbItem = makeMediaItem({ captured_at: new Date(100).toISOString() });
 		useEventStore.setState({
 			mediaItems: [dbItem],
@@ -348,8 +408,8 @@ describe("getMergedTimeline", () => {
 		const timeline = useEventStore.getState().getMergedTimeline("evt1");
 
 		expect(timeline).toHaveLength(2);
-		expect(timeline[0].isPending).toBe(true);
-		expect(timeline[1].isPending).toBe(false);
+		expect(timeline[0].isPending).toBe(false);
+		expect(timeline[1].isPending).toBe(true);
 	});
 
 	test("filters pending by eventId", () => {
@@ -390,8 +450,50 @@ describe("getMergedTimeline", () => {
 	});
 });
 
+describe("upload callbacks", () => {
+	test("skipped uploads do not get inserted into mediaItems when they finish late", async () => {
+		let isolatedStore!: typeof useEventStore;
+		let isolatedSetUploadCallbacks!: typeof setUploadCallbacks;
+
+		jest.isolateModules(() => {
+			isolatedStore = require("@/store/eventStore").useEventStore;
+			isolatedSetUploadCallbacks = require("@/lib/uploadQueue").setUploadCallbacks;
+		});
+
+		const callbacks = isolatedSetUploadCallbacks.mock.calls.at(-1)?.[0];
+		const insertedMedia = makeMediaItem({ id: "late-media" });
+
+		isolatedStore.setState({
+			mediaItems: [],
+			pendingUploads: [
+				{
+					id: "pending-1",
+					localUri: "file://local.jpg",
+					eventId: "evt1",
+					userId: "user1",
+					capturedAt: new Date(2000),
+					width: 100,
+					height: 100,
+					status: "skipped" as const,
+					retryCount: 0,
+					mediaType: "photo" as const,
+				},
+			],
+		});
+
+		await callbacks.onComplete(isolatedStore.getState().pendingUploads[0], {
+			success: true,
+			path: "events/evt1/photo.jpg",
+			mediaItem: insertedMedia,
+		});
+
+		expect(isolatedStore.getState().mediaItems).toHaveLength(0);
+		expect(isolatedStore.getState().pendingUploads).toHaveLength(0);
+	});
+});
+
 describe("getUploadedPhotoIdsForEvent", () => {
-	function setupMediaItemsChain(uploadedPhotos: any[], error: any = null) {
+	function setupMediaItemsChain(uploadedPhotos: any[] | null, error: any = null) {
 		const chain = buildChain({ data: uploadedPhotos, error });
 		supabase.from.mockImplementation((table: string) => {
 			if (table === "media_items") return chain;
@@ -657,7 +759,7 @@ describe("deletePhoto", () => {
 		expect(items.find((m) => m.id === "photo-1")).toBeDefined();
 	});
 
-	test("DB delete error restores photo sorted by captured_at", async () => {
+	test("DB delete error restores photo sorted by captured_at descending", async () => {
 		supabase.storage.from.mockReturnValue({
 			remove: jest.fn().mockResolvedValue({ error: null }),
 			upload: jest.fn(),
@@ -675,8 +777,8 @@ describe("deletePhoto", () => {
 		expect(result).toBe(false);
 		const items = useEventStore.getState().mediaItems;
 		expect(items).toHaveLength(2);
-		expect(items[0].id).toBe("photo-1");
-		expect(items[1].id).toBe("photo-2");
+		expect(items[0].id).toBe("photo-2");
+		expect(items[1].id).toBe("photo-1");
 	});
 });
 
@@ -870,7 +972,7 @@ describe("loadPendingUploads (via initializePendingUploads)", () => {
 		];
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(stored));
 
-		await useEventStore.getState().initializePendingUploads();
+		await useEventStore.getState().initializePendingUploads("user1");
 
 		const uploads = useEventStore.getState().pendingUploads;
 		expect(uploads).toHaveLength(1);
@@ -894,7 +996,7 @@ describe("loadPendingUploads (via initializePendingUploads)", () => {
 		];
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(stored));
 
-		await useEventStore.getState().initializePendingUploads();
+		await useEventStore.getState().initializePendingUploads("user1");
 
 		expect(useEventStore.getState().pendingUploads[0].status).toBe("pending");
 	});
@@ -902,7 +1004,7 @@ describe("loadPendingUploads (via initializePendingUploads)", () => {
 	test("corrupted JSON clears storage and returns empty", async () => {
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue("not valid json{{{");
 
-		await useEventStore.getState().initializePendingUploads();
+		await useEventStore.getState().initializePendingUploads("user1");
 
 		expect(useEventStore.getState().pendingUploads).toHaveLength(0);
 		expect(AsyncStorage.removeItem).toHaveBeenCalledWith("recapd_pending_uploads");
@@ -911,8 +1013,44 @@ describe("loadPendingUploads (via initializePendingUploads)", () => {
 	test("null from AsyncStorage results in empty pendingUploads", async () => {
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
 
-		await useEventStore.getState().initializePendingUploads();
+		await useEventStore.getState().initializePendingUploads("user1");
 
 		expect(useEventStore.getState().pendingUploads).toHaveLength(0);
+	});
+
+	test("stale pending uploads for a different profile are discarded", async () => {
+		const stored = [
+			{
+				id: "upload-1",
+				localUri: "file://p1.jpg",
+				eventId: "evt1",
+				userId: "old-user",
+				capturedAt: "2024-01-01T00:00:00.000Z",
+				width: 100,
+				height: 100,
+				status: "pending",
+				retryCount: 0,
+				mediaType: "photo",
+			},
+			{
+				id: "upload-2",
+				localUri: "file://p2.jpg",
+				eventId: "evt1",
+				userId: "user1",
+				capturedAt: "2024-01-01T00:00:00.000Z",
+				width: 100,
+				height: 100,
+				status: "pending",
+				retryCount: 0,
+				mediaType: "photo",
+			},
+		];
+		(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(stored));
+
+		await useEventStore.getState().initializePendingUploads("user1");
+
+		expect(useEventStore.getState().pendingUploads).toHaveLength(1);
+		expect(useEventStore.getState().pendingUploads[0].userId).toBe("user1");
+		expect(AsyncStorage.setItem).toHaveBeenCalled();
 	});
 });

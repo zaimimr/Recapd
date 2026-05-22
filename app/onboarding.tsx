@@ -53,14 +53,18 @@ export default function OnboardingScreen() {
 			behavior={Platform.OS === "ios" ? "padding" : "height"}
 		>
 			<View style={styles.content}>
-				<View style={styles.header}>
-					<Text style={[styles.logo, isDark && styles.textDark]}>Recapd</Text>
+				<View style={[styles.hero, isDark && styles.panelDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Recapd</Text>
+					<Text style={[styles.logo, isDark && styles.textDark]}>
+						Let the app know who you are.
+					</Text>
 					<Text style={[styles.tagline, isDark && styles.textMuted]}>
-						See the night from everyone's eyes
+						Your name shows up across events, uploads, and the shared recap feed.
 					</Text>
 				</View>
 
-				<View style={styles.form}>
+				<View style={[styles.form, isDark && styles.panelDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
 					<Text style={[styles.label, isDark && styles.textDark]}>What should we call you?</Text>
 					<TextInput
 						style={[styles.input, isDark && styles.inputDark, error ? styles.inputError : null]}
@@ -102,52 +106,75 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	content: {
 		flex: 1,
-		padding: 24,
+		padding: 16,
 		justifyContent: "center",
+		gap: 16,
 	},
-	header: {
-		alignItems: "center",
-		marginBottom: 48,
+	hero: {
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 18,
+		gap: 6,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
 	},
 	logo: {
-		fontSize: 42,
+		fontSize: 34,
 		fontWeight: "700",
-		color: "#000",
-		letterSpacing: -1,
+		color: "#111827",
+		letterSpacing: -1.1,
+		lineHeight: 38,
 	},
 	tagline: {
-		fontSize: 16,
-		color: "#666",
-		marginTop: 8,
+		fontSize: 15,
+		color: "#6b7280",
+		lineHeight: 22,
 	},
 	form: {
-		marginBottom: 32,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
 	},
 	label: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
+		fontSize: 22,
+		fontWeight: "700",
+		color: "#111827",
 		marginBottom: 12,
+		letterSpacing: -0.5,
 	},
 	input: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 18,
-		color: "#000",
-		borderWidth: 2,
-		borderColor: "transparent",
+		color: "#111827",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 	},
 	inputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	inputError: {
@@ -160,13 +187,13 @@ const styles = StyleSheet.create({
 	},
 	hint: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 8,
 	},
 	button: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	buttonDisabled: {
@@ -174,7 +201,7 @@ const styles = StyleSheet.create({
 	},
 	buttonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	textDark: {

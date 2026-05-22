@@ -1,11 +1,17 @@
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
+import type { BillingProvider } from "@/lib/billing/provider";
+
+process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY = "test-ios-key";
+process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY = "test-android-key";
+process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED = "true";
 
 jest.mock("expo-constants", () => ({
 	__esModule: true,
-	default: { appOwnership: "standalone" },
+	default: { appOwnership: "standalone", executionEnvironment: "bare" },
 }));
 
 jest.mock("react-native", () => ({
+	Alert: { alert: jest.fn() },
 	Platform: { OS: "ios" },
 }));
 
@@ -73,11 +79,24 @@ jest.mock("react-native-purchases-ui", () => ({
 
 const mockSupabaseEq = jest.fn().mockResolvedValue({ error: null });
 const mockSupabaseUpdate = jest.fn().mockReturnValue({ eq: mockSupabaseEq });
+const mockSupabaseUpsert = jest.fn().mockResolvedValue({ error: null });
 
 jest.mock("@/lib/supabase", () => ({
 	supabase: {
-		from: jest.fn().mockReturnValue({
-			update: (...args: unknown[]) => mockSupabaseUpdate(...args),
+		from: jest.fn((table: string) => {
+			if (table === "users") {
+				return {
+					update: (...args: unknown[]) => mockSupabaseUpdate(...args),
+				};
+			}
+
+			if (table === "user_private_data") {
+				return {
+					upsert: (...args: unknown[]) => mockSupabaseUpsert(...args),
+				};
+			}
+
+			return {};
 		}),
 	},
 }));
@@ -145,6 +164,7 @@ const makeOffering = (
 beforeEach(() => {
 	jest.clearAllMocks();
 	jest.resetModules();
+	mockSupabaseUpsert.mockResolvedValue({ error: null });
 });
 
 describe("RevenueCat must be configured before any purchase operation", () => {
@@ -367,6 +387,30 @@ describe("checking Pro entitlement from customer info", () => {
 		expect(checkProEntitlement(info)).toBe(false);
 		logSpy.mockRestore();
 	});
+
+	test("supports a catalog-configured entitlement identifier", () => {
+		const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+		const { checkProEntitlement } = require("@/lib/subscription");
+		const info = {
+			...makeCustomerInfo({ isPro: false }),
+			entitlements: {
+				active: {
+					recapd_pro: {
+						isActive: true,
+						expirationDate: "2025-12-31T00:00:00Z",
+						productIdentifier: "monthly",
+						willRenew: true,
+					},
+				},
+				all: {},
+				verification: "VERIFIED",
+			},
+			activeSubscriptions: ["monthly"],
+		} as CustomerInfo;
+
+		expect(checkProEntitlement(info, "recapd_pro")).toBe(true);
+		logSpy.mockRestore();
+	});
 });
 
 describe("subscription status details", () => {
@@ -416,11 +460,20 @@ describe("syncing subscription to database", () => {
 
 		await syncSubscriptionToDatabase("user-1", info);
 
+		expect(require("@/lib/supabase").supabase.from).toHaveBeenCalledWith("users");
+		expect(require("@/lib/supabase").supabase.from).toHaveBeenCalledWith("user_private_data");
 		expect(mockSupabaseUpdate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				subscription_tier: "pro",
-				subscription_platform: "ios",
 			})
+		);
+		expect(mockSupabaseUpsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				user_id: "user-1",
+				subscription_platform: "ios",
+				subscription_id: "user-1",
+			}),
+			{ onConflict: "user_id" }
 		);
 		consoleSpy.mockRestore();
 	});
@@ -434,8 +487,14 @@ describe("syncing subscription to database", () => {
 		expect(mockSupabaseUpdate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				subscription_tier: "free",
-				subscription_platform: null,
 			})
+		);
+		expect(mockSupabaseUpsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				user_id: "user-1",
+				subscription_platform: null,
+			}),
+			{ onConflict: "user_id" }
 		);
 	});
 });
@@ -516,6 +575,88 @@ describe("conditional paywall (show only if not Pro)", () => {
 		expect(result.purchased).toBe(true);
 		consoleSpy.mockRestore();
 	});
+
+	test("passes a catalog-configured entitlement identifier to RevenueCat UI", async () => {
+		const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+		const { configureRevenueCat, presentPaywallIfNeeded } = require("@/lib/subscription");
+		await configureRevenueCat("user-1");
+
+		mockPresentPaywallIfNeeded.mockResolvedValue("NOT_PRESENTED");
+
+		await presentPaywallIfNeeded(undefined, "recapd_pro");
+
+		expect(mockPresentPaywallIfNeeded).toHaveBeenCalledWith(
+			expect.objectContaining({
+				requiredEntitlementIdentifier: "recapd_pro",
+			})
+		);
+		consoleSpy.mockRestore();
+	});
+});
+
+describe("billing provider modularity", () => {
+	test("allows swapping the billing provider behind the subscription facade", async () => {
+		const { configureRevenueCat, presentPaywall, resetBillingProvider, setBillingProvider } =
+			require("@/lib/subscription");
+
+		const providerInfo = {
+			...makeCustomerInfo({ isPro: false }),
+			entitlements: {
+				active: {
+					custom_pro: {
+						isActive: true,
+						expirationDate: "2025-12-31T00:00:00Z",
+						productIdentifier: "monthly",
+						willRenew: true,
+					},
+				},
+				all: {},
+				verification: "VERIFIED",
+			},
+			activeSubscriptions: ["monthly"],
+		} as CustomerInfo;
+
+		const fakeProvider: BillingProvider = {
+			name: "fake",
+			configure: jest.fn().mockResolvedValue(true),
+			isConfigured: jest.fn().mockReturnValue(true),
+			getLastError: jest.fn().mockReturnValue(null),
+			getCustomerInfo: jest.fn().mockResolvedValue(providerInfo),
+			getOfferings: jest.fn().mockResolvedValue(null),
+			getAllOfferings: jest.fn().mockResolvedValue(null),
+			purchasePackage: jest.fn().mockResolvedValue({ success: true, customerInfo: providerInfo }),
+			restorePurchases: jest.fn().mockResolvedValue({ success: true, customerInfo: providerInfo }),
+			setupCustomerInfoListener: jest.fn().mockReturnValue(() => {}),
+			presentPaywall: jest
+				.fn()
+				.mockResolvedValue({ presented: true, purchased: true, customerInfo: providerInfo }),
+			presentPaywallIfNeeded: jest
+				.fn()
+				.mockResolvedValue({ presented: true, purchased: true, customerInfo: providerInfo }),
+			presentCustomerCenter: jest.fn().mockResolvedValue({ presented: true }),
+			logInUser: jest.fn().mockResolvedValue(providerInfo),
+			logOutUser: jest.fn().mockResolvedValue(providerInfo),
+			setUserEmail: jest.fn().mockResolvedValue(undefined),
+			setUserDisplayName: jest.fn().mockResolvedValue(undefined),
+			getEntitlement: jest.fn((customerInfo: CustomerInfo, entitlementId?: string | null) => {
+				const key = entitlementId || "custom_pro";
+				return (customerInfo.entitlements.active as Record<string, any>)[key] || null;
+			}),
+		};
+
+		try {
+			setBillingProvider(fakeProvider);
+
+			await configureRevenueCat("user-1");
+			const result = await presentPaywall(undefined, "custom_pro");
+
+			expect(fakeProvider.configure).toHaveBeenCalledWith("user-1");
+			expect(fakeProvider.presentPaywall).toHaveBeenCalledWith(undefined, "custom_pro");
+			expect(result.purchased).toBe(true);
+		} finally {
+			resetBillingProvider();
+		}
+	});
 });
 
 describe("customer center for managing subscriptions", () => {
@@ -524,9 +665,10 @@ describe("customer center for managing subscriptions", () => {
 		const { configureRevenueCat, presentCustomerCenter } = require("@/lib/subscription");
 		await configureRevenueCat("user-1");
 
-		await presentCustomerCenter();
+		const result = await presentCustomerCenter();
 
 		expect(mockPresentCustomerCenter).toHaveBeenCalled();
+		expect(result).toEqual({ presented: true });
 		consoleSpy.mockRestore();
 	});
 
@@ -534,9 +676,10 @@ describe("customer center for managing subscriptions", () => {
 		const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
 		const { presentCustomerCenter } = require("@/lib/subscription");
 
-		await presentCustomerCenter();
+		const result = await presentCustomerCenter();
 
 		expect(mockPresentCustomerCenter).not.toHaveBeenCalled();
+		expect(result).toEqual({ presented: false, error: "RevenueCat not configured" });
 		warnSpy.mockRestore();
 	});
 });
@@ -738,9 +881,34 @@ describe("subscription store integration", () => {
 		mockGetOfferings.mockResolvedValue(null);
 		await useSubscriptionStore.getState().initialize("user-1");
 
-		await useSubscriptionStore.getState().showCustomerCenter();
+		const result = await useSubscriptionStore.getState().showCustomerCenter();
 
 		expect(mockPresentCustomerCenter).toHaveBeenCalled();
+		expect(result).toBe(true);
+		consoleSpy.mockRestore();
+	});
+
+	test("showCustomerCenter configures RevenueCat before presenting", async () => {
+		const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+		const { useSubscriptionStore } = require("@/store/subscriptionStore");
+		useSubscriptionStore.setState({
+			userId: "user-1",
+			error: null,
+		});
+
+		mockPresentCustomerCenter.mockClear();
+		mockConfigure.mockResolvedValue(undefined);
+
+		const result = await useSubscriptionStore.getState().showCustomerCenter();
+
+		expect(mockConfigure).toHaveBeenCalledWith(
+			expect.objectContaining({
+				apiKey: expect.any(String),
+				appUserID: "user-1",
+			})
+		);
+		expect(mockPresentCustomerCenter).toHaveBeenCalled();
+		expect(result).toBe(true);
 		consoleSpy.mockRestore();
 	});
 

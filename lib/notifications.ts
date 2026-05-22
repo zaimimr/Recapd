@@ -3,6 +3,7 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { Platform } from "react-native";
+import { logger } from "./logger";
 import { supabase } from "./supabase";
 
 let handlerConfigured = false;
@@ -43,7 +44,7 @@ export function setupNotificationHandler() {
 
 export async function registerForPushNotifications(): Promise<string | null> {
 	if (!Device.isDevice) {
-		console.log("Push notifications require a physical device");
+		logger.warn("Push notifications require a physical device");
 		return null;
 	}
 
@@ -56,7 +57,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 	}
 
 	if (finalStatus !== "granted") {
-		console.log("Push notification permission not granted");
+		logger.warn("Push notification permission not granted");
 		return null;
 	}
 
@@ -76,131 +77,33 @@ export async function registerForPushNotifications(): Promise<string | null> {
 }
 
 export async function savePushToken(userId: string, token: string): Promise<void> {
-	const { error } = await supabase.from("users").update({ push_token: token }).eq("id", userId);
+	const { error } = await supabase.from("user_private_data").upsert(
+		{
+			user_id: userId,
+			push_token: token,
+		},
+		{ onConflict: "user_id" }
+	);
 
 	if (error) {
-		console.error("Failed to save push token:", error);
+		logger.error("Failed to save push token", error, { userId });
 	}
 }
 
-interface PushMessage {
-	to: string;
-	title: string;
-	body: string;
-	data?: Record<string, unknown>;
+export async function sendReminderToParticipants(): Promise<{
+	success: boolean;
+	sentCount: number;
+}> {
+	logger.warn("Client-side reminder fanout has been disabled");
+	return { success: false, sentCount: 0 };
 }
 
-export async function sendPushNotification(
-	tokens: string[],
-	title: string,
-	body: string,
-	data?: Record<string, unknown>
-): Promise<boolean> {
-	const messages: PushMessage[] = tokens.map((token) => ({
-		to: token,
-		title,
-		body,
-		data,
-	}));
-
-	try {
-		const response = await fetch("https://exp.host/--/api/v2/push/send", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(messages),
-		});
-
-		if (!response.ok) {
-			console.error("Push notification failed:", await response.text());
-			return false;
-		}
-
-		return true;
-	} catch (error) {
-		console.error("Push notification error:", error);
-		return false;
-	}
+export async function sendParticipantLimitNotification(): Promise<boolean> {
+	logger.warn("Client-side participant limit notifications have been disabled");
+	return false;
 }
 
-export async function sendReminderToParticipants(
-	eventId: string,
-	eventTitle: string,
-	excludeUserId?: string
-): Promise<{ success: boolean; sentCount: number }> {
-	const { data: participants, error } = await supabase
-		.from("event_participants")
-		.select("user_id, users!inner(push_token)")
-		.eq("event_id", eventId);
-
-	if (error) {
-		console.error("Failed to fetch participants:", error);
-		return { success: false, sentCount: 0 };
-	}
-
-	const tokens = participants
-		.filter((p) => p.user_id !== excludeUserId)
-		.map((p) => (p.users as unknown as { push_token: string | null })?.push_token)
-		.filter((token): token is string => !!token);
-
-	if (tokens.length === 0) {
-		return { success: true, sentCount: 0 };
-	}
-
-	const success = await sendPushNotification(
-		tokens,
-		eventTitle,
-		"Don't forget to upload your photos!",
-		{ type: "upload_reminder", eventId, eventIds: [eventId] }
-	);
-
-	return { success, sentCount: tokens.length };
-}
-
-export async function sendParticipantLimitNotification(
-	eventId: string,
-	eventTitle: string,
-	hostUserId: string
-): Promise<boolean> {
-	const { data: hostUser, error } = await supabase
-		.from("users")
-		.select("push_token")
-		.eq("id", hostUserId)
-		.single();
-
-	if (error || !hostUser?.push_token) {
-		return false;
-	}
-
-	return sendPushNotification(
-		[hostUser.push_token],
-		`${eventTitle} reached 12 participants`,
-		"Upgrade to Pro for unlimited participants.",
-		{ type: "participant_limit", eventId }
-	);
-}
-
-export async function sendEventFullNotification(
-	eventId: string,
-	eventTitle: string,
-	hostUserId: string,
-	attemptedUserName: string
-): Promise<boolean> {
-	const { data: hostUser, error } = await supabase
-		.from("users")
-		.select("push_token")
-		.eq("id", hostUserId)
-		.single();
-
-	if (error || !hostUser?.push_token) {
-		return false;
-	}
-
-	return sendPushNotification(
-		[hostUser.push_token],
-		`Someone couldn't join ${eventTitle}`,
-		`${attemptedUserName} tried to join but your event is full. Upgrade to Pro for unlimited spots.`,
-		{ type: "event_full_attempt", eventId }
-	);
+export async function sendEventFullNotification(): Promise<boolean> {
+	logger.warn("Client-side event full notifications have been disabled");
+	return false;
 }

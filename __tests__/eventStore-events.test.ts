@@ -27,6 +27,7 @@ jest.mock("@/lib/supabase", () => {
 		buildChain,
 		supabase: {
 			from: jest.fn().mockReturnValue(buildChain()),
+			rpc: jest.fn(),
 			channel: jest.fn().mockReturnValue({
 				on: jest.fn().mockReturnThis(),
 				subscribe: jest.fn().mockReturnThis(),
@@ -56,6 +57,25 @@ jest.mock("date-fns", () => ({
 		result.setDate(result.getDate() + days);
 		return result;
 	}),
+	subDays: jest.fn((date: Date, days: number) => {
+		const result = new Date(date);
+		result.setDate(result.getDate() - days);
+		return result;
+	}),
+	subHours: jest.fn((date: Date, hours: number) => {
+		const result = new Date(date);
+		result.setHours(result.getHours() - hours);
+		return result;
+	}),
+	subMinutes: jest.fn((date: Date, minutes: number) => {
+		const result = new Date(date);
+		result.setMinutes(result.getMinutes() - minutes);
+		return result;
+	}),
+}));
+
+jest.mock("expo-crypto", () => ({
+	getRandomBytesAsync: jest.fn().mockResolvedValue(new Uint8Array(16).fill(0xab)),
 }));
 
 jest.mock("@/lib/dateUtils", () => ({
@@ -75,22 +95,26 @@ jest.mock("@/lib/uploadQueue", () => ({
 	processUploadQueue: jest.fn().mockResolvedValue(undefined),
 	setUploadCallbacks: jest.fn(),
 }));
+jest.mock("@/lib/storage", () => ({
+	createVideoThumbnailUri: jest.fn().mockResolvedValue("file:///thumb.jpg"),
+}));
 
 import { useEventStore } from "@/store/eventStore";
 
 const { supabase, buildChain } = require("@/lib/supabase");
-const { sendParticipantLimitNotification } = require("@/lib/notifications");
 
 const mockEvent = {
 	id: "event-1",
 	title: "Birthday Party",
-	description: "A fun party",
 	starts_at: "2024-06-01T18:00:00Z",
 	ends_at: "2024-06-01T22:00:00Z",
+	timezone: "UTC",
 	expires_at: "2024-06-15T22:00:00Z",
 	join_code: "ABC123",
 	created_by_user_id: "host-1",
+	status: "scheduled",
 	created_at: "2024-05-01T00:00:00Z",
+	updated_at: "2024-05-01T00:00:00Z",
 };
 
 beforeEach(() => {
@@ -104,23 +128,41 @@ beforeEach(() => {
 	});
 	jest.clearAllMocks();
 	supabase.from.mockReturnValue(buildChain());
+	supabase.rpc.mockResolvedValue({ data: [], error: null });
 });
 
 describe("host creates a new event", () => {
 	test("generates a join code and sets expiry 14 days after end date", async () => {
-		const insertChain = buildChain({ data: mockEvent, error: null });
-		const participantChain = buildChain({ data: null, error: null });
+		const insertChain = buildChain({ data: null, error: null });
+		const participantInsertChain = buildChain({ data: null, error: null });
+		const eventFetchChain = buildChain({ data: mockEvent, error: null });
+		const participantsFetchChain = buildChain({
+			data: [{ event_id: mockEvent.id, user_id: "host-1", role: "host" }],
+			error: null,
+		});
+		const hostUserChain = buildChain({
+			data: { subscription_tier: "free", display_name: "Host User" },
+			error: null,
+		});
+		let eventsCallCount = 0;
+		let participantsCallCount = 0;
 
 		supabase.from.mockImplementation((table: string) => {
-			if (table === "events") return insertChain;
-			if (table === "event_participants") return participantChain;
+			if (table === "events") {
+				eventsCallCount += 1;
+				return eventsCallCount === 1 ? insertChain : eventFetchChain;
+			}
+			if (table === "event_participants") {
+				participantsCallCount += 1;
+				return participantsCallCount === 1 ? participantInsertChain : participantsFetchChain;
+			}
+			if (table === "users") return hostUserChain;
 			return buildChain();
 		});
 
 		const result = await useEventStore.getState().createEvent(
 			{
 				title: "Birthday Party",
-				description: "A fun party",
 				starts_at: "2024-06-01T18:00:00Z",
 				ends_at: "2024-06-01T22:00:00Z",
 				created_by_user_id: "host-1",
@@ -131,6 +173,7 @@ describe("host creates a new event", () => {
 		expect(result).toBeTruthy();
 		expect(insertChain.insert).toHaveBeenCalledWith(
 			expect.objectContaining({
+				id: expect.any(String),
 				join_code: expect.any(String),
 				expires_at: expect.any(String),
 			})
@@ -138,12 +181,30 @@ describe("host creates a new event", () => {
 	});
 
 	test("automatically adds the creator as a host participant", async () => {
-		const insertChain = buildChain({ data: mockEvent, error: null });
-		const participantChain = buildChain({ data: null, error: null });
+		const insertChain = buildChain({ data: null, error: null });
+		const participantInsertChain = buildChain({ data: null, error: null });
+		const eventFetchChain = buildChain({ data: mockEvent, error: null });
+		const participantsFetchChain = buildChain({
+			data: [{ event_id: mockEvent.id, user_id: "host-1", role: "host" }],
+			error: null,
+		});
+		const hostUserChain = buildChain({
+			data: { subscription_tier: "free", display_name: "Host User" },
+			error: null,
+		});
+		let eventsCallCount = 0;
+		let participantsCallCount = 0;
 
 		supabase.from.mockImplementation((table: string) => {
-			if (table === "events") return insertChain;
-			if (table === "event_participants") return participantChain;
+			if (table === "events") {
+				eventsCallCount += 1;
+				return eventsCallCount === 1 ? insertChain : eventFetchChain;
+			}
+			if (table === "event_participants") {
+				participantsCallCount += 1;
+				return participantsCallCount === 1 ? participantInsertChain : participantsFetchChain;
+			}
+			if (table === "users") return hostUserChain;
 			return buildChain();
 		});
 
@@ -157,8 +218,9 @@ describe("host creates a new event", () => {
 			"host-1"
 		);
 
-		expect(participantChain.insert).toHaveBeenCalledWith(
+		expect(participantInsertChain.insert).toHaveBeenCalledWith(
 			expect.objectContaining({
+				event_id: expect.any(String),
 				user_id: "host-1",
 				role: "host",
 			})
@@ -187,26 +249,15 @@ describe("host creates a new event", () => {
 
 describe("looking up an event by join code", () => {
 	test("returns the event with participant count and host pro status", async () => {
-		const eventsChain = buildChain({ data: mockEvent, error: null });
-		const countChain = buildChain({ data: null, error: null, count: 5 });
-		const participantsChain = buildChain({
-			data: [{ role: "host", user_id: "host-1" }],
+		supabase.rpc.mockResolvedValue({
+			data: [
+				{
+					...mockEvent,
+					participant_count: 5,
+					host_is_pro: false,
+				},
+			],
 			error: null,
-		});
-		const hostUserChain = buildChain({
-			data: { subscription_tier: "free" },
-			error: null,
-		});
-
-		let eventParticipantCalls = 0;
-		supabase.from.mockImplementation((table: string) => {
-			if (table === "events") return eventsChain;
-			if (table === "event_participants") {
-				eventParticipantCalls++;
-				return eventParticipantCalls === 1 ? countChain : participantsChain;
-			}
-			if (table === "users") return hostUserChain;
-			return buildChain();
 		});
 
 		const result = await useEventStore.getState().fetchEventByCode("ABC123");
@@ -217,26 +268,15 @@ describe("looking up an event by join code", () => {
 	});
 
 	test("shows host as Pro when they have an active subscription", async () => {
-		const eventsChain = buildChain({ data: mockEvent, error: null });
-		const countChain = buildChain({ data: null, error: null, count: 5 });
-		const participantsChain = buildChain({
-			data: [{ role: "host", user_id: "host-1" }],
+		supabase.rpc.mockResolvedValue({
+			data: [
+				{
+					...mockEvent,
+					participant_count: 5,
+					host_is_pro: true,
+				},
+			],
 			error: null,
-		});
-		const hostUserChain = buildChain({
-			data: { subscription_tier: "pro" },
-			error: null,
-		});
-
-		let eventParticipantCalls = 0;
-		supabase.from.mockImplementation((table: string) => {
-			if (table === "events") return eventsChain;
-			if (table === "event_participants") {
-				eventParticipantCalls++;
-				return eventParticipantCalls === 1 ? countChain : participantsChain;
-			}
-			if (table === "users") return hostUserChain;
-			return buildChain();
 		});
 
 		const result = await useEventStore.getState().fetchEventByCode("ABC123");
@@ -245,9 +285,7 @@ describe("looking up an event by join code", () => {
 	});
 
 	test("returns null with 'Event not found' when code doesn't match", async () => {
-		supabase.from.mockReturnValue(
-			buildChain({ data: null, error: { code: "PGRST116", message: "Not found" } })
-		);
+		supabase.rpc.mockResolvedValue({ data: [], error: null });
 
 		const result = await useEventStore.getState().fetchEventByCode("ZZZZZ");
 
@@ -256,23 +294,22 @@ describe("looking up an event by join code", () => {
 	});
 
 	test("normalizes the join code to uppercase", async () => {
-		const eventsChain = buildChain({ data: mockEvent, error: null });
-		const countChain = buildChain({ data: null, error: null, count: 1 });
-		const participantsChain = buildChain({ data: [], error: null });
-
-		let eventParticipantCalls = 0;
-		supabase.from.mockImplementation((table: string) => {
-			if (table === "events") return eventsChain;
-			if (table === "event_participants") {
-				eventParticipantCalls++;
-				return eventParticipantCalls === 1 ? countChain : participantsChain;
-			}
-			return buildChain();
+		supabase.rpc.mockResolvedValue({
+			data: [
+				{
+					...mockEvent,
+					participant_count: 1,
+					host_is_pro: false,
+				},
+			],
+			error: null,
 		});
 
 		await useEventStore.getState().fetchEventByCode("abc123");
 
-		expect(eventsChain.eq).toHaveBeenCalledWith("join_code", "ABC123");
+		expect(supabase.rpc).toHaveBeenCalledWith("get_event_preview", {
+			join_code_input: "ABC123",
+		});
 	});
 });
 
@@ -478,7 +515,7 @@ describe("free tier participant limit (12 people)", () => {
 		expect(result).toBe(true);
 	});
 
-	test("notifies the free host when the 12th participant joins", async () => {
+	test("allows the 12th participant to join without client-side fanout", async () => {
 		const existingCheck = buildChain({ data: null, error: { code: "PGRST116" } });
 		const countBefore = buildChain({ data: null, error: null, count: 11 });
 		const eventDataChain = buildChain({
@@ -491,18 +528,8 @@ describe("free tier participant limit (12 people)", () => {
 		});
 		const insertChain = buildChain({ data: null, error: null });
 		const countAfter = buildChain({ data: null, error: null, count: 12 });
-		const eventTitleChain = buildChain({
-			data: { title: "Party", created_by_user_id: "host-1" },
-			error: null,
-		});
-		const hostCheckChain = buildChain({
-			data: { subscription_tier: "free" },
-			error: null,
-		});
 
 		let epCallIndex = 0;
-		let eventsCallIndex = 0;
-		let usersCallIndex = 0;
 		supabase.from.mockImplementation((table: string) => {
 			if (table === "event_participants") {
 				epCallIndex++;
@@ -511,20 +538,20 @@ describe("free tier participant limit (12 people)", () => {
 				if (epCallIndex === 3) return insertChain;
 				return countAfter;
 			}
-			if (table === "events") {
-				eventsCallIndex++;
-				return eventsCallIndex === 1 ? eventDataChain : eventTitleChain;
-			}
-			if (table === "users") {
-				usersCallIndex++;
-				return usersCallIndex === 1 ? hostUserChain : hostCheckChain;
-			}
+			if (table === "events") return eventDataChain;
+			if (table === "users") return hostUserChain;
 			return buildChain();
 		});
 
-		await useEventStore.getState().joinEvent("event-1", "guest-12");
+		const result = await useEventStore.getState().joinEvent("event-1", "guest-12");
 
-		expect(sendParticipantLimitNotification).toHaveBeenCalledWith("event-1", "Party", "host-1");
+		expect(result).toBe(true);
+		expect(insertChain.insert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				user_id: "guest-12",
+				role: "guest",
+			})
+		);
 	});
 });
 
@@ -858,7 +885,7 @@ describe("fetching participant stats", () => {
 });
 
 describe("fetching shared media items", () => {
-	test("loads only shared-visibility photos ordered by capture time", async () => {
+	test("loads only shared-visibility photos ordered by newest capture time first", async () => {
 		const mediaChain = buildChain({
 			data: [
 				{
@@ -877,7 +904,7 @@ describe("fetching shared media items", () => {
 
 		expect(useEventStore.getState().mediaItems).toHaveLength(1);
 		expect(mediaChain.eq).toHaveBeenCalledWith("visibility", "shared");
-		expect(mediaChain.order).toHaveBeenCalledWith("captured_at", { ascending: true });
+		expect(mediaChain.order).toHaveBeenCalledWith("captured_at", { ascending: false });
 	});
 });
 

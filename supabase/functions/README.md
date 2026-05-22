@@ -39,51 +39,14 @@ supabase functions deploy cleanup-expired-events
 
 In your Supabase dashboard, go to **Database > Extensions** and enable `pg_cron`.
 
-Then run these SQL commands to schedule the functions:
+Then run the latest secure cron migration. It expects two Vault secrets:
 
 ```sql
--- Enable pg_cron and pg_net extensions
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-CREATE EXTENSION IF NOT EXISTS pg_net;
-
--- Schedule cleanup-expired-events to run daily at 3:00 AM UTC
-SELECT cron.schedule(
-  'cleanup-expired-events',
-  '0 3 * * *',
-  $$
-  SELECT net.http_post(
-    url := 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/cleanup-expired-events',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
-      'Content-Type', 'application/json'
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
-
--- Schedule cleanup-orphaned-storage to run weekly on Sundays at 4:00 AM UTC
-SELECT cron.schedule(
-  'cleanup-orphaned-storage',
-  '0 4 * * 0',
-  $$
-  SELECT net.http_post(
-    url := 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/cleanup-orphaned-storage',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
-      'Content-Type', 'application/json'
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
-
--- View scheduled jobs
-SELECT * FROM cron.job;
-
--- To remove a scheduled job
--- SELECT cron.unschedule('cleanup-expired-events');
+SELECT vault.create_secret('YOUR_ANON_JWT_KEY', 'anon_key');
+SELECT vault.create_secret('YOUR_RANDOM_CRON_SECRET', 'cron_secret');
 ```
+
+After that, apply [`supabase/migrations/20260327_rotate_cron_jobs_to_secret_header.sql`](../migrations/20260327_rotate_cron_jobs_to_secret_header.sql).
 
 ## Manual Invocation
 
@@ -96,7 +59,8 @@ supabase functions invoke cleanup-orphaned-storage
 
 # Via curl
 curl -X POST 'https://zfrpwfuihfpoqyexbwng.supabase.co/functions/v1/cleanup-expired-events' \
-  -H 'Authorization: Bearer YOUR_SERVICE_ROLE_KEY' \
+  -H 'Authorization: Bearer YOUR_ANON_KEY' \
+  -H 'x-cron-secret: YOUR_CRON_SECRET' \
   -H 'Content-Type: application/json'
 ```
 

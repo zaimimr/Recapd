@@ -1,9 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const jsonHeaders = {
+	"Content-Type": "application/json",
 };
+const CRON_SECRET_HEADER = "x-cron-secret";
 
 interface ParticipantToRemind {
 	participant_id: string;
@@ -26,6 +26,18 @@ function isNineAM(timezone: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+function getServiceSupabase() {
+	const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+	const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+	return createClient(supabaseUrl, supabaseServiceKey, {
+		auth: {
+			autoRefreshToken: false,
+			persistSession: false,
+		},
+	});
 }
 
 async function sendExpoPushNotifications(
@@ -53,33 +65,28 @@ async function sendExpoPushNotifications(
 		});
 
 		if (!response.ok) {
-			console.error("Push notification failed:", await response.text());
+			console.error("Push notification provider returned a non-200 response");
 			return false;
 		}
 
 		return true;
 	} catch (error) {
-		console.error("Push notification error:", error);
+		console.error("Push notification dispatch failed", error);
 		return false;
 	}
 }
 
 Deno.serve(async (req) => {
-	if (req.method === "OPTIONS") {
-		return new Response("ok", { headers: corsHeaders });
+	const cronSecret = Deno.env.get("CRON_SECRET");
+	if (!cronSecret || req.headers.get(CRON_SECRET_HEADER) !== cronSecret) {
+		return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+			headers: jsonHeaders,
+			status: 401,
+		});
 	}
 
 	try {
-		const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-		const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-		const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-			auth: {
-				autoRefreshToken: false,
-				persistSession: false,
-			},
-		});
-
+		const supabase = getServiceSupabase();
 		const results = {
 			eventsChecked: 0,
 			eventsAtNineAM: 0,
@@ -106,7 +113,7 @@ Deno.serve(async (req) => {
 					results,
 				}),
 				{
-					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					headers: jsonHeaders,
 					status: 200,
 				}
 			);
@@ -118,7 +125,6 @@ Deno.serve(async (req) => {
 		results.eventsAtNineAM = eventsAtNineAM.length;
 
 		if (eventsAtNineAM.length === 0) {
-			console.log(`Checked ${activeEvents.length} events, none are at 09:00 local time`);
 			return new Response(
 				JSON.stringify({
 					success: true,
@@ -126,28 +132,19 @@ Deno.serve(async (req) => {
 					results,
 				}),
 				{
-					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					headers: jsonHeaders,
 					status: 200,
 				}
 			);
 		}
 
-		const eventIds = eventsAtNineAM.map((e) => e.id);
-		const eventTitleMap = new Map(eventsAtNineAM.map((e) => [e.id, e.title]));
-
+		const eventIds = eventsAtNineAM.map((event) => event.id);
+		const eventTitleMap = new Map(eventsAtNineAM.map((event) => [event.id, event.title]));
 		const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString();
 
 		const { data: participantsToRemind, error: participantsError } = await supabase
 			.from("event_participants")
-			.select(
-				`
-        id,
-        user_id,
-        event_id,
-        last_reminder_sent_at,
-        users!inner(push_token)
-      `
-			)
+			.select("id, user_id, event_id, last_reminder_sent_at")
 			.in("event_id", eventIds)
 			.eq("no_photos_to_upload", false)
 			.or(`last_reminder_sent_at.is.null,last_reminder_sent_at.lt.${twentyHoursAgo}`);
@@ -157,7 +154,6 @@ Deno.serve(async (req) => {
 		}
 
 		if (!participantsToRemind || participantsToRemind.length === 0) {
-			console.log("No participants match criteria");
 			return new Response(
 				JSON.stringify({
 					success: true,
@@ -165,14 +161,13 @@ Deno.serve(async (req) => {
 					results,
 				}),
 				{
-					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					headers: jsonHeaders,
 					status: 200,
 				}
 			);
 		}
 
-		const _participantIds = participantsToRemind.map((p) => p.id);
-		const userIds = participantsToRemind.map((p) => p.user_id);
+		const userIds = [...new Set(participantsToRemind.map((participant) => participant.user_id))];
 
 		const { data: mediaItems, error: mediaError } = await supabase
 			.from("media_items")
@@ -184,29 +179,40 @@ Deno.serve(async (req) => {
 			results.errors.push(`Failed to fetch media items: ${mediaError.message}`);
 		}
 
+		const { data: privateUsers, error: privateUsersError } = await supabase
+			.from("user_private_data")
+			.select("user_id, push_token")
+			.in("user_id", userIds);
+
+		if (privateUsersError) {
+			throw new Error(`Failed to fetch push tokens: ${privateUsersError.message}`);
+		}
+
 		const uploadedSet = new Set(
-			(mediaItems || []).map((m) => `${m.event_id}:${m.uploaded_by_user_id}`)
+			(mediaItems || []).map((item) => `${item.event_id}:${item.uploaded_by_user_id}`)
+		);
+		const tokenMap = new Map(
+			(privateUsers || [])
+				.filter((row) => row.push_token)
+				.map((row) => [row.user_id, row.push_token as string])
 		);
 
 		const participantsWithNoUploads: ParticipantToRemind[] = participantsToRemind
-			.filter((p) => {
-				const key = `${p.event_id}:${p.user_id}`;
-				const hasUploaded = uploadedSet.has(key);
-				const pushToken = (p.users as { push_token: string | null })?.push_token;
-				return !hasUploaded && pushToken;
+			.filter((participant) => {
+				const key = `${participant.event_id}:${participant.user_id}`;
+				return !uploadedSet.has(key) && tokenMap.has(participant.user_id);
 			})
-			.map((p) => ({
-				participant_id: p.id,
-				user_id: p.user_id,
-				event_id: p.event_id,
-				event_title: eventTitleMap.get(p.event_id) || "Event",
-				push_token: (p.users as { push_token: string })?.push_token,
+			.map((participant) => ({
+				participant_id: participant.id,
+				user_id: participant.user_id,
+				event_id: participant.event_id,
+				event_title: eventTitleMap.get(participant.event_id) || "Event",
+				push_token: tokenMap.get(participant.user_id) as string,
 			}));
 
 		results.participantsFound = participantsWithNoUploads.length;
 
 		if (participantsWithNoUploads.length === 0) {
-			console.log("All participants have uploaded photos or lack push tokens");
 			return new Response(
 				JSON.stringify({
 					success: true,
@@ -214,7 +220,7 @@ Deno.serve(async (req) => {
 					results,
 				}),
 				{
-					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					headers: jsonHeaders,
 					status: 200,
 				}
 			);
@@ -225,18 +231,24 @@ Deno.serve(async (req) => {
 			{ token: string; events: { id: string; title: string; participantId: string }[] }
 		>();
 
-		for (const p of participantsWithNoUploads) {
-			const existing = participantsByUser.get(p.user_id);
+		for (const participant of participantsWithNoUploads) {
+			const existing = participantsByUser.get(participant.user_id);
 			if (existing) {
 				existing.events.push({
-					id: p.event_id,
-					title: p.event_title,
-					participantId: p.participant_id,
+					id: participant.event_id,
+					title: participant.event_title,
+					participantId: participant.participant_id,
 				});
 			} else {
-				participantsByUser.set(p.user_id, {
-					token: p.push_token,
-					events: [{ id: p.event_id, title: p.event_title, participantId: p.participant_id }],
+				participantsByUser.set(participant.user_id, {
+					token: participant.push_token,
+					events: [
+						{
+							id: participant.event_id,
+							title: participant.event_title,
+							participantId: participant.participant_id,
+						},
+					],
 				});
 			}
 		}
@@ -244,7 +256,7 @@ Deno.serve(async (req) => {
 		const participantIdsToUpdate: string[] = [];
 
 		for (const [userId, userData] of participantsByUser) {
-			const eventTitles = userData.events.map((e) => e.title);
+			const eventTitles = userData.events.map((event) => event.title);
 			const title = eventTitles.length === 1 ? eventTitles[0] : `${eventTitles.length} Events`;
 			const body =
 				eventTitles.length === 1
@@ -253,12 +265,12 @@ Deno.serve(async (req) => {
 
 			const success = await sendExpoPushNotifications([userData.token], title, body, {
 				type: "upload_reminder",
-				eventIds: userData.events.map((e) => e.id),
+				eventIds: userData.events.map((event) => event.id),
 			});
 
 			if (success) {
 				results.notificationsSent++;
-				participantIdsToUpdate.push(...userData.events.map((e) => e.participantId));
+				participantIdsToUpdate.push(...userData.events.map((event) => event.participantId));
 			} else {
 				results.errors.push(`Failed to send notification to user ${userId}`);
 			}
@@ -275,8 +287,6 @@ Deno.serve(async (req) => {
 			}
 		}
 
-		console.log(`Sent ${results.notificationsSent} reminders to ${participantsByUser.size} users`);
-
 		return new Response(
 			JSON.stringify({
 				success: true,
@@ -284,20 +294,20 @@ Deno.serve(async (req) => {
 				results,
 			}),
 			{
-				headers: { ...corsHeaders, "Content-Type": "application/json" },
+				headers: jsonHeaders,
 				status: 200,
 			}
 		);
 	} catch (error) {
-		console.error("Daily reminder error:", error);
+		console.error("Daily reminder error", error);
 
 		return new Response(
 			JSON.stringify({
 				success: false,
-				error: error instanceof Error ? error.message : String(error),
+				error: "Internal server error",
 			}),
 			{
-				headers: { ...corsHeaders, "Content-Type": "application/json" },
+				headers: jsonHeaders,
 				status: 500,
 			}
 		);

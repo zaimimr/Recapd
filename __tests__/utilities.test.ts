@@ -66,44 +66,44 @@ describe("safeDate", () => {
 });
 
 describe("formatDuration", () => {
-	it("formats 0ms as 0:00", () => {
-		expect(formatDuration(0)).toBe("0:00");
+	it("formats 0ms as 00:00:00", () => {
+		expect(formatDuration(0)).toBe("00:00:00");
 	});
 
-	it("formats 5000ms as 0:05", () => {
-		expect(formatDuration(5000)).toBe("0:05");
+	it("formats 5000ms as 00:00:05", () => {
+		expect(formatDuration(5000)).toBe("00:00:05");
 	});
 
-	it("formats 500ms as 0:01 (rounds up)", () => {
-		expect(formatDuration(500)).toBe("0:01");
+	it("formats 500ms as 00:00:01 (rounds up)", () => {
+		expect(formatDuration(500)).toBe("00:00:01");
 	});
 
-	it("formats 65000ms as 1:05", () => {
-		expect(formatDuration(65000)).toBe("1:05");
+	it("formats 65000ms as 00:01:05", () => {
+		expect(formatDuration(65000)).toBe("00:01:05");
 	});
 
-	it("formats 125000ms as 2:05", () => {
-		expect(formatDuration(125000)).toBe("2:05");
+	it("formats 125000ms as 00:02:05", () => {
+		expect(formatDuration(125000)).toBe("00:02:05");
 	});
 
-	it("formats 3661000ms with hours as 1:01:01", () => {
-		expect(formatDuration(3661000)).toBe("1:01:01");
+	it("formats 3661000ms with hours as 01:01:01", () => {
+		expect(formatDuration(3661000)).toBe("01:01:01");
 	});
 
-	it("returns 0:00 for negative values", () => {
-		expect(formatDuration(-1000)).toBe("0:00");
+	it("returns 00:00:00 for negative values", () => {
+		expect(formatDuration(-1000)).toBe("00:00:00");
 	});
 
-	it("returns 0:00 for NaN", () => {
-		expect(formatDuration(NaN)).toBe("0:00");
+	it("returns 00:00:00 for NaN", () => {
+		expect(formatDuration(NaN)).toBe("00:00:00");
 	});
 
-	it("returns 0:00 for Infinity", () => {
-		expect(formatDuration(Infinity)).toBe("0:00");
+	it("returns 00:00:00 for Infinity", () => {
+		expect(formatDuration(Infinity)).toBe("00:00:00");
 	});
 
-	it("returns 0:00 for -Infinity", () => {
-		expect(formatDuration(-Infinity)).toBe("0:00");
+	it("returns 00:00:00 for -Infinity", () => {
+		expect(formatDuration(-Infinity)).toBe("00:00:00");
 	});
 });
 

@@ -1,8 +1,12 @@
 import type { CustomerInfo } from "react-native-purchases";
 
+process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY = "test-ios-key";
+process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY = "test-android-key";
+process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED = "true";
+
 jest.mock("expo-constants", () => ({
 	__esModule: true,
-	default: { appOwnership: "standalone" },
+	default: { appOwnership: "standalone", executionEnvironment: "bare" },
 }));
 
 const mockConfigure = jest.fn();
@@ -64,16 +68,28 @@ jest.mock("react-native-purchases-ui", () => ({
 }));
 
 jest.mock("react-native", () => ({
+	Alert: { alert: jest.fn() },
 	Platform: { OS: "ios" },
 }));
 
 const mockSupabaseEq = jest.fn().mockResolvedValue({ error: null });
 const mockSupabaseUpdate = jest.fn().mockReturnValue({ eq: mockSupabaseEq });
-const mockSupabaseFrom = jest.fn().mockReturnValue({ update: mockSupabaseUpdate });
+const mockSupabaseUpsert = jest.fn().mockResolvedValue({ error: null });
+const mockSupabaseFrom = jest.fn((table: string) => {
+	if (table === "users") {
+		return { update: mockSupabaseUpdate };
+	}
+
+	if (table === "user_private_data") {
+		return { upsert: mockSupabaseUpsert };
+	}
+
+	return {};
+});
 
 jest.mock("@/lib/supabase", () => ({
 	supabase: {
-		from: (...args: unknown[]) => mockSupabaseFrom(...args),
+		from: (table: string) => mockSupabaseFrom(table),
 	},
 }));
 
@@ -125,7 +141,18 @@ function resetModuleState() {
 	jest.clearAllMocks();
 	mockSupabaseEq.mockResolvedValue({ error: null });
 	mockSupabaseUpdate.mockReturnValue({ eq: mockSupabaseEq });
-	mockSupabaseFrom.mockReturnValue({ update: mockSupabaseUpdate });
+	mockSupabaseUpsert.mockResolvedValue({ error: null });
+	mockSupabaseFrom.mockImplementation((table: string) => {
+		if (table === "users") {
+			return { update: mockSupabaseUpdate };
+		}
+
+		if (table === "user_private_data") {
+			return { upsert: mockSupabaseUpsert };
+		}
+
+		return {};
+	});
 }
 
 describe("lib/subscription", () => {
@@ -166,7 +193,10 @@ describe("lib/subscription", () => {
 		});
 
 		it("returns false when subscriptions are disabled", async () => {
-			jest.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+			jest.mock("react-native", () => ({
+				Alert: { alert: jest.fn() },
+				Platform: { OS: "ios" },
+			}));
 			const original = process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED;
 			process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED = "false";
 			jest.resetModules();
@@ -384,12 +414,19 @@ describe("lib/subscription", () => {
 			await syncSubscriptionToDatabase("user-1", proCustomerInfo);
 
 			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
 				expect.objectContaining({
 					subscription_tier: "pro",
+				})
+			);
+			expect(mockSupabaseUpsert).toHaveBeenCalledWith(
+				expect.objectContaining({
+					user_id: "user-1",
 					subscription_platform: "ios",
 					subscription_id: "user-123",
-				})
+				}),
+				{ onConflict: "user_id" }
 			);
 			expect(mockSupabaseEq).toHaveBeenCalledWith("id", "user-1");
 		});
@@ -402,8 +439,14 @@ describe("lib/subscription", () => {
 			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
 				expect.objectContaining({
 					subscription_tier: "free",
-					subscription_platform: null,
 				})
+			);
+			expect(mockSupabaseUpsert).toHaveBeenCalledWith(
+				expect.objectContaining({
+					user_id: "user-1",
+					subscription_platform: null,
+				}),
+				{ onConflict: "user_id" }
 			);
 		});
 
@@ -534,28 +577,31 @@ describe("store/subscriptionStore", () => {
 
 		it("returns early when already initialized", async () => {
 			const store = getStore();
-			store.setState({ isInitialized: true });
+			store.setState({ isInitialized: true, userId: "user-1", error: null });
 
 			await store.getState().initialize("user-1");
 
 			expect(mockConfigure).not.toHaveBeenCalled();
 		});
 
-		it("sets error when configuration fails", async () => {
-			mockConfigure.mockResolvedValue(undefined);
-			jest.spyOn(require("@/lib/subscription"), "configureRevenueCat").mockResolvedValue(false);
+		it("keeps initialization retryable when configuration fails", async () => {
+			mockConfigure.mockRejectedValueOnce(new Error("Config failed"));
 
-			const _store = getStore();
-			const { configureRevenueCat: mockConfig } = require("@/lib/subscription");
-			mockConfig.mockResolvedValue?.(false);
+			const store = getStore();
+			await store.getState().initialize("user-1");
 
-			resetModuleState();
-			mockConfigure.mockRejectedValue(new Error("Config failed"));
+			expect(store.getState().isInitialized).toBe(false);
+			expect(store.getState().error).toContain("Config failed");
 
-			const store2 = getStore();
-			await store2.getState().initialize("user-1");
+			mockConfigure.mockResolvedValueOnce(undefined);
+			mockGetCustomerInfo.mockResolvedValue(proCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
 
-			expect(store2.getState().isInitialized).toBe(true);
+			await store.getState().initialize("user-1");
+
+			expect(store.getState().isInitialized).toBe(true);
+			expect(store.getState().isPro).toBe(true);
+			expect(mockConfigure).toHaveBeenCalledTimes(2);
 		});
 
 		it("sets up customer info listener after initialization", async () => {
@@ -775,6 +821,21 @@ describe("store/subscriptionStore", () => {
 
 			expect(result).toBe(true);
 		}, 10000);
+
+		it("surfaces the real paywall load error", async () => {
+			mockConfigure.mockResolvedValue(undefined);
+			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
+			mockPresentPaywall.mockRejectedValue(new Error("No current offering configured"));
+
+			const store = getStore();
+			await store.getState().initialize("user-1");
+
+			const result = await store.getState().showPaywall();
+
+			expect(result).toBe(false);
+			expect(store.getState().error).toBe("No current offering configured");
+		});
 	});
 
 	describe("refreshSubscription", () => {

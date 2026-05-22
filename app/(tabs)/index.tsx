@@ -1,10 +1,11 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { format, isAfter, isBefore } from "date-fns";
+import { isAfter, isBefore } from "date-fns";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { formatLocalizedDateTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
 import { useIsPro } from "@/store/subscriptionStore";
@@ -57,29 +58,38 @@ export default function HomeScreen() {
 			})
 			.slice(0, 3);
 	}, [events]);
+	const hasActiveEvents = activeEvents.length > 0;
 
 	return (
 		<ScrollView
 			style={[styles.container, isDark && styles.containerDark]}
 			contentContainerStyle={styles.contentContainer}
 		>
-			<View style={styles.header}>
-				<View style={styles.logoRow}>
-					<Text style={[styles.logo, isDark && styles.textDark]}>Recapd</Text>
-					{SUBSCRIPTIONS_ENABLED && isPro && (
-						<View style={styles.proBadge}>
-							<Text style={styles.proBadgeText}>PRO</Text>
-						</View>
-					)}
+			{!hasActiveEvents && (
+				<View style={[styles.header, isDark && styles.panelDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Recapd</Text>
+					<View style={styles.logoRow}>
+						<Text style={[styles.logo, isDark && styles.textDark]}>
+							See the night from every angle.
+						</Text>
+						{SUBSCRIPTIONS_ENABLED && isPro && (
+							<View style={styles.proBadge}>
+								<Text style={styles.proBadgeText}>PRO</Text>
+							</View>
+						)}
+					</View>
+					<Text style={[styles.tagline, isDark && styles.textMuted]}>
+						Capture once, collect together, and keep the whole story in one clean feed.
+					</Text>
 				</View>
-				<Text style={[styles.tagline, isDark && styles.textMuted]}>
-					See the night from everyone's eyes
-				</Text>
-			</View>
+			)}
 
-			{activeEvents.length > 0 && (
+			{hasActiveEvents && (
 				<View style={styles.eventsSection}>
-					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your Events</Text>
+					<View style={styles.sectionHeader}>
+						<Text style={[styles.kicker, isDark && styles.textMuted]}>Your Events</Text>
+						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Active rooms</Text>
+					</View>
 					{activeEvents.map((event) => {
 						const status = getEventStatus(event);
 						return (
@@ -88,7 +98,12 @@ export default function HomeScreen() {
 								style={[styles.eventCard, isDark && styles.eventCardDark]}
 								onPress={() => router.push(`/event/${event.id}`)}
 								accessibilityRole="button"
-								accessibilityLabel={`${event.title}, ${format(new Date(event.starts_at), "MMM d, h:mm a")}, ${status.label}`}
+								accessibilityLabel={`${event.title}, ${formatLocalizedDateTime(
+									event.starts_at,
+									{ month: "short", day: "numeric" },
+									{},
+									", "
+								)}, ${status.label}`}
 								accessibilityHint="Opens event details"
 							>
 								<View style={styles.eventInfo}>
@@ -96,7 +111,7 @@ export default function HomeScreen() {
 										{event.title}
 									</Text>
 									<Text style={[styles.eventDate, isDark && styles.textMuted]}>
-										{format(new Date(event.starts_at), "MMM d, h:mm a")}
+										{formatLocalizedDateTime(event.starts_at, { month: "short", day: "numeric" })}
 									</Text>
 								</View>
 								<View style={styles.eventMeta}>
@@ -113,25 +128,37 @@ export default function HomeScreen() {
 			)}
 
 			<View style={styles.actions}>
-				<TouchableOpacity
-					style={[styles.button, styles.primaryButton]}
-					onPress={() => router.push("/event/join")}
-					accessibilityRole="button"
-					accessibilityLabel="Join Event"
-					accessibilityHint="Enter a code to join an existing event"
-				>
-					<Text style={styles.primaryButtonText}>Join Event</Text>
-				</TouchableOpacity>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>Start</Text>
+				<Text style={[styles.actionTitle, isDark && styles.textDark]}>
+					{hasActiveEvents
+						? "Join another room or start a new one"
+						: "Open an event or start a new one"}
+				</Text>
+				<View style={styles.actionRow}>
+					<TouchableOpacity
+						style={[styles.button, styles.primaryButton]}
+						onPress={() => router.push("/event/join")}
+						accessibilityRole="button"
+						accessibilityLabel="Join Event"
+						accessibilityHint="Enter a code to join an existing event"
+					>
+						<FontAwesome name="sign-in" size={14} color="#fff" />
+						<Text style={styles.primaryButtonText}>Join Event</Text>
+					</TouchableOpacity>
 
-				<TouchableOpacity
-					style={[styles.button, styles.secondaryButton, isDark && styles.secondaryButtonDark]}
-					onPress={() => router.push("/event/create")}
-					accessibilityRole="button"
-					accessibilityLabel="Create Event"
-					accessibilityHint="Create a new event to share photos"
-				>
-					<Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>Create Event</Text>
-				</TouchableOpacity>
+					<TouchableOpacity
+						style={[styles.button, styles.secondaryButton, isDark && styles.secondaryButtonDark]}
+						onPress={() => router.push("/event/create")}
+						accessibilityRole="button"
+						accessibilityLabel="Create Event"
+						accessibilityHint="Create a new event to share photos"
+					>
+						<FontAwesome name="plus" size={14} color={isDark ? "#fff" : "#111827"} />
+						<Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>
+							Create Event
+						</Text>
+					</TouchableOpacity>
+				</View>
 			</View>
 
 			<View style={styles.footer}>
@@ -146,80 +173,111 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	contentContainer: {
-		padding: 24,
+		padding: 16,
+		paddingTop: 20,
 		flexGrow: 1,
+		gap: 16,
 	},
 	header: {
-		marginTop: 60,
-		alignItems: "center",
+		marginTop: 44,
+		paddingHorizontal: 16,
+		paddingVertical: 18,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		gap: 8,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
 	},
 	logoRow: {
 		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-	},
-	logo: {
-		fontSize: 42,
-		fontWeight: "700",
-		color: "#000",
-		letterSpacing: -1,
-	},
-	proBadge: {
-		backgroundColor: "#f59e0b",
-		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 6,
-	},
-	proBadgeText: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: "#fff",
-	},
-	tagline: {
-		fontSize: 16,
-		color: "#666",
-		marginTop: 8,
-	},
-	eventsSection: {
-		marginTop: 32,
+		alignItems: "flex-start",
+		justifyContent: "space-between",
 		gap: 12,
 	},
+	logo: {
+		flex: 1,
+		fontSize: 34,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -1.2,
+		lineHeight: 38,
+	},
+	proBadge: {
+		backgroundColor: "#111827",
+		paddingHorizontal: 10,
+		paddingVertical: 5,
+		borderRadius: 999,
+		alignSelf: "flex-start",
+	},
+	proBadgeText: {
+		fontSize: 11,
+		fontWeight: "700",
+		color: "#fff",
+		letterSpacing: 0.8,
+	},
+	tagline: {
+		fontSize: 15,
+		color: "#6b7280",
+		lineHeight: 22,
+	},
+	eventsSection: {
+		gap: 12,
+		marginTop: 28,
+	},
+	sectionHeader: {
+		paddingHorizontal: 2,
+		paddingVertical: 2,
+		gap: 4,
+	},
 	sectionTitle: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 4,
+		fontSize: 20,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.5,
 	},
 	eventCard: {
-		backgroundColor: "#f5f5f5",
-		borderRadius: 12,
-		padding: 16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 	},
 	eventCardDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	eventInfo: {
 		flex: 1,
 		marginRight: 12,
 	},
 	eventTitle: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#000",
+		fontSize: 17,
+		fontWeight: "700",
+		color: "#111827",
 	},
 	eventDate: {
 		fontSize: 13,
-		color: "#666",
-		marginTop: 2,
+		color: "#6b7280",
+		marginTop: 4,
 	},
 	eventMeta: {
 		flexDirection: "row",
@@ -229,9 +287,9 @@ const styles = StyleSheet.create({
 	statusBadge: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingHorizontal: 8,
-		paddingVertical: 4,
-		borderRadius: 6,
+		paddingHorizontal: 9,
+		paddingVertical: 5,
+		borderRadius: 999,
 		gap: 4,
 	},
 	statusDot: {
@@ -246,40 +304,58 @@ const styles = StyleSheet.create({
 	actions: {
 		flex: 1,
 		justifyContent: "center",
-		gap: 16,
+		gap: 12,
+	},
+	actionTitle: {
+		fontSize: 20,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.4,
+	},
+	actionRow: {
+		flexDirection: "row",
+		gap: 10,
 	},
 	button: {
-		paddingVertical: 18,
-		paddingHorizontal: 32,
-		borderRadius: 14,
+		flex: 1,
+		paddingVertical: 16,
+		paddingHorizontal: 18,
+		borderRadius: 999,
 		alignItems: "center",
+		justifyContent: "center",
+		flexDirection: "row",
+		gap: 8,
 	},
 	primaryButton: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 	},
 	primaryButtonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	secondaryButton: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 	},
 	secondaryButtonDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	secondaryButtonText: {
-		color: "#000",
-		fontSize: 18,
+		color: "#111827",
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	footer: {
 		alignItems: "center",
-		paddingBottom: 40,
+		paddingBottom: 28,
+		paddingTop: 8,
 	},
 	footerText: {
-		fontSize: 14,
-		color: "#999",
+		fontSize: 13,
+		color: "#6b7280",
 		textAlign: "center",
 	},
 	textDark: {

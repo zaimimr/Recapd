@@ -1,4 +1,4 @@
-import { format, isFuture, isPast, isWithinInterval } from "date-fns";
+import { isFuture, isPast, isWithinInterval } from "date-fns";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -12,6 +12,7 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
 import type { Event } from "@/types/database";
@@ -70,8 +71,12 @@ function EventCard({
 				</View>
 			</View>
 			<Text style={[styles.eventDate, isDark && styles.textMuted]}>
-				{format(new Date(event.starts_at), "MMM d, yyyy")} •{" "}
-				{format(new Date(event.starts_at), "h:mm a")} - {format(new Date(event.ends_at), "h:mm a")}
+				{formatLocalizedDate(event.starts_at, {
+					month: "short",
+					day: "numeric",
+					year: "numeric",
+				})}{" "}
+				• {formatLocalizedTimeRange(event.starts_at, event.ends_at)}
 			</Text>
 			<View style={styles.cardFooter}>
 				<Text style={[styles.participantCount, isDark && styles.textMuted]}>
@@ -130,35 +135,38 @@ export default function EventsScreen() {
 	if (!user) {
 		return (
 			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<Text style={[styles.welcomeTitle, isDark && styles.textDark]}>
-					What should we call you?
-				</Text>
-				<TextInput
-					style={[styles.nameInput, isDark && styles.nameInputDark]}
-					placeholder="Enter your name"
-					placeholderTextColor={isDark ? "#666" : "#999"}
-					value={displayName}
-					onChangeText={setDisplayName}
-					autoCapitalize="words"
-					autoCorrect={false}
-					maxLength={30}
-					returnKeyType="done"
-					onSubmitEditing={handleCreateProfile}
-				/>
-				<TouchableOpacity
-					style={[
-						styles.continueButton,
-						(displayName.trim().length < 2 || isCreating) && styles.buttonDisabled,
-					]}
-					onPress={handleCreateProfile}
-					disabled={displayName.trim().length < 2 || isCreating}
-				>
-					{isCreating ? (
-						<ActivityIndicator color="#fff" size="small" />
-					) : (
-						<Text style={styles.continueButtonText}>Continue</Text>
-					)}
-				</TouchableOpacity>
+				<View style={[styles.welcomePanel, isDark && styles.panelDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
+					<Text style={[styles.welcomeTitle, isDark && styles.textDark]}>
+						What should we call you?
+					</Text>
+					<TextInput
+						style={[styles.nameInput, isDark && styles.nameInputDark]}
+						placeholder="Enter your name"
+						placeholderTextColor={isDark ? "#666" : "#999"}
+						value={displayName}
+						onChangeText={setDisplayName}
+						autoCapitalize="words"
+						autoCorrect={false}
+						maxLength={30}
+						returnKeyType="done"
+						onSubmitEditing={handleCreateProfile}
+					/>
+					<TouchableOpacity
+						style={[
+							styles.continueButton,
+							(displayName.trim().length < 2 || isCreating) && styles.buttonDisabled,
+						]}
+						onPress={handleCreateProfile}
+						disabled={displayName.trim().length < 2 || isCreating}
+					>
+						{isCreating ? (
+							<ActivityIndicator color="#fff" size="small" />
+						) : (
+							<Text style={styles.continueButtonText}>Continue</Text>
+						)}
+					</TouchableOpacity>
+				</View>
 			</View>
 		);
 	}
@@ -177,11 +185,17 @@ export default function EventsScreen() {
 				)}
 				contentContainerStyle={[styles.listContent, events.length === 0 && styles.emptyContainer]}
 				refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
+				ListHeaderComponent={
+					<View style={styles.sectionHeader}>
+						<Text style={[styles.kicker, isDark && styles.textMuted]}>Events</Text>
+						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your rooms</Text>
+					</View>
+				}
 				ListEmptyComponent={
 					isLoading ? (
 						<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
 					) : (
-						<View style={styles.emptyState}>
+						<View style={[styles.emptyState, isDark && styles.panelDark]}>
 							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Events Yet</Text>
 							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
 								Join an event or create your own to get started
@@ -213,10 +227,10 @@ export default function EventsScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	centered: {
 		justifyContent: "center",
@@ -228,20 +242,44 @@ const styles = StyleSheet.create({
 		gap: 12,
 		flexGrow: 1,
 	},
+	sectionHeader: {
+		paddingHorizontal: 2,
+		paddingVertical: 2,
+		marginBottom: 12,
+		gap: 4,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
+	},
+	sectionTitle: {
+		fontSize: 22,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.6,
+	},
 	emptyContainer: {
 		flex: 1,
-		justifyContent: "center",
-		alignItems: "center",
-		padding: 32,
+		padding: 16,
 	},
 	card: {
-		backgroundColor: "#f5f5f5",
-		borderRadius: 16,
-		padding: 16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 		marginBottom: 12,
 	},
 	cardDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	cardHeader: {
 		flexDirection: "row",
@@ -258,15 +296,15 @@ const styles = StyleSheet.create({
 	},
 	eventTitle: {
 		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
+		fontWeight: "700",
+		color: "#111827",
 		flexShrink: 1,
 	},
 	hostBadge: {
-		backgroundColor: "#7c3aed",
-		paddingHorizontal: 8,
-		paddingVertical: 3,
-		borderRadius: 10,
+		backgroundColor: "#111827",
+		paddingHorizontal: 9,
+		paddingVertical: 4,
+		borderRadius: 999,
 	},
 	hostBadgeText: {
 		fontSize: 11,
@@ -275,8 +313,8 @@ const styles = StyleSheet.create({
 	},
 	statusBadge: {
 		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 12,
+		paddingVertical: 5,
+		borderRadius: 999,
 	},
 	statusText: {
 		fontSize: 12,
@@ -284,7 +322,7 @@ const styles = StyleSheet.create({
 	},
 	eventDate: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 12,
 	},
 	cardFooter: {
@@ -294,25 +332,30 @@ const styles = StyleSheet.create({
 	},
 	participantCount: {
 		fontSize: 13,
-		color: "#666",
+		color: "#6b7280",
 	},
 	joinCode: {
 		fontSize: 13,
-		color: "#666",
+		color: "#6b7280",
 		fontFamily: "SpaceMono",
 	},
 	emptyState: {
 		alignItems: "center",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 20,
+		paddingVertical: 28,
 	},
 	emptyTitle: {
 		fontSize: 20,
-		fontWeight: "600",
-		color: "#000",
+		fontWeight: "700",
+		color: "#111827",
 		marginBottom: 8,
 	},
 	emptyText: {
-		fontSize: 16,
-		color: "#666",
+		fontSize: 15,
+		color: "#6b7280",
 		textAlign: "center",
 		marginBottom: 24,
 	},
@@ -322,22 +365,24 @@ const styles = StyleSheet.create({
 		maxWidth: 280,
 	},
 	emptyButton: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 14,
 		paddingHorizontal: 24,
-		borderRadius: 12,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	emptyButtonSecondary: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 	},
 	emptyButtonText: {
 		color: "#fff",
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "600",
 	},
 	emptyButtonTextSecondary: {
-		color: "#000",
+		color: "#111827",
 	},
 	textDark: {
 		color: "#fff",
@@ -347,31 +392,43 @@ const styles = StyleSheet.create({
 	},
 	welcomeTitle: {
 		fontSize: 24,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 24,
-		textAlign: "center",
+		fontWeight: "700",
+		color: "#111827",
+		marginBottom: 18,
+		textAlign: "left",
+		letterSpacing: -0.5,
+	},
+	welcomePanel: {
+		width: "100%",
+		maxWidth: 360,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 18,
+		paddingVertical: 18,
 	},
 	nameInput: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 18,
-		color: "#000",
+		color: "#111827",
 		width: "100%",
-		maxWidth: 320,
 		marginBottom: 16,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	nameInputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	continueButton: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 16,
 		paddingHorizontal: 48,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 		minWidth: 200,
 	},

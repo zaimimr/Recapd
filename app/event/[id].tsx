@@ -1,5 +1,5 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { differenceInDays, differenceInHours, format, isPast } from "date-fns";
+import { differenceInDays, differenceInHours, isPast } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -19,24 +19,20 @@ import NotificationPromptModal from "@/components/NotificationPromptModal";
 import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
+import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
-import {
-	registerForPushNotifications,
-	savePushToken,
-	sendReminderToParticipants,
-} from "@/lib/notifications";
-import {
-	downloadPhoto,
-	getDownloadedPhotoIds,
-	getPhotoUrl,
-	markPhotoDownloaded,
-} from "@/lib/storage";
+import { registerForPushNotifications, savePushToken } from "@/lib/notifications";
+import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib/storage";
+import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 
 export default function EventScreen() {
-	const { id, justJoined } = useLocalSearchParams<{ id: string; justJoined?: string }>();
+	const { id, justJoined } = useLocalSearchParams<{
+		id: string;
+		justJoined?: string;
+	}>();
 	const router = useRouter();
 	const user = useAuthStore((state) => state.user);
 	const {
@@ -50,6 +46,8 @@ export default function EventScreen() {
 		subscribeToEvent,
 		getMergedTimeline,
 		retryFailedUpload,
+		skipPendingUpload,
+		removePendingUpload,
 		deletePhoto,
 		fetchParticipantStats,
 		markNoPhotosToUpload,
@@ -68,7 +66,6 @@ export default function EventScreen() {
 		current: 0,
 		total: 0,
 	});
-	const [sendingReminder, setSendingReminder] = useState(false);
 	const [guestSheetVisible, setGuestSheetVisible] = useState(false);
 	const [participants, setParticipants] = useState<ParticipantWithStats[]>([]);
 	const [isRefreshing, setIsRefreshing] = useState(false);
@@ -154,9 +151,11 @@ export default function EventScreen() {
 	}, [loadData]);
 
 	function handlePhotoPress(photo: MergedMediaItem, index: number) {
-		// Store the thumbnail URI for instant preview in viewer
-		const thumbnailUri =
-			photo.isPending && photo.localUri ? photo.localUri : getPhotoUrl(photo.storage_path);
+		const thumbnailUri = photo.isPending
+			? photo.media_type === "video"
+				? photo.localThumbnailUri || undefined
+				: photo.localUri || undefined
+			: undefined;
 		setSelectedThumbnailUri(thumbnailUri);
 		setSelectedPhotoIndex(index);
 		setViewerVisible(true);
@@ -167,10 +166,13 @@ export default function EventScreen() {
 		setSelectedThumbnailUri(undefined);
 	}
 
-	async function handleDeletePhoto(photoId: string): Promise<boolean> {
-		if (!id) return false;
-		return deletePhoto(photoId, id);
-	}
+	const handleDeletePhoto = useCallback(
+		async (photoId: string): Promise<boolean> => {
+			if (!id) return false;
+			return deletePhoto(photoId, id);
+		},
+		[id, deletePhoto]
+	);
 
 	function handleOpenGuestSheet() {
 		setGuestSheetVisible(true);
@@ -189,46 +191,50 @@ export default function EventScreen() {
 
 		setDownloadingAll(true);
 
-		// Only download photos from other users (not my own uploads)
-		const othersPhotos = mediaItems.filter((p) => p.uploaded_by_user_id !== user?.id);
+		// Only download media from other users (not my own uploads)
+		const othersMedia = mediaItems.filter((p) => p.uploaded_by_user_id !== user?.id);
 
-		if (othersPhotos.length === 0) {
+		if (othersMedia.length === 0) {
 			setDownloadingAll(false);
-			Alert.alert("No Photos to Download", "There are no photos from other guests to download");
+			Alert.alert("No Media to Download", "There is no media from other guests to download");
 			return;
 		}
 
 		const downloadedIds = await getDownloadedPhotoIds();
-		const photosToDownload = othersPhotos.filter((p) => !downloadedIds.has(p.id));
-		const skippedCount = othersPhotos.length - photosToDownload.length;
+		const mediaToDownload = othersMedia.filter((p) => !downloadedIds.has(p.id));
+		const skippedCount = othersMedia.length - mediaToDownload.length;
 
-		if (photosToDownload.length === 0) {
+		if (mediaToDownload.length === 0) {
 			setDownloadingAll(false);
 			Alert.alert(
 				"Already Downloaded",
-				`All ${othersPhotos.length} photos from other guests are already in your camera roll`
+				`All ${othersMedia.length} media items from other guests are already in your camera roll`
 			);
 			return;
 		}
 
-		setDownloadProgress({ current: 0, total: photosToDownload.length });
+		setDownloadProgress({ current: 0, total: mediaToDownload.length });
 
 		let successCount = 0;
-		for (let i = 0; i < photosToDownload.length; i++) {
-			const photo = photosToDownload[i];
-			setDownloadProgress({ current: i + 1, total: photosToDownload.length });
+		for (let i = 0; i < mediaToDownload.length; i++) {
+			const media = mediaToDownload[i];
+			setDownloadProgress({ current: i + 1, total: mediaToDownload.length });
 
 			try {
-				const localUri = await downloadPhoto(photo.storage_path, `recapd_${photo.id}.jpg`);
+				const extension = media.media_type === "video" ? "mp4" : "jpg";
+				const localUri = await downloadPhoto(media.storage_path, `recapd_${media.id}.${extension}`);
 				if (localUri) {
 					const asset = await saveToLibrary(localUri);
 					if (asset) {
-						await markPhotoDownloaded(photo.id);
+						await markPhotoDownloaded(media.id);
 						successCount++;
 					}
 				}
 			} catch (error) {
-				console.error(`Failed to download photo ${photo.id}:`, error);
+				logger.error(`Failed to download media ${media.id}`, error, {
+					eventId: id,
+					mediaId: media.id,
+				});
 			}
 		}
 
@@ -236,10 +242,44 @@ export default function EventScreen() {
 
 		const message =
 			skippedCount > 0
-				? `Saved ${successCount} new photos. ${skippedCount} already in your camera roll.`
-				: `Saved ${successCount} of ${photosToDownload.length} photos to your camera roll`;
+				? `Saved ${successCount} new media items. ${skippedCount} already in your camera roll.`
+				: `Saved ${successCount} of ${mediaToDownload.length} media items to your camera roll`;
 
 		Alert.alert("Download Complete", message);
+	}
+
+	async function handleSkipUpload(idToSkip: string) {
+		Alert.alert(
+			"Skip Upload?",
+			"This keeps the item out of the feed for now. You can add it again later from your library.",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Skip",
+					style: "destructive",
+					onPress: () => {
+						void skipPendingUpload(idToSkip);
+					},
+				},
+			]
+		);
+	}
+
+	function handleRemoveUpload(idToRemove: string) {
+		Alert.alert(
+			"Remove Upload?",
+			"This will remove the item from your feed and stop trying to upload it.",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{
+					text: "Remove",
+					style: "destructive",
+					onPress: () => {
+						void removePendingUpload(idToRemove);
+					},
+				},
+			]
+		);
 	}
 
 	async function handleEnableNotifications() {
@@ -297,7 +337,7 @@ export default function EventScreen() {
 			return;
 		}
 
-		Alert.alert("Leave Event?", "You will no longer have access to this event's photos.", [
+		Alert.alert("Leave Event?", "You will no longer have access to this event's media.", [
 			{ text: "Cancel", style: "cancel" },
 			{
 				text: "Leave",
@@ -312,31 +352,6 @@ export default function EventScreen() {
 				},
 			},
 		]);
-	}
-
-	async function handleRemindGuests() {
-		if (!currentEvent || !user || sendingReminder) return;
-
-		setSendingReminder(true);
-		const { success, sentCount } = await sendReminderToParticipants(
-			currentEvent.id,
-			currentEvent.title,
-			user.id
-		);
-		setSendingReminder(false);
-
-		if (success) {
-			if (sentCount > 0) {
-				Alert.alert(
-					"Reminder Sent",
-					`Notification sent to ${sentCount} guest${sentCount !== 1 ? "s" : ""}`
-				);
-			} else {
-				Alert.alert("No Guests to Notify", "No guests have push notifications enabled");
-			}
-		} else {
-			Alert.alert("Error", "Failed to send reminder");
-		}
 	}
 
 	if (isLoading && !currentEvent) {
@@ -364,7 +379,7 @@ export default function EventScreen() {
 	const isHost = currentEvent.participants?.some(
 		(p) => p.user_id === user?.id && p.role === "host"
 	);
-	const myPhotoCount = mediaItems.filter((p) => p.uploaded_by_user_id === user?.id).length;
+	const myMediaCount = mergedPhotos.filter((p) => p.uploaded_by_user_id === user?.id).length;
 
 	const getExpiryColor = () => {
 		if (daysUntilExpiry <= 1) return "#ef4444";
@@ -379,7 +394,12 @@ export default function EventScreen() {
 					title: currentEvent.title,
 					headerBackVisible: false,
 					headerLeft: () => (
-						<TouchableOpacity onPress={() => router.replace("/")} style={styles.headerButton}>
+						<TouchableOpacity
+							onPress={() =>
+								router.canGoBack() ? router.back() : router.replace("/(tabs)/events")
+							}
+							style={styles.headerButton}
+						>
 							<FontAwesome name="angle-left" size={28} color={isDark ? "#fff" : "#000"} />
 						</TouchableOpacity>
 					),
@@ -408,12 +428,17 @@ export default function EventScreen() {
 				>
 					<View style={styles.header}>
 						<View style={styles.eventInfo}>
-							<Text style={[styles.eventDate, isDark && styles.textMuted]}>
-								{format(new Date(currentEvent.starts_at), "EEEE, MMMM d, yyyy")}
+							<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Event</Text>
+							<Text style={[styles.eventDate, isDark && styles.textDark]}>
+								{formatLocalizedDate(currentEvent.starts_at, {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+									year: "numeric",
+								})}
 							</Text>
 							<Text style={[styles.eventTime, isDark && styles.textMuted]}>
-								{format(new Date(currentEvent.starts_at), "h:mm a")} -{" "}
-								{format(new Date(currentEvent.ends_at), "h:mm a")}
+								{formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}
 							</Text>
 						</View>
 
@@ -424,7 +449,7 @@ export default function EventScreen() {
 								</View>
 								<View style={styles.expiryContent}>
 									<Text style={[styles.expiryLabel, isDark && styles.textMuted]}>
-										Photos expire in
+										Media expire in
 									</Text>
 									<Text style={[styles.expiryValue, { color: getExpiryColor() }]}>
 										{daysUntilExpiry <= 1 ? `${hoursUntilExpiry} hours` : `${daysUntilExpiry} days`}
@@ -436,9 +461,9 @@ export default function EventScreen() {
 						<View style={[styles.stats, isDark && styles.statsDark]}>
 							<View style={styles.stat}>
 								<Text style={[styles.statValue, isDark && styles.textDark]}>
-									{mergedPhotos.length}
+									{mergedPhotos.filter((p) => p.syncStatus !== "failed").length}
 								</Text>
-								<Text style={[styles.statLabel, isDark && styles.textMuted]}>Photos</Text>
+								<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
 							</View>
 							<View style={[styles.statDivider, isDark && styles.statDividerDark]} />
 							<TouchableOpacity style={styles.stat} onPress={handleOpenGuestSheet}>
@@ -456,94 +481,101 @@ export default function EventScreen() {
 							isDark={isDark}
 						/>
 
-						<TouchableOpacity style={styles.contributeButton} onPress={handleContribute}>
-							<FontAwesome name="plus" size={16} color="#fff" />
-							<Text style={styles.contributeButtonText}>Add Your Photos</Text>
-						</TouchableOpacity>
-
-						{isEnded && myPhotoCount === 0 && !hasMarkedNoPhotos && (
+						<View style={styles.actionStack}>
 							<TouchableOpacity
-								style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
-								onPress={handleNoPhotosToShare}
-								disabled={markingNoPhotos}
+								style={[styles.secondaryActionButton, styles.remindButton]}
+								onPress={handleContribute}
 							>
-								{markingNoPhotos ? (
-									<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
-								) : (
-									<FontAwesome name="check" size={14} color={isDark ? "#888" : "#666"} />
-								)}
-								<Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
-									I don't have photos to share
-								</Text>
+								<FontAwesome name="plus" size={16} color="#fff" />
+								<Text style={styles.contributeButtonText}>Add Your Media</Text>
 							</TouchableOpacity>
-						)}
 
-						{isEnded && myPhotoCount === 0 && hasMarkedNoPhotos && (
-							<View
-								style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}
-							>
-								<FontAwesome name="check-circle" size={16} color="#22c55e" />
-								<Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
-									Thanks! We won't remind you about this event.
-								</Text>
-							</View>
-						)}
+							{mediaItems.length > 0 ? (
+								<View style={styles.secondaryActionRow}>
+									{mediaItems.length > 0 && (
+										<TouchableOpacity
+											style={[
+												styles.secondaryActionButton,
+												isDark && styles.secondaryActionButtonDark,
+											]}
+											onPress={handleDownloadAll}
+											disabled={downloadingAll}
+										>
+											{downloadingAll ? (
+												<>
+													<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
+													<Text
+														style={[styles.secondaryActionText, isDark && styles.textDark]}
+														numberOfLines={1}
+													>
+														{downloadProgress.current}/{downloadProgress.total}
+													</Text>
+												</>
+											) : (
+												<>
+													<FontAwesome
+														name="download"
+														size={15}
+														color={isDark ? "#fff" : "#111827"}
+													/>
+													<Text style={[styles.secondaryActionText, isDark && styles.textDark]}>
+														Download All
+													</Text>
+												</>
+											)}
+										</TouchableOpacity>
+									)}
+								</View>
+							) : null}
 
-						{mediaItems.length > 0 && (
-							<TouchableOpacity
-								style={[styles.downloadAllButton, isDark && styles.downloadAllButtonDark]}
-								onPress={handleDownloadAll}
-								disabled={downloadingAll}
-							>
-								{downloadingAll ? (
-									<>
-										<ActivityIndicator size="small" color={isDark ? "#fff" : "#000"} />
-										<Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
-											Downloading {downloadProgress.current}/{downloadProgress.total}
-										</Text>
-									</>
-								) : (
-									<>
-										<FontAwesome name="download" size={16} color={isDark ? "#fff" : "#000"} />
-										<Text style={[styles.downloadAllButtonText, isDark && styles.textDark]}>
-											Download All Photos
-										</Text>
-									</>
-								)}
-							</TouchableOpacity>
-						)}
+							{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos && (
+								<TouchableOpacity
+									style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
+									onPress={handleNoPhotosToShare}
+									disabled={markingNoPhotos}
+								>
+									{markingNoPhotos ? (
+										<ActivityIndicator size="small" color={isDark ? "#d1d5db" : "#374151"} />
+									) : (
+										<FontAwesome name="check" size={14} color={isDark ? "#d1d5db" : "#374151"} />
+									)}
+									<Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
+										I don't have media to share
+									</Text>
+								</TouchableOpacity>
+							)}
 
-						{isHost && (
-							<TouchableOpacity
-								style={styles.remindButton}
-								onPress={handleRemindGuests}
-								disabled={sendingReminder}
-							>
-								{sendingReminder ? (
-									<ActivityIndicator size="small" color="#fff" />
-								) : (
-									<FontAwesome name="bell" size={16} color="#fff" />
-								)}
-								<Text style={styles.remindButtonText}>
-									{sendingReminder ? "Sending..." : "Remind Guests to Upload"}
-								</Text>
-							</TouchableOpacity>
-						)}
+							{isEnded && myMediaCount === 0 && hasMarkedNoPhotos && (
+								<View
+									style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}
+								>
+									<FontAwesome name="check-circle" size={16} color="#22c55e" />
+									<Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
+										Thanks! We won't remind you about this event.
+									</Text>
+								</View>
+							)}
+						</View>
 
 						{mergedPhotos.length > 0 && (
-							<Text style={[styles.timelineTitle, isDark && styles.textDark]}>Timeline</Text>
+							<View style={styles.sectionHeader}>
+								<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Feed</Text>
+								<Text style={[styles.timelineTitle, isDark && styles.textDark]}>
+									Everyone's media
+								</Text>
+							</View>
 						)}
 					</View>
 
 					{mergedPhotos.length === 0 ? (
-						<View style={styles.emptyState}>
+						<View style={[styles.emptyState, isDark && styles.panelDark]}>
 							<FontAwesome name="camera" size={48} color={isDark ? "#444" : "#ccc"} />
-							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Photos Yet</Text>
+							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Media Yet</Text>
 							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Photos from the event will appear here after they're uploaded
+								Media from the event will appear here after it's uploaded
 							</Text>
 							<TouchableOpacity style={styles.emptyButton} onPress={handleContribute}>
-								<Text style={styles.emptyButtonText}>Add Photos</Text>
+								<Text style={styles.emptyButtonText}>Add Media</Text>
 							</TouchableOpacity>
 						</View>
 					) : (
@@ -551,11 +583,12 @@ export default function EventScreen() {
 							photos={mergedPhotos}
 							onPhotoPress={handlePhotoPress}
 							onRetry={retryFailedUpload}
+							onSkip={handleSkipUpload}
+							onRemove={handleRemoveUpload}
 							isDark={isDark}
 						/>
 					)}
 				</ScrollView>
-
 				<PhotoViewer
 					photos={mergedPhotos}
 					initialIndex={selectedPhotoIndex}
@@ -592,17 +625,18 @@ export default function EventScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	centered: {
 		justifyContent: "center",
 		alignItems: "center",
 	},
 	scrollContent: {
-		padding: 24,
+		paddingTop: 18,
+		paddingBottom: 28,
 	},
 	headerRight: {
 		flexDirection: "row",
@@ -610,39 +644,60 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	headerButton: {
-		padding: 8,
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	header: {
-		marginBottom: 24,
+		marginBottom: 16,
+		paddingHorizontal: 16,
+		gap: 12,
 	},
 	eventInfo: {
-		marginBottom: 16,
+		gap: 3,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	sectionEyebrow: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
 	},
 	eventDate: {
-		fontSize: 16,
-		color: "#666",
-		marginBottom: 4,
+		fontSize: 24,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.8,
 	},
 	eventTime: {
 		fontSize: 14,
-		color: "#999",
+		color: "#6b7280",
+		fontWeight: "500",
 	},
 	expiryBanner: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#f5f5f5",
-		padding: 12,
-		borderRadius: 12,
-		marginBottom: 16,
+		backgroundColor: "#fff",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 		gap: 12,
 	},
 	expiryBannerDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	expiryIconContainer: {
 		width: 36,
 		height: 36,
-		borderRadius: 18,
+		borderRadius: 999,
 		justifyContent: "center",
 		alignItems: "center",
 	},
@@ -651,8 +706,10 @@ const styles = StyleSheet.create({
 	},
 	expiryLabel: {
 		fontSize: 12,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 2,
+		textTransform: "uppercase",
+		letterSpacing: 0.8,
 	},
 	expiryValue: {
 		fontSize: 16,
@@ -660,96 +717,115 @@ const styles = StyleSheet.create({
 	},
 	stats: {
 		flexDirection: "row",
-		backgroundColor: "#f5f5f5",
-		borderRadius: 16,
-		padding: 16,
-		marginBottom: 16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 	},
 	statsDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	stat: {
 		flex: 1,
 		alignItems: "center",
+		paddingVertical: 2,
 	},
 	statDivider: {
 		width: 1,
-		backgroundColor: "#e5e5e5",
+		backgroundColor: "#e5e7eb",
 		marginHorizontal: 16,
 	},
 	statDividerDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#242833",
 	},
 	statValue: {
-		fontSize: 24,
+		fontSize: 26,
 		fontWeight: "700",
-		color: "#000",
+		color: "#111827",
 	},
 	statLabel: {
-		fontSize: 14,
-		color: "#666",
-		marginTop: 4,
+		fontSize: 11,
+		color: "#6b7280",
+		marginTop: 5,
+		textTransform: "uppercase",
+		letterSpacing: 1,
+	},
+	actionStack: {
+		gap: 10,
 	},
 	contributeButton: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 14,
-		borderRadius: 12,
+		borderRadius: 999,
 		gap: 8,
-		marginBottom: 24,
 	},
 	contributeButtonText: {
 		color: "#fff",
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "600",
 	},
-	downloadAllButton: {
+	secondaryActionRow: {
+		flexDirection: "row",
+		gap: 10,
+	},
+	secondaryActionButton: {
+		flex: 1,
+		minHeight: 48,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		backgroundColor: "#f5f5f5",
-		paddingVertical: 14,
-		borderRadius: 12,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
 		gap: 8,
-		marginBottom: 24,
+		paddingHorizontal: 12,
 	},
-	downloadAllButtonDark: {
-		backgroundColor: "#1a1a1a",
+	secondaryActionButtonDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
-	downloadAllButtonText: {
-		color: "#000",
-		fontSize: 16,
+	secondaryActionText: {
+		color: "#111827",
+		fontSize: 14,
 		fontWeight: "600",
 	},
 	remindButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: "#7c3aed",
-		paddingVertical: 14,
-		borderRadius: 12,
-		gap: 8,
-		marginBottom: 24,
+		backgroundColor: "#111827",
+		borderColor: "#111827",
 	},
 	remindButtonText: {
 		color: "#fff",
-		fontSize: 16,
+		fontSize: 14,
 		fontWeight: "600",
 	},
 	timelineTitle: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
+		fontSize: 20,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.5,
+	},
+	sectionHeader: {
+		paddingTop: 2,
+		gap: 2,
 	},
 	emptyState: {
 		alignItems: "center",
-		paddingVertical: 48,
+		paddingHorizontal: 24,
+		paddingVertical: 52,
+		marginHorizontal: 16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	emptyTitle: {
-		fontSize: 18,
-		fontWeight: "600",
+		fontSize: 20,
+		fontWeight: "700",
 		color: "#000",
 		marginTop: 16,
 		marginBottom: 8,
@@ -761,14 +837,14 @@ const styles = StyleSheet.create({
 		marginBottom: 24,
 	},
 	emptyButton: {
-		backgroundColor: "#000",
-		paddingVertical: 12,
+		backgroundColor: "#111827",
+		paddingVertical: 13,
 		paddingHorizontal: 24,
-		borderRadius: 12,
+		borderRadius: 999,
 	},
 	emptyButtonText: {
 		color: "#fff",
-		fontSize: 16,
+		fontSize: 15,
 		fontWeight: "600",
 	},
 	errorText: {
@@ -785,28 +861,42 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		paddingVertical: 10,
+		paddingVertical: 12,
+		paddingHorizontal: 14,
 		gap: 6,
-		marginBottom: 16,
-		marginTop: -16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
 	},
-	noPhotosButtonDark: {},
+	noPhotosButtonDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
 	noPhotosButtonText: {
-		color: "#666",
-		fontSize: 14,
+		color: "#374151",
+		fontSize: 13,
+		fontWeight: "600",
 	},
 	noPhotosConfirmation: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		paddingVertical: 10,
+		paddingVertical: 12,
+		paddingHorizontal: 14,
 		gap: 8,
-		marginBottom: 16,
-		marginTop: -16,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
 	},
-	noPhotosConfirmationDark: {},
+	noPhotosConfirmationDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
 	noPhotosConfirmationText: {
-		color: "#666",
-		fontSize: 14,
+		color: "#374151",
+		fontSize: 13,
+		fontWeight: "600",
 	},
 });

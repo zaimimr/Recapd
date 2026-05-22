@@ -1,31 +1,90 @@
 -- Storage Buckets Setup
--- Run this in Supabase SQL Editor after creating the schema
+-- Run this after applying supabase/schema.sql
 
--- Create storage buckets
 INSERT INTO storage.buckets (id, name, public)
 VALUES
-  ('event-photos', 'event-photos', true),
-  ('thumbnails', 'thumbnails', true)
-ON CONFLICT (id) DO NOTHING;
+  ('event-photos', 'event-photos', false),
+  ('thumbnails', 'thumbnails', false)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
 
--- Storage policies for event-photos bucket
-CREATE POLICY "Anyone can view event photos"
+DROP POLICY IF EXISTS "Anyone can view event photos" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can upload event photos" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own photos" ON storage.objects;
+DROP POLICY IF EXISTS "Anyone can view thumbnails" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can upload thumbnails" ON storage.objects;
+DROP POLICY IF EXISTS "Participants can read event photos" ON storage.objects;
+DROP POLICY IF EXISTS "Participants can upload event photos" ON storage.objects;
+DROP POLICY IF EXISTS "Owners or hosts can delete event photos" ON storage.objects;
+DROP POLICY IF EXISTS "Participants can read thumbnails" ON storage.objects;
+DROP POLICY IF EXISTS "Participants can upload thumbnails" ON storage.objects;
+DROP POLICY IF EXISTS "Owners or hosts can delete thumbnails" ON storage.objects;
+
+CREATE POLICY "Participants can read event photos"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'event-photos');
+  USING (
+    bucket_id = 'event-photos'
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_participants ep
+      WHERE ep.event_id::TEXT = (storage.foldername(name))[1]
+        AND ep.user_id = public.current_user_profile_id()
+    )
+  );
 
-CREATE POLICY "Authenticated users can upload event photos"
+CREATE POLICY "Participants can upload event photos"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'event-photos');
+  WITH CHECK (
+    bucket_id = 'event-photos'
+    AND (storage.foldername(name))[2] = public.current_user_profile_id()::TEXT
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_participants ep
+      WHERE ep.event_id::TEXT = (storage.foldername(name))[1]
+        AND ep.user_id = public.current_user_profile_id()
+    )
+  );
 
-CREATE POLICY "Users can delete their own photos"
+CREATE POLICY "Owners or hosts can delete event photos"
   ON storage.objects FOR DELETE
-  USING (bucket_id = 'event-photos');
+  USING (
+    bucket_id = 'event-photos'
+    AND (
+      (storage.foldername(name))[2] = public.current_user_profile_id()::TEXT
+      OR public.is_event_host(((storage.foldername(name))[1])::UUID)
+    )
+  );
 
--- Storage policies for thumbnails bucket
-CREATE POLICY "Anyone can view thumbnails"
+CREATE POLICY "Participants can read thumbnails"
   ON storage.objects FOR SELECT
-  USING (bucket_id = 'thumbnails');
+  USING (
+    bucket_id = 'thumbnails'
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_participants ep
+      WHERE ep.event_id::TEXT = (storage.foldername(name))[1]
+        AND ep.user_id = public.current_user_profile_id()
+    )
+  );
 
-CREATE POLICY "Authenticated users can upload thumbnails"
+CREATE POLICY "Participants can upload thumbnails"
   ON storage.objects FOR INSERT
-  WITH CHECK (bucket_id = 'thumbnails');
+  WITH CHECK (
+    bucket_id = 'thumbnails'
+    AND (storage.foldername(name))[2] = public.current_user_profile_id()::TEXT
+    AND EXISTS (
+      SELECT 1
+      FROM public.event_participants ep
+      WHERE ep.event_id::TEXT = (storage.foldername(name))[1]
+        AND ep.user_id = public.current_user_profile_id()
+    )
+  );
+
+CREATE POLICY "Owners or hosts can delete thumbnails"
+  ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'thumbnails'
+    AND (
+      (storage.foldername(name))[2] = public.current_user_profile_id()::TEXT
+      OR public.is_event_host(((storage.foldername(name))[1])::UUID)
+    )
+  );

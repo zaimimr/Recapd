@@ -20,8 +20,16 @@ import {
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { useIsPro, useSubscriptionStore } from "@/store/subscriptionStore";
+import { useEventStore } from "@/store/eventStore";
+import {
+	useIsPro,
+	useSubscriptionPlanId,
+	useSubscriptionPlans,
+	useSubscriptionStore,
+} from "@/store/subscriptionStore";
+import { getPlanMarketingHighlights } from "@/types/subscription";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | "limited";
 
@@ -38,7 +46,10 @@ export default function SettingsScreen() {
 	const isDark = colorScheme === "dark";
 	const user = useAuthStore((state) => state.user);
 	const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
+	const { isDemoMode, enableDemoMode, disableDemoMode } = useEventStore();
 	const isPro = useIsPro();
+	const planId = useSubscriptionPlanId();
+	const plans = useSubscriptionPlans();
 	const {
 		status,
 		showPaywall,
@@ -276,15 +287,29 @@ export default function SettingsScreen() {
 	}
 
 	const allPermissionsGranted = permissions.every((p) => p.status === "granted");
+	const currentPlan = plans[planId];
+	const proHighlights = getPlanMarketingHighlights("pro", plans);
 
 	return (
 		<ScrollView
 			style={[styles.container, isDark && styles.containerDark]}
 			contentContainerStyle={styles.content}
 		>
+			<View style={[styles.hero, isDark && styles.sectionDark]}>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>Settings</Text>
+				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
+					Control your profile, access, and plan
+				</Text>
+				<Text style={[styles.heroText, isDark && styles.textMuted]}>
+					Everything here uses the same simple utility layout as the feed: clear sections, direct
+					actions, no extra chrome.
+				</Text>
+			</View>
+
 			{user && (
 				<View style={[styles.section, isDark && styles.sectionDark]}>
-					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Profile</Text>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
+					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your identity</Text>
 					<View style={styles.profileRow}>
 						<View style={[styles.avatar, isDark && styles.avatarDark]}>
 							<Text style={[styles.avatarText, isDark && styles.textDark]}>
@@ -310,7 +335,12 @@ export default function SettingsScreen() {
 								</Text>
 							)}
 							<Text style={[styles.profileSubtext, isDark && styles.textMuted]}>
-								Joined {new Date(user.created_at).toLocaleDateString()}
+								Joined{" "}
+								{formatLocalizedDate(user.created_at, {
+									month: "short",
+									day: "numeric",
+									year: "numeric",
+								})}
 							</Text>
 						</View>
 						{isEditingName ? (
@@ -352,90 +382,100 @@ export default function SettingsScreen() {
 				</View>
 			)}
 
-			{SUBSCRIPTIONS_ENABLED && (
-				<View style={[styles.section, isDark && styles.sectionDark]}>
-					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Subscription</Text>
-					<View style={styles.subscriptionRow}>
-						<View style={[styles.subscriptionIcon, isPro && styles.subscriptionIconPro]}>
-							<FontAwesome
-								name={isPro ? "star" : "star-o"}
-								size={20}
-								color={isPro ? "#f59e0b" : isDark ? "#666" : "#999"}
-							/>
-						</View>
-						<View style={styles.subscriptionInfo}>
-							<Text style={[styles.subscriptionTitle, isDark && styles.textDark]}>
-								{isPro ? "Recapd Pro" : "Free Plan"}
-							</Text>
-							<Text style={[styles.subscriptionSubtext, isDark && styles.textMuted]}>
-								{isPro
-									? status.expiresAt
-										? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
-										: "Active subscription"
-									: "Longer videos & unlimited participants"}
-							</Text>
-						</View>
-						{isPro && (
-							<View style={styles.proBadge}>
-								<Text style={styles.proBadgeText}>PRO</Text>
-							</View>
-						)}
+			<View style={[styles.section, isDark && styles.sectionDark]}>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>Subscription</Text>
+				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Plan</Text>
+				<View style={styles.subscriptionRow}>
+					<View style={[styles.subscriptionIcon, isPro && styles.subscriptionIconPro]}>
+						<FontAwesome
+							name={isPro ? "star" : "star-o"}
+							size={20}
+							color={isPro ? "#f59e0b" : isDark ? "#666" : "#999"}
+						/>
 					</View>
-
-					{isPro ? (
-						<TouchableOpacity
-							style={[styles.manageButton, isDark && styles.manageButtonDark]}
-							onPress={showCustomerCenter}
-							disabled={subscriptionLoading}
-						>
-							<FontAwesome name="cog" size={16} color={isDark ? "#fff" : "#000"} />
-							<Text style={[styles.manageButtonText, isDark && styles.textDark]}>
-								Manage Subscription
-							</Text>
-						</TouchableOpacity>
-					) : (
-						<>
-							<TouchableOpacity
-								style={styles.upgradeButton}
-								onPress={showPaywall}
-								disabled={subscriptionLoading}
-								accessibilityRole="button"
-								accessibilityLabel="Upgrade to Pro"
-							>
-								<FontAwesome name="star" size={16} color="#fff" />
-								<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
-							</TouchableOpacity>
-							<TouchableOpacity
-								style={styles.restoreButton}
-								onPress={async () => {
-									setIsRestoring(true);
-									const result = await restore();
-									setIsRestoring(false);
-									if (result.success) {
-										Alert.alert("Restored", "Your purchases have been restored.");
-									} else if (!result.userCancelled && result.error) {
-										Alert.alert("Restore Failed", result.error);
-									}
-								}}
-								disabled={isRestoring || subscriptionLoading}
-								accessibilityRole="button"
-								accessibilityLabel="Restore Purchases"
-							>
-								{isRestoring ? (
-									<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
-								) : (
-									<Text style={[styles.restoreButtonText, isDark && styles.textMuted]}>
-										Restore Purchases
-									</Text>
-								)}
-							</TouchableOpacity>
-						</>
+					<View style={styles.subscriptionInfo}>
+						<Text style={[styles.subscriptionTitle, isDark && styles.textDark]}>
+							{currentPlan.displayName}
+						</Text>
+						<Text style={[styles.subscriptionSubtext, isDark && styles.textMuted]}>
+							{isPro
+								? status.expiresAt
+									? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
+									: "Active subscription"
+								: SUBSCRIPTIONS_ENABLED
+									? proHighlights
+									: "Subscription controls are unavailable in this build"}
+						</Text>
+					</View>
+					{isPro && (
+						<View style={styles.proBadge}>
+							<Text style={styles.proBadgeText}>PRO</Text>
+						</View>
 					)}
 				</View>
-			)}
+
+				{isPro ? (
+					<TouchableOpacity
+						style={[styles.manageButton, isDark && styles.manageButtonDark]}
+						onPress={async () => {
+							const opened = await showCustomerCenter();
+							if (!opened) {
+								Alert.alert(
+									"Subscription Unavailable",
+									"Could not open subscription management right now."
+								);
+							}
+						}}
+						disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+					>
+						<FontAwesome name="cog" size={16} color={isDark ? "#fff" : "#000"} />
+						<Text style={[styles.manageButtonText, isDark && styles.textDark]}>
+							Manage Subscription
+						</Text>
+					</TouchableOpacity>
+				) : (
+					<>
+						<TouchableOpacity
+							style={[styles.upgradeButton, !SUBSCRIPTIONS_ENABLED && styles.buttonDisabled]}
+							onPress={showPaywall}
+							disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+							accessibilityRole="button"
+							accessibilityLabel="Upgrade to Pro"
+						>
+							<FontAwesome name="star" size={16} color="#fff" />
+							<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+						</TouchableOpacity>
+						<TouchableOpacity
+							style={styles.restoreButton}
+							onPress={async () => {
+								setIsRestoring(true);
+								const result = await restore();
+								setIsRestoring(false);
+								if (result.success) {
+									Alert.alert("Restored", "Your purchases have been restored.");
+								} else if (!result.userCancelled && result.error) {
+									Alert.alert("Restore Failed", result.error);
+								}
+							}}
+							disabled={isRestoring || subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+							accessibilityRole="button"
+							accessibilityLabel="Restore Purchases"
+						>
+							{isRestoring ? (
+								<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
+							) : (
+								<Text style={[styles.restoreButtonText, isDark && styles.textMuted]}>
+									Restore Purchases
+								</Text>
+							)}
+						</TouchableOpacity>
+					</>
+				)}
+			</View>
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Feedback</Text>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>Feedback</Text>
+				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tell us what to fix</Text>
 				<TouchableOpacity
 					style={[styles.feedbackButton, isDark && styles.feedbackButtonDark]}
 					onPress={() => Linking.openURL("https://forms.gle/Pt6DyHY4ZY6CZthm8")}
@@ -453,7 +493,10 @@ export default function SettingsScreen() {
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
 				<View style={styles.sectionHeader}>
-					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Permissions</Text>
+					<View style={styles.sectionHeadingBlock}>
+						<Text style={[styles.kicker, isDark && styles.textMuted]}>Permissions</Text>
+						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Access</Text>
+					</View>
 					{!allPermissionsGranted && (
 						<View style={styles.warningBadge}>
 							<FontAwesome name="exclamation" size={10} color="#fff" />
@@ -518,7 +561,8 @@ export default function SettingsScreen() {
 			</View>
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>About</Text>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>About</Text>
+				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>App info</Text>
 				<View style={styles.aboutRow}>
 					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Version</Text>
 					<Text style={[styles.aboutValue, isDark && styles.textDark]}>
@@ -546,6 +590,28 @@ export default function SettingsScreen() {
 					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
 				</TouchableOpacity>
 			</View>
+			{__DEV__ && (
+				<View style={[styles.section, isDark && styles.sectionDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Developer</Text>
+					<TouchableOpacity
+						style={[styles.aboutRow, { paddingVertical: 14 }]}
+						onPress={isDemoMode ? disableDemoMode : enableDemoMode}
+						accessibilityLabel="Toggle Demo Mode"
+					>
+						<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>
+							{isDemoMode ? "Disable Demo Mode" : "Enable Demo Mode"}
+						</Text>
+						<View
+							style={{
+								width: 10,
+								height: 10,
+								borderRadius: 5,
+								backgroundColor: isDemoMode ? "#22c55e" : "#6b7280",
+							}}
+						/>
+					</TouchableOpacity>
+				</View>
+			)}
 		</ScrollView>
 	);
 }
@@ -553,37 +619,69 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	content: {
 		padding: 16,
 		gap: 16,
 	},
+	hero: {
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
+		gap: 6,
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
+	},
+	heroTitle: {
+		fontSize: 26,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.8,
+	},
+	heroText: {
+		fontSize: 14,
+		lineHeight: 21,
+		color: "#6b7280",
+	},
 	section: {
 		backgroundColor: "#fff",
-		borderRadius: 16,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 		padding: 16,
 	},
 	sectionDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	sectionHeader: {
 		flexDirection: "row",
-		alignItems: "center",
+		alignItems: "flex-start",
+		justifyContent: "space-between",
 		gap: 8,
 	},
+	sectionHeadingBlock: {
+		gap: 4,
+	},
 	sectionTitle: {
-		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 4,
+		fontSize: 20,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.5,
 	},
 	sectionDescription: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 16,
 	},
 	warningBadge: {
@@ -605,12 +703,15 @@ const styles = StyleSheet.create({
 		width: 56,
 		height: 56,
 		borderRadius: 28,
-		backgroundColor: "#f0f0f0",
+		backgroundColor: "#f9fafb",
 		justifyContent: "center",
 		alignItems: "center",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	avatarDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	avatarText: {
 		fontSize: 24,
@@ -622,29 +723,29 @@ const styles = StyleSheet.create({
 	},
 	profileName: {
 		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
+		fontWeight: "700",
+		color: "#111827",
 	},
 	profileSubtext: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 2,
 	},
 	nameInput: {
 		fontSize: 18,
-		fontWeight: "600",
-		color: "#000",
-		paddingVertical: 4,
-		paddingHorizontal: 8,
+		fontWeight: "700",
+		color: "#111827",
+		paddingVertical: 10,
+		paddingHorizontal: 12,
 		borderWidth: 1,
-		borderColor: "#3b82f6",
-		borderRadius: 8,
-		backgroundColor: "#fff",
+		borderColor: "#d1d5db",
+		borderRadius: 12,
+		backgroundColor: "#f9fafb",
 	},
 	nameInputDark: {
 		color: "#fff",
-		backgroundColor: "#333",
-		borderColor: "#3b82f6",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	editActions: {
 		flexDirection: "row",
@@ -652,20 +753,29 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	editButton: {
-		padding: 10,
-		backgroundColor: "#f0f0f0",
-		borderRadius: 20,
+		width: 36,
+		height: 36,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: "#fff",
+		borderRadius: 18,
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 	},
 	editButtonDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	cancelButton: {
 		padding: 10,
 	},
 	saveButton: {
-		padding: 10,
-		backgroundColor: "#22c55e",
-		borderRadius: 20,
+		width: 36,
+		height: 36,
+		alignItems: "center",
+		justifyContent: "center",
+		backgroundColor: "#111827",
+		borderRadius: 18,
 	},
 	saveButtonDisabled: {
 		opacity: 0.5,
@@ -674,11 +784,11 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		paddingVertical: 14,
-		borderTopWidth: StyleSheet.hairlineWidth,
-		borderTopColor: "rgba(0, 0, 0, 0.1)",
+		borderTopWidth: 1,
+		borderTopColor: "#e5e7eb",
 	},
 	permissionRowDark: {
-		borderTopColor: "rgba(255, 255, 255, 0.1)",
+		borderTopColor: "#242833",
 	},
 	permissionRowFirst: {
 		borderTopWidth: 0,
@@ -687,26 +797,29 @@ const styles = StyleSheet.create({
 	permissionIcon: {
 		width: 40,
 		height: 40,
-		borderRadius: 10,
-		backgroundColor: "#f5f5f5",
+		borderRadius: 999,
+		backgroundColor: "#f9fafb",
 		justifyContent: "center",
 		alignItems: "center",
 		marginRight: 12,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	permissionIconDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	permissionContent: {
 		flex: 1,
 	},
 	permissionName: {
 		fontSize: 16,
-		fontWeight: "500",
-		color: "#000",
+		fontWeight: "600",
+		color: "#111827",
 	},
 	permissionDescription: {
 		fontSize: 13,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 2,
 	},
 	permissionStatus: {
@@ -722,8 +835,9 @@ const styles = StyleSheet.create({
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 10,
-		backgroundColor: "#fef3c7",
-		borderRadius: 10,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#f59e0b",
 		padding: 12,
 		marginTop: 12,
 	},
@@ -740,8 +854,8 @@ const styles = StyleSheet.create({
 		justifyContent: "space-between",
 		alignItems: "center",
 		paddingVertical: 12,
-		borderTopWidth: StyleSheet.hairlineWidth,
-		borderTopColor: "rgba(0, 0, 0, 0.1)",
+		borderTopWidth: 1,
+		borderTopColor: "#e5e7eb",
 	},
 	aboutLabel: {
 		fontSize: 16,
@@ -762,18 +876,21 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 10,
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 		paddingVertical: 14,
-		borderRadius: 12,
+		borderRadius: 999,
 		marginTop: 8,
 	},
 	feedbackButtonDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	feedbackButtonText: {
 		fontSize: 16,
 		fontWeight: "600",
-		color: "#000",
+		color: "#111827",
 	},
 	feedbackHint: {
 		fontSize: 13,
@@ -791,10 +908,12 @@ const styles = StyleSheet.create({
 	subscriptionIcon: {
 		width: 48,
 		height: 48,
-		borderRadius: 12,
-		backgroundColor: "#f5f5f5",
+		borderRadius: 999,
+		backgroundColor: "#f9fafb",
 		justifyContent: "center",
 		alignItems: "center",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	subscriptionIconPro: {
 		backgroundColor: "#fef3c7",
@@ -804,19 +923,19 @@ const styles = StyleSheet.create({
 	},
 	subscriptionTitle: {
 		fontSize: 17,
-		fontWeight: "600",
-		color: "#000",
+		fontWeight: "700",
+		color: "#111827",
 	},
 	subscriptionSubtext: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 2,
 	},
 	proBadge: {
-		backgroundColor: "#f59e0b",
+		backgroundColor: "#111827",
 		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 6,
+		paddingVertical: 5,
+		borderRadius: 999,
 	},
 	proBadgeText: {
 		fontSize: 12,
@@ -828,31 +947,37 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		backgroundColor: "#3b82f6",
+		backgroundColor: "#111827",
 		paddingVertical: 14,
-		borderRadius: 12,
+		borderRadius: 999,
 	},
 	upgradeButtonText: {
 		fontSize: 16,
 		fontWeight: "600",
 		color: "#fff",
 	},
+	buttonDisabled: {
+		opacity: 0.45,
+	},
 	manageButton: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
 		paddingVertical: 14,
-		borderRadius: 12,
+		borderRadius: 999,
 	},
 	manageButtonDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	manageButtonText: {
 		fontSize: 16,
 		fontWeight: "600",
-		color: "#000",
+		color: "#111827",
 	},
 	restoreButton: {
 		paddingVertical: 12,

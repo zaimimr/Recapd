@@ -124,7 +124,10 @@ export default function NotificationPromptModal({
 							<Text style={styles.enableButtonText}>Enable Notifications</Text>
 						</TouchableOpacity>
 
-						<TouchableOpacity style={styles.laterButton} onPress={handleMaybeLater}>
+						<TouchableOpacity
+							style={[styles.laterButton, isDark && styles.laterButtonDark]}
+							onPress={handleMaybeLater}
+						>
 							<Text style={[styles.laterButtonText, isDark && styles.textMuted]}>Maybe Later</Text>
 						</TouchableOpacity>
 					</View>
@@ -145,8 +148,8 @@ const styles = StyleSheet.create({
 	},
 	sheet: {
 		backgroundColor: "#fff",
-		borderTopLeftRadius: 14,
-		borderTopRightRadius: 14,
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
 		shadowColor: "#000",
 		shadowOffset: { width: 0, height: -3 },
 		shadowOpacity: 0.1,
@@ -154,7 +157,7 @@ const styles = StyleSheet.create({
 		elevation: 20,
 	},
 	sheetDark: {
-		backgroundColor: "#1c1c1e",
+		backgroundColor: "#0f1115",
 	},
 	handleContainer: {
 		alignItems: "center",
@@ -172,14 +175,14 @@ const styles = StyleSheet.create({
 	},
 	content: {
 		paddingHorizontal: 24,
-		paddingTop: 8,
+		paddingTop: 10,
 		alignItems: "center",
 	},
 	iconContainer: {
 		width: 64,
 		height: 64,
 		borderRadius: 32,
-		backgroundColor: "#7c3aed",
+		backgroundColor: "#111827",
 		justifyContent: "center",
 		alignItems: "center",
 		marginBottom: 20,
@@ -187,9 +190,10 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 22,
 		fontWeight: "700",
-		color: "#000",
+		color: "#111827",
 		marginBottom: 12,
 		textAlign: "center",
+		letterSpacing: -0.5,
 	},
 	message: {
 		fontSize: 15,
@@ -199,10 +203,10 @@ const styles = StyleSheet.create({
 		marginBottom: 24,
 	},
 	enableButton: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 16,
 		paddingHorizontal: 32,
-		borderRadius: 14,
+		borderRadius: 999,
 		width: "100%",
 		alignItems: "center",
 		marginBottom: 12,
@@ -213,7 +217,15 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	laterButton: {
-		paddingVertical: 12,
+		paddingVertical: 14,
+		paddingHorizontal: 28,
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		marginBottom: 6,
+	},
+	laterButtonDark: {
+		borderColor: "#242833",
 	},
 	laterButtonText: {
 		fontSize: 16,

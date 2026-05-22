@@ -1,14 +1,27 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import {
+	type ErrorBoundaryProps,
+	ErrorBoundary as ExpoRouterErrorBoundary,
+	Stack,
+	usePathname,
+} from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { StatusBar } from "react-native";
+import { AppState, StatusBar } from "react-native";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
 import { useColorScheme } from "@/components/useColorScheme";
+import {
+	flushTelemetryQueue,
+	installTelemetry,
+	logger,
+	setTelemetryContext,
+	traceEvent,
+	traceScreen,
+} from "@/lib/logger";
 import {
 	registerForPushNotifications,
 	savePushToken,
@@ -18,13 +31,21 @@ import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
 
-export { ErrorBoundary } from "expo-router";
-
 export const unstable_settings = {
 	initialRouteName: "(tabs)",
 };
 
 SplashScreen.preventAutoHideAsync();
+
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+	const pathname = usePathname();
+
+	useEffect(() => {
+		logger.error("Route render error", error, { route: pathname });
+	}, [error, pathname]);
+
+	return <ExpoRouterErrorBoundary error={error} retry={retry} />;
+}
 
 export default function RootLayout() {
 	const [loaded, error] = useFonts({
@@ -35,7 +56,15 @@ export default function RootLayout() {
 	const isInitialized = useAuthStore((state) => state.isInitialized);
 
 	useEffect(() => {
-		if (error) throw error;
+		installTelemetry();
+		traceEvent("app.bootstrap.started");
+	}, []);
+
+	useEffect(() => {
+		if (error) {
+			logger.error("Font load failed", error);
+			throw error;
+		}
 	}, [error]);
 
 	useEffect(() => {
@@ -57,26 +86,58 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
 	const colorScheme = useColorScheme();
+	const pathname = usePathname();
 	const user = useAuthStore((state) => state.user);
 	const initializePendingUploads = useEventStore((state) => state.initializePendingUploads);
 	const initializeSubscription = useSubscriptionStore((state) => state.initialize);
 
 	useEffect(() => {
 		setupNotificationHandler();
-		initializePendingUploads();
-	}, [initializePendingUploads]);
+	}, []);
+
+	useEffect(() => {
+		if (!user?.id) {
+			return;
+		}
+
+		void initializePendingUploads(user.id);
+	}, [initializePendingUploads, user?.id]);
+
+	useEffect(() => {
+		setTelemetryContext({ userId: user?.id ?? null });
+		if (user?.id) {
+			traceEvent("app.user_context.ready", { userId: user.id });
+		}
+	}, [user?.id]);
+
+	useEffect(() => {
+		traceScreen(pathname);
+	}, [pathname]);
 
 	useEffect(() => {
 		if (!user?.id) return;
-		const userId = user.id;
-		const currentPushToken = user.push_token;
 		registerForPushNotifications().then((token) => {
-			if (token && currentPushToken !== token) {
-				savePushToken(userId, token);
+			if (token) {
+				savePushToken(user.id, token);
 			}
 		});
-		initializeSubscription(userId);
-	}, [user?.id, initializeSubscription, user?.push_token]);
+		initializeSubscription(user.id);
+	}, [user?.id, initializeSubscription]);
+
+	useEffect(() => {
+		traceEvent("app.state.changed", { state: AppState.currentState });
+		const subscription = AppState.addEventListener("change", (state) => {
+			traceEvent("app.state.changed", { state });
+			if (state === "active") {
+				void flushTelemetryQueue();
+			}
+			if (state === "background" || state === "inactive") {
+				void flushTelemetryQueue(true);
+			}
+		});
+
+		return () => subscription.remove();
+	}, []);
 
 	return (
 		<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
