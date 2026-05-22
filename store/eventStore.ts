@@ -4,7 +4,11 @@ import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
 import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
-import { sendEventFullNotification, sendParticipantLimitNotification } from "@/lib/notifications";
+import {
+	persistPushTokenForEvent,
+	sendEventFullNotification,
+	sendParticipantLimitNotification,
+} from "@/lib/notifications";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { supabase } from "@/lib/supabase";
 import {
@@ -350,6 +354,12 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				await supabase.from("event_participants").insert(participantData);
 
+				try {
+					await persistPushTokenForEvent(data.id, userId);
+				} catch (err) {
+					console.warn("persistPushTokenForEvent (create) failed:", err);
+				}
+
 				set({ isLoading: false });
 				return data as Event;
 			} catch (error) {
@@ -458,6 +468,12 @@ export const useEventStore = create<EventState>((set, get) => {
 				const { error } = await supabase.from("event_participants").insert(participantData);
 
 				if (error) throw error;
+
+				try {
+					await persistPushTokenForEvent(eventId, userId);
+				} catch (err) {
+					console.warn("persistPushTokenForEvent (join) failed:", err);
+				}
 
 				const { count } = await supabase
 					.from("event_participants")
@@ -1027,6 +1043,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					file_size_bytes: null,
 					storage_path: "",
 					thumbnail_path: null,
+					dominant_color: null,
 					visibility: "shared" as const,
 					deleted_at: null,
 					latitude: p.latitude ?? null,

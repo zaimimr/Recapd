@@ -83,6 +83,29 @@ export async function savePushToken(userId: string, token: string): Promise<void
 	}
 }
 
+export async function persistPushTokenForEvent(
+	eventId: string,
+	userId: string
+): Promise<boolean> {
+	const token = await registerForPushNotifications();
+	if (!token) {
+		return false;
+	}
+
+	const { error } = await supabase
+		.from("event_participants")
+		.update({ push_token: token })
+		.eq("event_id", eventId)
+		.eq("user_id", userId);
+
+	if (error) {
+		console.error("Failed to persist event push token:", error);
+		return false;
+	}
+
+	return true;
+}
+
 interface PushMessage {
 	to: string;
 	title: string;
@@ -131,7 +154,7 @@ export async function sendReminderToParticipants(
 ): Promise<{ success: boolean; sentCount: number }> {
 	const { data: participants, error } = await supabase
 		.from("event_participants")
-		.select("user_id, users!inner(push_token)")
+		.select("user_id, push_token, users!inner(push_token)")
 		.eq("event_id", eventId);
 
 	if (error) {
@@ -141,7 +164,10 @@ export async function sendReminderToParticipants(
 
 	const tokens = participants
 		.filter((p) => p.user_id !== excludeUserId)
-		.map((p) => (p.users as unknown as { push_token: string | null })?.push_token)
+		.map(
+			(p) =>
+				p.push_token || (p.users as unknown as { push_token: string | null })?.push_token || null
+		)
 		.filter((token): token is string => !!token);
 
 	if (tokens.length === 0) {
