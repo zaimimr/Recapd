@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { addDays } from "date-fns";
 import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
+import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { sendEventFullNotification, sendParticipantLimitNotification } from "@/lib/notifications";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
@@ -516,8 +517,9 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToMediaItems: (eventId: string) => {
+			const channelName = `media_items:${eventId}`;
 			const channel = supabase
-				.channel(`media_items:${eventId}`)
+				.channel(channelName)
 				.on(
 					"postgres_changes",
 					{
@@ -527,6 +529,13 @@ export const useEventStore = create<EventState>((set, get) => {
 						filter: `event_id=eq.${eventId}`,
 					},
 					async (payload) => {
+						logger.info("media_items payload received", {
+							channel: channelName,
+							eventType: payload.eventType,
+							eventId,
+							newId: (payload.new as { id?: string } | null)?.id,
+							oldId: (payload.old as { id?: string } | null)?.id,
+						});
 						const { mediaItems } = get();
 
 						if (payload.eventType === "INSERT") {
@@ -569,7 +578,13 @@ export const useEventStore = create<EventState>((set, get) => {
 						}
 					}
 				)
-				.subscribe();
+				.subscribe((status, err) => {
+					logger.info("media_items channel status", {
+						channel: channelName,
+						status,
+						error: err ? String(err) : undefined,
+					});
+				});
 
 			return () => {
 				supabase.removeChannel(channel);
@@ -577,8 +592,9 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToParticipants: (eventId: string) => {
+			const channelName = `participants:${eventId}`;
 			const channel = supabase
-				.channel(`participants:${eventId}`)
+				.channel(channelName)
 				.on(
 					"postgres_changes",
 					{
@@ -627,7 +643,13 @@ export const useEventStore = create<EventState>((set, get) => {
 						}
 					}
 				)
-				.subscribe();
+				.subscribe((status, err) => {
+					logger.info("participants channel status", {
+						channel: channelName,
+						status,
+						error: err ? String(err) : undefined,
+					});
+				});
 
 			return () => {
 				supabase.removeChannel(channel);
@@ -635,8 +657,9 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToEvent: (eventId: string) => {
+			const channelName = `event:${eventId}`;
 			const channel = supabase
-				.channel(`event:${eventId}`)
+				.channel(channelName)
 				.on(
 					"postgres_changes",
 					{
@@ -681,7 +704,13 @@ export const useEventStore = create<EventState>((set, get) => {
 						}));
 					}
 				)
-				.subscribe();
+				.subscribe((status, err) => {
+					logger.info("event channel status", {
+						channel: channelName,
+						status,
+						error: err ? String(err) : undefined,
+					});
+				});
 
 			return () => {
 				supabase.removeChannel(channel);
@@ -690,8 +719,9 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		subscribeToUserEvents: (userId: string) => {
 			// Subscribe to new participations (when user joins or is added to events)
+			const participantChannelName = `user_participations:${userId}`;
 			const participantChannel = supabase
-				.channel(`user_participations:${userId}`)
+				.channel(participantChannelName)
 				.on(
 					"postgres_changes",
 					{
@@ -754,11 +784,18 @@ export const useEventStore = create<EventState>((set, get) => {
 						}));
 					}
 				)
-				.subscribe();
+				.subscribe((status, err) => {
+					logger.info("user_participations channel status", {
+						channel: participantChannelName,
+						status,
+						error: err ? String(err) : undefined,
+					});
+				});
 
 			// Subscribe to updates on all events the user participates in
+			const eventsChannelName = `user_events_updates:${userId}`;
 			const eventsChannel = supabase
-				.channel(`user_events_updates:${userId}`)
+				.channel(eventsChannelName)
 				.on(
 					"postgres_changes",
 					{
@@ -776,7 +813,13 @@ export const useEventStore = create<EventState>((set, get) => {
 						}));
 					}
 				)
-				.subscribe();
+				.subscribe((status, err) => {
+					logger.info("user_events_updates channel status", {
+						channel: eventsChannelName,
+						status,
+						error: err ? String(err) : undefined,
+					});
+				});
 
 			return () => {
 				supabase.removeChannel(participantChannel);
