@@ -2,11 +2,13 @@ jest.mock("@/lib/supabase", () => ({
 	supabase: {
 		storage: { from: jest.fn() },
 		from: jest.fn(),
+		rpc: jest.fn().mockResolvedValue({ data: true, error: null }),
 	},
 }));
 jest.mock("expo-file-system/legacy", () => ({
 	readAsStringAsync: jest.fn(),
 	downloadAsync: jest.fn(),
+	getInfoAsync: jest.fn().mockResolvedValue({ exists: true, size: 12345, uri: "" }),
 	cacheDirectory: "/cache/",
 	EncodingType: { Base64: "base64" },
 }));
@@ -272,6 +274,40 @@ describe("storage", () => {
 				"file:///resolved/photo.jpg",
 				expect.any(Object)
 			);
+		});
+
+		it("writes file_size_bytes from getInfoAsync, not base64 length", async () => {
+			setupStorageMock({ uploadPath: "event1/user1/123.jpg" });
+			const { mockInsert } = setupDbMock();
+
+			await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
+
+			expect(mockInsert).toHaveBeenCalledWith(
+				expect.objectContaining({ file_size_bytes: 12345 })
+			);
+		});
+
+		it("rejects video upload when can_upload_video RPC returns false", async () => {
+			(mockedSupabase.rpc as jest.Mock).mockResolvedValueOnce({ data: false, error: null });
+			const { mockInsert } = setupDbMock();
+			const mockUpload = jest.fn();
+			mockedSupabase.storage.from.mockReturnValue({ upload: mockUpload, remove: jest.fn() });
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				uri: "file:///video.mp4",
+				mediaType: "video",
+				duration: 60000,
+			});
+
+			expect(result.success).toBe(false);
+			expect(result.error).toMatch(/duration/i);
+			expect(mockedSupabase.rpc).toHaveBeenCalledWith("can_upload_video", {
+				p_event_id: "event1",
+				p_duration_seconds: 60,
+			});
+			expect(mockUpload).not.toHaveBeenCalled();
+			expect(mockInsert).not.toHaveBeenCalled();
 		});
 	});
 

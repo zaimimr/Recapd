@@ -4,6 +4,7 @@ import {
 	cacheDirectory,
 	downloadAsync,
 	EncodingType,
+	getInfoAsync,
 	readAsStringAsync,
 } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
@@ -127,8 +128,26 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 	} = options;
 
 	try {
+		if (mediaType === "video" && duration && duration > 0) {
+			const durationSeconds = Math.round(duration / 1000);
+			const { data: allowed, error: rpcError } = await supabase.rpc("can_upload_video", {
+				p_event_id: eventId,
+				p_duration_seconds: durationSeconds,
+			});
+			if (rpcError) {
+				console.warn("can_upload_video RPC failed, allowing upload:", rpcError);
+			} else if (allowed === false) {
+				return {
+					success: false,
+					error: "Video exceeds the duration limit for this event's plan",
+				};
+			}
+		}
+
 		const validCapturedAt = safeDate(capturedAt);
 		const readableUri = await getReadableUri(uri);
+		const fileInfo = await getInfoAsync(readableUri);
+		const realSize = fileInfo.exists ? fileInfo.size : 0;
 		const base64 = await readAsStringAsync(readableUri, {
 			encoding: EncodingType.Base64,
 		});
@@ -167,7 +186,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			width,
 			height,
 			duration_milliseconds: mediaType === "video" ? Math.round(duration || 0) : null,
-			file_size_bytes: fileSize || base64.length,
+			file_size_bytes: realSize > 0 ? realSize : (fileSize ?? 0),
 			storage_path: uploadData.path,
 			thumbnail_path: thumbnailPath,
 			visibility: "shared",
