@@ -108,6 +108,7 @@ export interface Database {
 					joined_at: string;
 					no_photos_to_upload: boolean;
 					last_reminder_sent_at: string | null;
+					push_token: string | null;
 				};
 				Insert: {
 					id?: string;
@@ -118,6 +119,7 @@ export interface Database {
 					joined_at?: string;
 					no_photos_to_upload?: boolean;
 					last_reminder_sent_at?: string | null;
+					push_token?: string | null;
 				};
 				Update: {
 					id?: string;
@@ -128,6 +130,7 @@ export interface Database {
 					joined_at?: string;
 					no_photos_to_upload?: boolean;
 					last_reminder_sent_at?: string | null;
+					push_token?: string | null;
 				};
 				Relationships: [
 					{
@@ -158,6 +161,7 @@ export interface Database {
 					file_size_bytes: number | null;
 					storage_path: string;
 					thumbnail_path: string | null;
+					dominant_color: string | null;
 					visibility: MediaVisibility;
 					deleted_at: string | null;
 					latitude: number | null;
@@ -176,6 +180,7 @@ export interface Database {
 					file_size_bytes?: number | null;
 					storage_path: string;
 					thumbnail_path?: string | null;
+					dominant_color?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
 					latitude?: number | null;
@@ -194,6 +199,7 @@ export interface Database {
 					file_size_bytes?: number | null;
 					storage_path?: string;
 					thumbnail_path?: string | null;
+					dominant_color?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
 					latitude?: number | null;
@@ -209,6 +215,49 @@ export interface Database {
 					{
 						foreignKeyName: "media_items_uploaded_by_user_id_fkey";
 						columns: ["uploaded_by_user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			event_pro_unlocks: {
+				Row: {
+					id: string;
+					event_id: string;
+					user_id: string;
+					purchased_at: string;
+					platform: string | null;
+					transaction_id: string | null;
+					created_at: string;
+				};
+				Insert: {
+					id?: string;
+					event_id: string;
+					user_id: string;
+					purchased_at?: string;
+					platform?: string | null;
+					transaction_id?: string | null;
+					created_at?: string;
+				};
+				Update: {
+					id?: string;
+					event_id?: string;
+					user_id?: string;
+					purchased_at?: string;
+					platform?: string | null;
+					transaction_id?: string | null;
+					created_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "event_pro_unlocks_event_id_fkey";
+						columns: ["event_id"];
+						referencedRelation: "events";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "event_pro_unlocks_user_id_fkey";
+						columns: ["user_id"];
 						referencedRelation: "users";
 						referencedColumns: ["id"];
 					},
@@ -234,6 +283,7 @@ export type User = Database["public"]["Tables"]["users"]["Row"];
 export type Event = Database["public"]["Tables"]["events"]["Row"];
 export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];
 export type MediaItem = Database["public"]["Tables"]["media_items"]["Row"];
+export type EventProUnlock = Database["public"]["Tables"]["event_pro_unlocks"]["Row"];
 
 export type UserInsert = Database["public"]["Tables"]["users"]["Insert"];
 export type EventInsert = Database["public"]["Tables"]["events"]["Insert"];

@@ -34,6 +34,7 @@ CREATE TABLE event_participants (
   role TEXT DEFAULT 'guest' CHECK (role IN ('host', 'guest')),
   nickname TEXT,
   joined_at TIMESTAMPTZ DEFAULT NOW(),
+  push_token TEXT,
   UNIQUE(event_id, user_id)
 );
 
@@ -51,8 +52,21 @@ CREATE TABLE media_items (
   file_size_bytes BIGINT,
   storage_path TEXT NOT NULL,
   thumbnail_path TEXT,
+  dominant_color TEXT,
   visibility TEXT DEFAULT 'shared' CHECK (visibility IN ('shared', 'hidden', 'deleted')),
   deleted_at TIMESTAMPTZ
+);
+
+-- Event Pro Unlocks (per-event consumable purchases)
+CREATE TABLE event_pro_unlocks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  platform TEXT,
+  transaction_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(event_id, user_id)
 );
 
 -- Indexes
@@ -62,6 +76,8 @@ CREATE INDEX idx_media_items_event_captured ON media_items(event_id, captured_at
 CREATE INDEX idx_event_participants_event ON event_participants(event_id);
 CREATE INDEX idx_event_participants_user ON event_participants(user_id);
 CREATE INDEX idx_users_device_id ON users(device_id);
+CREATE INDEX idx_event_pro_unlocks_event ON event_pro_unlocks(event_id);
+CREATE INDEX idx_event_pro_unlocks_user ON event_pro_unlocks(user_id);
 
 -- Row Level Security Policies
 
@@ -70,6 +86,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE media_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_pro_unlocks ENABLE ROW LEVEL SECURITY;
 
 -- Users policies
 CREATE POLICY "Users can view their own profile"
@@ -85,14 +102,13 @@ CREATE POLICY "Users can update their own profile"
   USING (true);
 
 -- Events policies
-CREATE POLICY "Anyone can view events they participate in"
+CREATE POLICY "Participants can view their events"
   ON events FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM event_participants
       WHERE event_participants.event_id = events.id
     )
-    OR created_by_user_id IS NOT NULL
   );
 
 CREATE POLICY "Anyone can create events"
@@ -144,6 +160,20 @@ CREATE POLICY "Users can delete their own media"
   USING (uploaded_by_user_id = auth.uid() OR uploaded_by_user_id IN (
     SELECT id FROM users WHERE device_id IS NOT NULL
   ));
+
+-- Event Pro Unlock policies
+CREATE POLICY "Participants can read event pro unlocks"
+  ON event_pro_unlocks FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM event_participants
+      WHERE event_participants.event_id = event_pro_unlocks.event_id
+    )
+  );
+
+CREATE POLICY "Anyone can insert event pro unlocks"
+  ON event_pro_unlocks FOR INSERT
+  WITH CHECK (true);
 
 -- Storage bucket policies (run after creating buckets)
 -- Create buckets: 'event-photos' and 'thumbnails'
