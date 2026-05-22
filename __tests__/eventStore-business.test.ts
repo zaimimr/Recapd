@@ -85,6 +85,7 @@ function makeMediaItem(overrides: Partial<MediaItemWithUser> = {}): MediaItemWit
 		file_size_bytes: null,
 		storage_path: "events/evt1/photo1.jpg",
 		thumbnail_path: null,
+		dominant_color: null,
 		visibility: "shared",
 		deleted_at: null,
 		latitude: null,

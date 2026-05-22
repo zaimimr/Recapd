@@ -122,7 +122,14 @@ function ClusterRow({
 					return (
 						<TouchableOpacity
 							key={photo.id}
-							style={[styles.clusterPhoto, { width: photoWidth, height: CLUSTER_PHOTO_HEIGHT }]}
+							style={[
+								styles.clusterPhoto,
+								{
+									width: photoWidth,
+									height: CLUSTER_PHOTO_HEIGHT,
+									backgroundColor: photo.dominant_color || "#1a1a1a",
+								},
+							]}
 							onPress={() => onPhotoPress(photo, globalIndex, allPhotos)}
 							activeOpacity={0.9}
 						>

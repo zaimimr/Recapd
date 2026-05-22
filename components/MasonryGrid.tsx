@@ -102,8 +102,14 @@ function PhotoCard({
 	const isFailed = photo.isPending && photo.syncStatus === "failed";
 	const isPendingNotStarted = photo.isPending && photo.syncStatus === "pending";
 
+	const tileBackground = photo.dominant_color || (isDark ? "#1a1a1a" : "#e5e7eb");
+
 	return (
-		<TouchableOpacity style={[styles.photoCard, { height }]} onPress={onPress} activeOpacity={0.9}>
+		<TouchableOpacity
+			style={[styles.photoCard, { height, backgroundColor: tileBackground }]}
+			onPress={onPress}
+			activeOpacity={0.9}
+		>
 			{imageUri ? (
 				<Image
 					source={{ uri: imageUri }}

@@ -55,6 +55,35 @@ export interface UploadMediaOptions {
 	longitude?: number;
 }
 
+const PLACEHOLDER_PALETTE = [
+	"#1f2937",
+	"#374151",
+	"#4b5563",
+	"#7c3aed",
+	"#6d28d9",
+	"#4c1d95",
+	"#1e3a8a",
+	"#1e40af",
+	"#0f766e",
+	"#115e59",
+	"#7f1d1d",
+	"#9a3412",
+	"#78350f",
+	"#365314",
+	"#3f6212",
+	"#831843",
+];
+
+export function pickDominantColor(seed: string): string {
+	let hash = 0;
+	for (let i = 0; i < seed.length; i++) {
+		hash = (hash << 5) - hash + seed.charCodeAt(i);
+		hash |= 0;
+	}
+	const idx = Math.abs(hash) % PLACEHOLDER_PALETTE.length;
+	return PLACEHOLDER_PALETTE[idx];
+}
+
 function getContentType(extension: string, mediaType: MediaType): string {
 	if (mediaType === "video") {
 		switch (extension) {
@@ -178,6 +207,11 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			thumbnailPath = await generateAndUploadThumbnail(readableUri, eventId, userId, timestamp);
 		}
 
+		const colorSeed =
+			(base64.length > 4096 ? `${base64.slice(0, 2048)}${base64.slice(-2048)}` : base64) ||
+			uploadData.path;
+		const dominantColor = pickDominantColor(colorSeed);
+
 		const insertData: MediaItemInsert = {
 			event_id: eventId,
 			uploaded_by_user_id: userId,
@@ -189,6 +223,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			file_size_bytes: realSize > 0 ? realSize : (fileSize ?? 0),
 			storage_path: uploadData.path,
 			thumbnail_path: thumbnailPath,
+			dominant_color: dominantColor,
 			visibility: "shared",
 			latitude: latitude ?? null,
 			longitude: longitude ?? null,
