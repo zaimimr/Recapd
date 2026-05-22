@@ -40,7 +40,8 @@
 				"appleId": "me@zaim.no"
 			},
 			"android": {
-				"serviceAccountKeyPath": "credentials/android/serviceAccountKey.json"
+				"serviceAccountKeyPath": "credentials/android/serviceAccountKey.json",
+				"track": "production"
 			}
 		}
 	}
