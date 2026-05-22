@@ -216,7 +216,15 @@ export interface Database {
 			};
 		};
 		Views: {};
-		Functions: {};
+		Functions: {
+			can_upload_video: {
+				Args: {
+					p_event_id: string;
+					p_duration_seconds: number;
+				};
+				Returns: boolean;
+			};
+		};
 		Enums: {};
 		CompositeTypes: {};
 	};
