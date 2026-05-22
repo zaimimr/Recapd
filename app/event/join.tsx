@@ -19,7 +19,7 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
-import { useSubscriptionStore } from "@/store/subscriptionStore";
+import { useIsPro } from "@/store/subscriptionStore";
 import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
 
 export default function JoinEventScreen() {
@@ -158,7 +158,7 @@ export default function JoinEventScreen() {
 		}
 	}
 
-	const isPro = useSubscriptionStore((state) => state.isPro);
+	const isPro = useIsPro();
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
 	const isEventFull =
