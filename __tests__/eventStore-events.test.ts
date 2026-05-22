@@ -31,7 +31,11 @@ jest.mock("@/lib/supabase", () => {
 				on: jest.fn().mockReturnThis(),
 				subscribe: jest.fn().mockReturnThis(),
 			}),
+			getChannels: jest.fn().mockReturnValue([]),
 			removeChannel: jest.fn(),
+			realtime: {
+				setAuth: jest.fn(),
+			},
 			storage: {
 				from: jest.fn().mockReturnValue({
 					remove: jest.fn().mockResolvedValue({ error: null }),
