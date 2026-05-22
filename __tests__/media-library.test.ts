@@ -279,7 +279,7 @@ describe("getMediaInTimeRange", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].mediaType).toBe("video");
-		expect(result[0].duration).toBe(15.5);
+		expect(result[0].duration).toBe(15500);
 	});
 });
 
@@ -380,11 +380,11 @@ describe("pickMediaFromLibrary", () => {
 			],
 		});
 
-		const result = await pickMediaFromLibrary({ maxVideoDuration: 30 });
+		const result = await pickMediaFromLibrary({ maxVideoDuration: 30_000 });
 
 		expect(result.media).toHaveLength(1);
 		expect(result.media[0].mediaType).toBe("video");
-		expect(result.media[0].duration).toBe(25);
+		expect(result.media[0].duration).toBe(25_000);
 	});
 
 	it("counts multiple long videos", async () => {

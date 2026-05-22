@@ -64,6 +64,7 @@ jest.mock("@/lib/dateUtils", () => ({
 
 jest.mock("@/lib/notifications", () => ({
 	sendParticipantLimitNotification: jest.fn().mockResolvedValue(true),
+	sendEventFullNotification: jest.fn().mockResolvedValue(true),
 }));
 
 jest.mock("@/lib/subscription", () => ({
