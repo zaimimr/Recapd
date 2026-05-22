@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useSubscriptionStore } from "@/store/subscriptionStore";
-import { FREE_PARTICIPANT_LIMIT, PARTICIPANT_WARNING_THRESHOLD } from "@/types/subscription";
+import { useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
+import { getParticipantLimit, getParticipantWarningThreshold } from "@/types/subscription";
 
 interface ParticipantLimitBannerProps {
 	participantCount: number;
@@ -17,12 +17,15 @@ export default function ParticipantLimitBanner({
 	isDark = false,
 }: ParticipantLimitBannerProps) {
 	const { showPaywall } = useSubscriptionStore();
+	const plans = useSubscriptionPlans();
+	const participantLimit = getParticipantLimit(hostIsPro, plans);
+	const warningThreshold = getParticipantWarningThreshold(hostIsPro, plans);
 
 	if (hostIsPro) return null;
-	if (participantCount < PARTICIPANT_WARNING_THRESHOLD) return null;
+	if (participantCount < warningThreshold) return null;
 
-	const isAtLimit = participantCount >= FREE_PARTICIPANT_LIMIT;
-	const remaining = FREE_PARTICIPANT_LIMIT - participantCount;
+	const isAtLimit = participantCount >= participantLimit;
+	const remaining = participantLimit - participantCount;
 
 	const handleUpgrade = () => {
 		showPaywall();
@@ -63,7 +66,7 @@ export default function ParticipantLimitBanner({
 				<Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
 					{isHost
 						? "Upgrade to Pro for unlimited"
-						: `Free events allow up to ${FREE_PARTICIPANT_LIMIT} guests`}
+						: `Free events allow up to ${participantLimit} guests`}
 				</Text>
 			</View>
 			{isHost && (
@@ -82,19 +85,22 @@ const styles = StyleSheet.create({
 	banner: {
 		flexDirection: "row",
 		alignItems: "center",
-		padding: 12,
-		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 14,
+		borderWidth: 1,
 		marginBottom: 16,
 		gap: 12,
 	},
 	bannerWarning: {
-		backgroundColor: "#fef3c7",
+		backgroundColor: "#fff",
+		borderColor: "#f59e0b",
 	},
 	bannerLimit: {
-		backgroundColor: "#fee2e2",
+		backgroundColor: "#fff",
+		borderColor: "#ef4444",
 	},
 	bannerDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
 	},
 	iconContainer: {
 		width: 28,
@@ -115,7 +121,9 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 14,
 		fontWeight: "600",
-		marginBottom: 2,
+		marginBottom: 3,
+		textTransform: "uppercase",
+		letterSpacing: 0.8,
 	},
 	titleWarning: {
 		color: "#92400e",
@@ -124,20 +132,20 @@ const styles = StyleSheet.create({
 		color: "#b91c1c",
 	},
 	subtitle: {
-		fontSize: 12,
-		color: "#78350f",
+		fontSize: 13,
+		color: "#6b7280",
 	},
 	subtitleDark: {
-		color: "#888",
+		color: "#9ca3af",
 	},
 	upgradeButton: {
-		backgroundColor: "#ef4444",
+		backgroundColor: "#111827",
 		paddingHorizontal: 14,
 		paddingVertical: 8,
-		borderRadius: 8,
+		borderRadius: 999,
 	},
 	upgradeButtonWarning: {
-		backgroundColor: "#f59e0b",
+		backgroundColor: "#111827",
 	},
 	upgradeButtonText: {
 		color: "#fff",

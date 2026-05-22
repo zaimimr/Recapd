@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -13,6 +12,8 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { logger } from "@/lib/logger";
+import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 import type { Event } from "@/types/database";
@@ -54,7 +55,7 @@ export default function JoinByCodeScreen() {
 						setEventPreview(event);
 					}
 				} catch (error) {
-					console.error("Event lookup failed:", error);
+					logger.error("Event lookup failed", error, { code });
 					setLookupDone(true);
 				}
 			}
@@ -147,15 +148,20 @@ export default function JoinByCodeScreen() {
 				>
 					<View style={styles.content}>
 						<View style={[styles.previewCard, isDark && styles.previewCardDark]}>
+							<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
 							<Text style={[styles.previewTitle, isDark && styles.textDark]}>
 								{eventPreview.title}
 							</Text>
 							<Text style={[styles.previewDate, isDark && styles.textMuted]}>
-								{format(new Date(eventPreview.starts_at), "EEEE, MMMM d, yyyy")}
+								{formatLocalizedDate(eventPreview.starts_at, {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+									year: "numeric",
+								})}
 							</Text>
 							<Text style={[styles.previewTime, isDark && styles.textMuted]}>
-								{format(new Date(eventPreview.starts_at), "h:mm a")} -{" "}
-								{format(new Date(eventPreview.ends_at), "h:mm a")}
+								{formatLocalizedTimeRange(eventPreview.starts_at, eventPreview.ends_at)}
 							</Text>
 							<View style={styles.previewStats}>
 								<Text style={[styles.previewParticipants, isDark && styles.textMuted]}>
@@ -166,7 +172,7 @@ export default function JoinByCodeScreen() {
 						</View>
 
 						{!user && (
-							<View style={styles.nameSection}>
+							<View style={[styles.nameSection, isDark && styles.previewCardDark]}>
 								<Text style={[styles.nameLabel, isDark && styles.textDark]}>
 									What should we call you?
 								</Text>
@@ -233,10 +239,10 @@ export default function JoinByCodeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	centered: {
 		justifyContent: "center",
@@ -245,8 +251,9 @@ const styles = StyleSheet.create({
 	},
 	content: {
 		flex: 1,
-		padding: 24,
+		padding: 16,
 		justifyContent: "center",
+		gap: 14,
 	},
 	loadingText: {
 		fontSize: 16,
@@ -266,64 +273,80 @@ const styles = StyleSheet.create({
 		marginBottom: 32,
 	},
 	previewCard: {
-		backgroundColor: "#f5f5f5",
-		borderRadius: 20,
-		padding: 24,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		padding: 20,
 		alignItems: "center",
-		marginBottom: 24,
 	},
 	previewCardDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
+		marginBottom: 8,
 	},
 	previewTitle: {
 		fontSize: 24,
 		fontWeight: "700",
-		color: "#000",
+		color: "#111827",
 		marginBottom: 12,
 		textAlign: "center",
+		letterSpacing: -0.7,
 	},
 	previewDate: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 4,
 	},
 	previewTime: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 16,
 	},
 	previewStats: {
 		paddingTop: 16,
 		borderTopWidth: 1,
-		borderTopColor: "#e5e5e5",
+		borderTopColor: "#e5e7eb",
 		width: "100%",
 		alignItems: "center",
 	},
 	previewParticipants: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 	},
 	nameSection: {
-		marginBottom: 24,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		padding: 16,
 	},
 	nameLabel: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 8,
+		fontSize: 12,
+		fontWeight: "700",
+		color: "#111827",
+		marginBottom: 10,
+		textTransform: "uppercase",
+		letterSpacing: 1,
 	},
 	nameInput: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 18,
-		color: "#000",
+		color: "#111827",
 		borderWidth: 2,
-		borderColor: "transparent",
+		borderColor: "#e5e7eb",
 	},
 	nameInputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	inputError: {
@@ -331,7 +354,7 @@ const styles = StyleSheet.create({
 	},
 	nameHint: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 8,
 	},
 	errorText: {
@@ -344,9 +367,9 @@ const styles = StyleSheet.create({
 		gap: 12,
 	},
 	button: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	buttonDisabled: {
@@ -354,17 +377,21 @@ const styles = StyleSheet.create({
 	},
 	buttonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	backButton: {
 		paddingVertical: 16,
 		alignItems: "center",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
 	},
 	backButtonText: {
-		color: "#000",
-		fontSize: 16,
-		fontWeight: "500",
+		color: "#111827",
+		fontSize: 15,
+		fontWeight: "600",
 	},
 	textDark: {
 		color: "#fff",

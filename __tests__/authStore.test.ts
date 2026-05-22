@@ -1,7 +1,17 @@
 jest.mock("@/lib/supabase", () => {
 	const buildChain = (finalValue: any = { data: null, error: null }): any => {
 		const chain: any = {};
-		const methods = ["select", "insert", "update", "delete", "eq", "single"];
+		const methods = [
+			"select",
+			"insert",
+			"update",
+			"delete",
+			"eq",
+			"single",
+			"maybeSingle",
+			"upsert",
+			"is",
+		];
 		methods.forEach((m) => {
 			chain[m] = jest.fn().mockReturnValue(chain);
 		});
@@ -11,10 +21,34 @@ jest.mock("@/lib/supabase", () => {
 		Object.defineProperty(chain, "error", { get: () => finalValue.error });
 		return chain;
 	};
+	const auth = {
+		getSession: jest.fn().mockResolvedValue({
+			data: {
+				session: {
+					user: {
+						id: "auth-user-1",
+					},
+				},
+			},
+			error: null,
+		}),
+		signInAnonymously: jest.fn().mockResolvedValue({
+			data: {
+				session: {
+					user: {
+						id: "auth-user-1",
+					},
+				},
+			},
+			error: null,
+		}),
+		signOut: jest.fn().mockResolvedValue({ error: null }),
+	};
 	return {
 		buildChain,
 		supabase: {
 			from: jest.fn().mockReturnValue(buildChain()),
+			auth,
 		},
 	};
 });
@@ -45,6 +79,14 @@ jest.mock("expo-crypto", () => ({
 jest.mock("react-native", () => ({
 	Platform: { OS: "ios" },
 }));
+jest.mock("@/lib/logger", () => ({
+	logger: {
+		debug: jest.fn(),
+		info: jest.fn(),
+		warn: jest.fn(),
+		error: jest.fn(),
+	},
+}));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "@/store/authStore";
@@ -55,15 +97,11 @@ const Application = require("expo-application");
 
 const mockUser = {
 	id: "user-1",
+	auth_user_id: "auth-user-1",
 	display_name: "Test User",
-	device_id: "ios-vendor-id-123",
-	push_token: null,
 	created_at: "2024-01-01T00:00:00Z",
 	last_seen_at: "2024-01-01T00:00:00Z",
-	subscription_tier: "free",
-	subscription_expires_at: null,
-	subscription_platform: null,
-	subscription_id: null,
+	subscription_tier: "free" as const,
 };
 
 beforeEach(() => {
@@ -74,19 +112,33 @@ beforeEach(() => {
 		deviceId: null,
 	});
 	jest.clearAllMocks();
+	supabase.from.mockReset();
 	supabase.from.mockReturnValue(buildChain());
+	supabase.auth.getSession.mockResolvedValue({
+		data: { session: { user: { id: "auth-user-1" } } },
+		error: null,
+	});
+	supabase.auth.signInAnonymously.mockResolvedValue({
+		data: { session: { user: { id: "auth-user-1" } } },
+		error: null,
+	});
+	supabase.auth.signOut.mockResolvedValue({ error: null });
 });
 
 describe("returning user opens the app", () => {
 	test("recognizes the user by their device and resumes their session", async () => {
 		const selectChain = buildChain({ data: mockUser, error: null });
 		const updateChain = buildChain({ data: null, error: null });
+		const privateUpsertChain = buildChain({ data: null, error: null });
 
 		let fromCallCount = 0;
 		supabase.from.mockImplementation((table: string) => {
 			if (table === "users") {
 				fromCallCount++;
 				return fromCallCount === 1 ? selectChain : updateChain;
+			}
+			if (table === "user_private_data") {
+				return privateUpsertChain;
 			}
 			return buildChain();
 		});
@@ -102,12 +154,16 @@ describe("returning user opens the app", () => {
 	test("updates the user's last seen timestamp", async () => {
 		const selectChain = buildChain({ data: mockUser, error: null });
 		const updateChain = buildChain({ data: null, error: null });
+		const privateUpsertChain = buildChain({ data: null, error: null });
 
 		let fromCallCount = 0;
 		supabase.from.mockImplementation((table: string) => {
 			if (table === "users") {
 				fromCallCount++;
 				return fromCallCount === 1 ? selectChain : updateChain;
+			}
+			if (table === "user_private_data") {
+				return privateUpsertChain;
 			}
 			return buildChain();
 		});
@@ -118,18 +174,23 @@ describe("returning user opens the app", () => {
 		expect(updateChain.update).toHaveBeenCalledWith(
 			expect.objectContaining({ last_seen_at: expect.any(String) })
 		);
+		expect(supabase.from).toHaveBeenCalledWith("user_private_data");
 	});
 
 	test("still initializes when last_seen_at update fails", async () => {
 		const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 		const selectChain = buildChain({ data: mockUser, error: null });
 		const updateChain = buildChain({ data: null, error: { message: "DB error" } });
+		const privateUpsertChain = buildChain({ data: null, error: null });
 
 		let fromCallCount = 0;
 		supabase.from.mockImplementation((table: string) => {
 			if (table === "users") {
 				fromCallCount++;
 				return fromCallCount === 1 ? selectChain : updateChain;
+			}
+			if (table === "user_private_data") {
+				return privateUpsertChain;
 			}
 			return buildChain();
 		});
@@ -140,11 +201,61 @@ describe("returning user opens the app", () => {
 		expect(useAuthStore.getState().isInitialized).toBe(true);
 		consoleSpy.mockRestore();
 	});
+
+	test("falls back when device_id is already claimed by another row", async () => {
+		const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const selectChain = buildChain({ data: mockUser, error: null });
+		const updateChain = buildChain({ data: null, error: null });
+		const duplicatePrivateUpsertChain = buildChain({
+			data: null,
+			error: {
+				code: "23505",
+				message: 'duplicate key value violates unique constraint "user_private_data_device_id_key"',
+			},
+		});
+		const fallbackPrivateUpsertChain = buildChain({ data: null, error: null });
+		let usersCallCount = 0;
+		let privateCallCount = 0;
+
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "users") {
+				usersCallCount += 1;
+				return usersCallCount === 1 ? selectChain : updateChain;
+			}
+			if (table === "user_private_data") {
+				privateCallCount += 1;
+				return privateCallCount === 1 ? duplicatePrivateUpsertChain : fallbackPrivateUpsertChain;
+			}
+			return buildChain();
+		});
+
+		await useAuthStore.getState().initializeAuth();
+
+		expect(useAuthStore.getState().user).toEqual(mockUser);
+		expect(duplicatePrivateUpsertChain.upsert).toHaveBeenCalledWith(
+			expect.objectContaining({ user_id: "user-1", device_id: "ios-vendor-id-123" }),
+			{ onConflict: "user_id" }
+		);
+		expect(fallbackPrivateUpsertChain.upsert).toHaveBeenCalledWith(
+			expect.objectContaining({ user_id: "user-1" }),
+			{ onConflict: "user_id" }
+		);
+		expect(warnSpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				message: "Failed to sync private user data during auth init",
+			})
+		);
+		warnSpy.mockRestore();
+	});
 });
 
 describe("first-time user opens the app", () => {
 	test("initializes without a user session", async () => {
 		supabase.from.mockReturnValue(buildChain({ data: null, error: null }));
+		supabase.auth.getSession.mockResolvedValue({
+			data: { session: { user: { id: "auth-user-1" } } },
+			error: null,
+		});
 
 		await useAuthStore.getState().initializeAuth();
 
@@ -157,6 +268,10 @@ describe("first-time user opens the app", () => {
 	test("app remains usable even when database is unreachable", async () => {
 		const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 		supabase.from.mockReturnValue(buildChain({ data: null, error: { message: "DB error" } }));
+		supabase.auth.getSession.mockResolvedValue({
+			data: { session: { user: { id: "auth-user-1" } } },
+			error: null,
+		});
 
 		await useAuthStore.getState().initializeAuth();
 
@@ -171,6 +286,10 @@ describe("device identity persistence", () => {
 	test("prefers SecureStore for device ID (survives reinstall)", async () => {
 		SecureStore.getItemAsync.mockResolvedValue("secure-device-id");
 		supabase.from.mockReturnValue(buildChain({ data: null, error: null }));
+		supabase.auth.getSession.mockResolvedValue({
+			data: { session: { user: { id: "auth-user-1" } } },
+			error: null,
+		});
 
 		await useAuthStore.getState().initializeAuth();
 
@@ -181,6 +300,10 @@ describe("device identity persistence", () => {
 		SecureStore.getItemAsync.mockResolvedValue(null);
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue("async-device-id");
 		supabase.from.mockReturnValue(buildChain({ data: null, error: null }));
+		supabase.auth.getSession.mockResolvedValue({
+			data: { session: { user: { id: "auth-user-1" } } },
+			error: null,
+		});
 
 		await useAuthStore.getState().initializeAuth();
 
@@ -192,6 +315,10 @@ describe("device identity persistence", () => {
 		(AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
 		Application.getIosIdForVendorAsync.mockResolvedValue("new-ios-id");
 		supabase.from.mockReturnValue(buildChain({ data: null, error: null }));
+		supabase.auth.getSession.mockResolvedValue({
+			data: { session: { user: { id: "auth-user-1" } } },
+			error: null,
+		});
 
 		await useAuthStore.getState().initializeAuth();
 
@@ -202,11 +329,30 @@ describe("device identity persistence", () => {
 
 describe("creating a new account", () => {
 	test("user provides a valid name and gets an account", async () => {
-		const insertChain = buildChain({
-			data: { ...mockUser, display_name: "Alice" },
+		const existingUserChain = buildChain({ data: null, error: null });
+		const insertChain = buildChain({ data: null, error: null });
+		const createdUserChain = buildChain({
+			data: {
+				...mockUser,
+				id: "user-2",
+				display_name: "Alice",
+			},
 			error: null,
 		});
-		supabase.from.mockReturnValue(insertChain);
+		const privateUpsertChain = buildChain({ data: null, error: null });
+		let usersCallCount = 0;
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "users") {
+				usersCallCount += 1;
+				if (usersCallCount === 1) return existingUserChain;
+				if (usersCallCount === 2) return insertChain;
+				return createdUserChain;
+			}
+			if (table === "user_private_data") {
+				return privateUpsertChain;
+			}
+			return buildChain();
+		});
 
 		const result = await useAuthStore.getState().createUser("Alice");
 
@@ -217,11 +363,30 @@ describe("creating a new account", () => {
 	});
 
 	test("trims whitespace from the display name", async () => {
-		const insertChain = buildChain({
-			data: { ...mockUser, display_name: "Alice" },
+		const existingUserChain = buildChain({ data: null, error: null });
+		const insertChain = buildChain({ data: null, error: null });
+		const createdUserChain = buildChain({
+			data: {
+				...mockUser,
+				id: "user-2",
+				display_name: "Alice",
+			},
 			error: null,
 		});
-		supabase.from.mockReturnValue(insertChain);
+		const privateUpsertChain = buildChain({ data: null, error: null });
+		let usersCallCount = 0;
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "users") {
+				usersCallCount += 1;
+				if (usersCallCount === 1) return existingUserChain;
+				if (usersCallCount === 2) return insertChain;
+				return createdUserChain;
+			}
+			if (table === "user_private_data") {
+				return privateUpsertChain;
+			}
+			return buildChain();
+		});
 
 		const result = await useAuthStore.getState().createUser("  Alice  ");
 
@@ -250,19 +415,57 @@ describe("creating a new account", () => {
 	});
 
 	test("accepts boundary names (exactly 2 and 30 characters)", async () => {
-		const shortChain = buildChain({
-			data: { ...mockUser, display_name: "AB" },
+		const firstExistingUserChain = buildChain({ data: null, error: null });
+		const shortInsertChain = buildChain({ data: null, error: null });
+		const shortCreatedUserChain = buildChain({
+			data: {
+				...mockUser,
+				id: "user-2",
+				display_name: "AB",
+			},
 			error: null,
 		});
-		supabase.from.mockReturnValue(shortChain);
+		const shortPrivateUpsertChain = buildChain({ data: null, error: null });
+		let shortUsersCallCount = 0;
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "users") {
+				shortUsersCallCount += 1;
+				if (shortUsersCallCount === 1) return firstExistingUserChain;
+				if (shortUsersCallCount === 2) return shortInsertChain;
+				return shortCreatedUserChain;
+			}
+			if (table === "user_private_data") {
+				return shortPrivateUpsertChain;
+			}
+			return buildChain();
+		});
 		expect(await useAuthStore.getState().createUser("AB")).toBeTruthy();
 
 		const longName = "A".repeat(30);
-		const longChain = buildChain({
-			data: { ...mockUser, display_name: longName },
+		const secondExistingUserChain = buildChain({ data: null, error: null });
+		const longInsertChain = buildChain({ data: null, error: null });
+		const longCreatedUserChain = buildChain({
+			data: {
+				...mockUser,
+				id: "user-3",
+				display_name: longName,
+			},
 			error: null,
 		});
-		supabase.from.mockReturnValue(longChain);
+		const longPrivateUpsertChain = buildChain({ data: null, error: null });
+		let longUsersCallCount = 0;
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "users") {
+				longUsersCallCount += 1;
+				if (longUsersCallCount === 1) return secondExistingUserChain;
+				if (longUsersCallCount === 2) return longInsertChain;
+				return longCreatedUserChain;
+			}
+			if (table === "user_private_data") {
+				return longPrivateUpsertChain;
+			}
+			return buildChain();
+		});
 		expect(await useAuthStore.getState().createUser(longName)).toBeTruthy();
 	});
 

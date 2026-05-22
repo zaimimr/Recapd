@@ -1,5 +1,4 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { format } from "date-fns";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -17,10 +16,11 @@ import {
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
-import { useSubscriptionStore } from "@/store/subscriptionStore";
-import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
+import { useSubscriptionPlans } from "@/store/subscriptionStore";
+import { getParticipantLimit } from "@/types/subscription";
 
 export default function JoinEventScreen() {
 	const router = useRouter();
@@ -158,14 +158,14 @@ export default function JoinEventScreen() {
 		}
 	}
 
-	const isPro = useSubscriptionStore((state) => state.isPro);
+	const plans = useSubscriptionPlans();
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
+	const participantLimit = getParticipantLimit(eventPreview?.hostIsPro, plans);
 	const isEventFull =
 		SUBSCRIPTIONS_ENABLED &&
-		(eventPreview?.participant_count || 0) >= FREE_PARTICIPANT_LIMIT &&
-		!eventPreview?.hostIsPro &&
-		!isPro;
+		participantLimit !== Number.POSITIVE_INFINITY &&
+		(eventPreview?.participant_count || 0) >= participantLimit;
 
 	if (step === "preview" && eventPreview) {
 		return (
@@ -175,15 +175,20 @@ export default function JoinEventScreen() {
 			>
 				<View style={styles.content}>
 					<View style={[styles.previewCard, isDark && styles.previewCardDark]}>
+						<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
 						<Text style={[styles.previewTitle, isDark && styles.textDark]}>
 							{eventPreview.title}
 						</Text>
 						<Text style={[styles.previewDate, isDark && styles.textMuted]}>
-							{format(new Date(eventPreview.starts_at), "EEEE, MMMM d, yyyy")}
+							{formatLocalizedDate(eventPreview.starts_at, {
+								weekday: "long",
+								month: "long",
+								day: "numeric",
+								year: "numeric",
+							})}
 						</Text>
 						<Text style={[styles.previewTime, isDark && styles.textMuted]}>
-							{format(new Date(eventPreview.starts_at), "h:mm a")} -{" "}
-							{format(new Date(eventPreview.ends_at), "h:mm a")}
+							{formatLocalizedTimeRange(eventPreview.starts_at, eventPreview.ends_at)}
 						</Text>
 						<View style={styles.previewStats}>
 							<Text style={[styles.previewParticipants, isDark && styles.textMuted]}>
@@ -197,14 +202,14 @@ export default function JoinEventScreen() {
 						<View style={styles.eventFullBanner}>
 							<FontAwesome name="exclamation-circle" size={16} color="#ef4444" />
 							<Text style={styles.eventFullText}>
-								This event has reached the free plan limit of {FREE_PARTICIPANT_LIMIT} participants.
-								Ask the host to upgrade to Pro for unlimited spots.
+								This event has reached the current plan limit of {participantLimit} participants.
+								Ask the host to upgrade for more spots.
 							</Text>
 						</View>
 					)}
 
 					{!user && !isEventFull && (
-						<View style={styles.nameSection}>
+						<View style={[styles.nameSection, isDark && styles.previewCardDark]}>
 							<Text style={[styles.nameLabel, isDark && styles.textDark]}>
 								What should we call you?
 							</Text>
@@ -275,14 +280,15 @@ export default function JoinEventScreen() {
 			behavior={Platform.OS === "ios" ? "padding" : "height"}
 		>
 			<View style={styles.content}>
-				<View style={styles.header}>
+				<View style={[styles.header, isDark && styles.previewCardDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
 					<Text style={[styles.title, isDark && styles.textDark]}>Join an Event</Text>
 					<Text style={[styles.subtitle, isDark && styles.textMuted]}>
 						Enter the 6-character code shared by the host
 					</Text>
 				</View>
 
-				<View style={styles.form}>
+				<View style={[styles.form, isDark && styles.previewCardDark]}>
 					<TextInput
 						style={[styles.codeInput, isDark && styles.codeInputDark]}
 						placeholder="ABC123"
@@ -380,48 +386,67 @@ export default function JoinEventScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	content: {
 		flex: 1,
-		padding: 24,
+		padding: 16,
 		justifyContent: "center",
+		gap: 14,
 	},
 	header: {
 		alignItems: "center",
-		marginBottom: 32,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
+		gap: 6,
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
 	},
 	title: {
 		fontSize: 28,
 		fontWeight: "700",
-		color: "#000",
-		marginBottom: 8,
+		color: "#111827",
+		letterSpacing: -0.8,
 	},
 	subtitle: {
-		fontSize: 16,
-		color: "#666",
+		fontSize: 14,
+		color: "#6b7280",
 		textAlign: "center",
 	},
 	form: {
-		marginBottom: 24,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		padding: 16,
 	},
 	codeInput: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 16,
 		paddingVertical: 24,
 		paddingHorizontal: 24,
 		fontSize: 32,
 		fontWeight: "700",
 		fontFamily: "SpaceMono",
-		color: "#000",
+		color: "#111827",
 		textAlign: "center",
 		letterSpacing: 8,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	codeInputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	errorText: {
@@ -431,9 +456,9 @@ const styles = StyleSheet.create({
 		marginTop: 12,
 	},
 	button: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	buttonDisabled: {
@@ -441,7 +466,7 @@ const styles = StyleSheet.create({
 	},
 	buttonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	divider: {
@@ -452,10 +477,10 @@ const styles = StyleSheet.create({
 	dividerLine: {
 		flex: 1,
 		height: 1,
-		backgroundColor: "#e5e5e5",
+		backgroundColor: "#d1d5db",
 	},
 	dividerLineDark: {
-		backgroundColor: "#333",
+		backgroundColor: "#242833",
 	},
 	dividerText: {
 		paddingHorizontal: 16,
@@ -467,27 +492,29 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		paddingVertical: 18,
-		borderRadius: 14,
-		borderWidth: 2,
-		borderColor: "#000",
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		backgroundColor: "#fff",
 		gap: 12,
 	},
 	scanButtonDark: {
-		borderColor: "#fff",
+		borderColor: "#242833",
+		backgroundColor: "#0f1115",
 	},
 	scanButtonText: {
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
-		color: "#000",
+		color: "#111827",
 	},
 	eventFullBanner: {
 		flexDirection: "row",
 		alignItems: "flex-start",
 		gap: 10,
-		backgroundColor: "#fef2f2",
-		borderRadius: 12,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#ef4444",
 		padding: 14,
-		marginBottom: 24,
 	},
 	eventFullText: {
 		flex: 1,
@@ -496,36 +523,43 @@ const styles = StyleSheet.create({
 		lineHeight: 20,
 	},
 	previewCard: {
-		backgroundColor: "#f5f5f5",
-		borderRadius: 20,
-		padding: 24,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		padding: 20,
 		alignItems: "center",
-		marginBottom: 24,
 	},
 	previewCardDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	nameSection: {
-		marginBottom: 24,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		padding: 16,
 	},
 	nameLabel: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#000",
-		marginBottom: 8,
+		fontSize: 12,
+		fontWeight: "700",
+		color: "#111827",
+		marginBottom: 10,
+		textTransform: "uppercase",
+		letterSpacing: 1,
 	},
 	nameInput: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 18,
-		color: "#000",
+		color: "#111827",
 		borderWidth: 2,
-		borderColor: "transparent",
+		borderColor: "#e5e7eb",
 	},
 	nameInputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	inputError: {
@@ -533,36 +567,37 @@ const styles = StyleSheet.create({
 	},
 	nameHint: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 8,
 	},
 	previewTitle: {
 		fontSize: 24,
 		fontWeight: "700",
-		color: "#000",
+		color: "#111827",
 		marginBottom: 12,
 		textAlign: "center",
+		letterSpacing: -0.7,
 	},
 	previewDate: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 4,
 	},
 	previewTime: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		marginBottom: 16,
 	},
 	previewStats: {
 		paddingTop: 16,
 		borderTopWidth: 1,
-		borderTopColor: "#e5e5e5",
+		borderTopColor: "#e5e7eb",
 		width: "100%",
 		alignItems: "center",
 	},
 	previewParticipants: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 	},
 	actions: {
 		gap: 12,
@@ -570,11 +605,15 @@ const styles = StyleSheet.create({
 	backButton: {
 		paddingVertical: 16,
 		alignItems: "center",
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
 	},
 	backButtonText: {
-		color: "#000",
-		fontSize: 16,
-		fontWeight: "500",
+		color: "#111827",
+		fontSize: 15,
+		fontWeight: "600",
 	},
 	textDark: {
 		color: "#fff",

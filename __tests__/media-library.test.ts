@@ -1,3 +1,11 @@
+jest.mock("@react-native-async-storage/async-storage", () => ({
+	__esModule: true,
+	default: {
+		getItem: jest.fn(),
+		setItem: jest.fn(),
+		removeItem: jest.fn(),
+	},
+}));
 jest.mock("expo-media-library", () => ({
 	requestPermissionsAsync: jest.fn(),
 	getAssetsAsync: jest.fn(),
@@ -7,6 +15,10 @@ jest.mock("expo-media-library", () => ({
 }));
 jest.mock("expo-image-picker", () => ({
 	launchImageLibraryAsync: jest.fn(),
+	UIImagePickerPreferredAssetRepresentationMode: {
+		Automatic: "automatic",
+		Current: "current",
+	},
 }));
 
 import * as ImagePicker from "expo-image-picker";
@@ -279,7 +291,7 @@ describe("getMediaInTimeRange", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].mediaType).toBe("video");
-		expect(result[0].duration).toBe(15.5);
+		expect(result[0].duration).toBe(15500);
 	});
 });
 
@@ -309,7 +321,12 @@ describe("pickMediaFromLibrary", () => {
 
 		const result = await pickMediaFromLibrary();
 
-		expect(result).toEqual({ media: [], videosFiltered: false, videosTooLong: 0 });
+		expect(result).toEqual({
+			media: [],
+			videosFiltered: false,
+			videosTooLong: 0,
+			filesTooLarge: 0,
+		});
 	});
 
 	it("returns photo media with correct fields", async () => {
@@ -384,7 +401,7 @@ describe("pickMediaFromLibrary", () => {
 
 		expect(result.media).toHaveLength(1);
 		expect(result.media[0].mediaType).toBe("video");
-		expect(result.media[0].duration).toBe(25);
+		expect(result.media[0].duration).toBe(25000);
 	});
 
 	it("counts multiple long videos", async () => {
@@ -515,8 +532,28 @@ describe("pickMediaFromLibrary", () => {
 		await pickMediaFromLibrary({ includeVideos: false });
 
 		expect(mockLaunchImageLibrary).toHaveBeenCalledWith(
-			expect.objectContaining({ mediaTypes: ["images"] })
+			expect.objectContaining({
+				mediaTypes: ["images"],
+				preferredAssetRepresentationMode: "current",
+			})
 		);
+	});
+
+	it("returns a user-facing error when iOS Photos rejects the selection", async () => {
+		mockLaunchImageLibrary.mockRejectedValue(
+			new Error("The operation couldn’t be completed. (PHPhotosErrorDomain error 3164.)")
+		);
+
+		const result = await pickMediaFromLibrary();
+
+		expect(result).toEqual({
+			media: [],
+			videosFiltered: false,
+			videosTooLong: 0,
+			filesTooLarge: 0,
+			error:
+				"iCloud photos could not be loaded. Open them in Photos first so they download to this device, then try again.",
+		});
 	});
 
 	it("sets videosFiltered when includeVideos is false and result has videos", async () => {

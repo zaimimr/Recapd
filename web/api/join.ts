@@ -3,6 +3,15 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 
+function escapeHtml(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;")
+		.replaceAll("'", "&#39;");
+}
+
 function formatDate(startsAt: string, endsAt: string): string {
 	const start = new Date(startsAt);
 	const end = new Date(endsAt);
@@ -27,16 +36,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return res.redirect(302, "https://recapd.app");
 	}
 
-	const { data: event } = await supabase
-		.from("events")
-		.select("title, starts_at, ends_at")
-		.eq("join_code", code)
-		.single();
+	const { data, error } = await supabase.rpc("get_event_preview", {
+		join_code_input: code,
+	});
 
-	const title = event?.title || "Join Event on Recapd";
-	const description = event
+	if (error) {
+		return res.redirect(302, "https://recapd.app");
+	}
+
+	const event = data?.[0];
+	const rawTitle = event?.title || "Join Event on Recapd";
+	const rawDescription = event
 		? formatDate(event.starts_at, event.ends_at)
 		: "Share photos together, privately.";
+	const title = escapeHtml(rawTitle);
+	const description = escapeHtml(rawDescription);
 
 	const appStoreUrl = "https://apps.apple.com/no/app/recapd/id6758083751";
 	const playStoreUrl = "https://play.google.com/store/apps/details?id=com.zaimimran.recapd";

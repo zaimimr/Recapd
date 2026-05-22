@@ -1,6 +1,6 @@
 jest.mock("expo-router", () => ({
 	useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
-	useFocusEffect: (cb: () => void) => cb(),
+	useFocusEffect: jest.fn(),
 	useLocalSearchParams: () => ({}),
 }));
 jest.mock("expo-camera", () => ({
@@ -24,6 +24,41 @@ jest.mock("@expo/vector-icons/FontAwesome", () => "FontAwesome");
 const mockRestore = jest.fn().mockResolvedValue({ success: false });
 const mockShowPaywall = jest.fn();
 const mockShowCustomerCenter = jest.fn();
+let mockIsPro = false;
+const mockPlans = {
+	free: {
+		id: "free",
+		displayName: "Free",
+		description: null,
+		isActive: true,
+		sortOrder: 0,
+		unlockScope: "none",
+		revenueCatEntitlementIdentifier: null,
+		revenueCatOfferingIdentifier: null,
+		capabilities: {
+			maxParticipants: 12,
+			participantWarningThreshold: 10,
+			maxSingleVideoDurationMs: 30_000,
+			canUploadVideos: true,
+		},
+	},
+	pro: {
+		id: "pro",
+		displayName: "Pro",
+		description: null,
+		isActive: true,
+		sortOrder: 1,
+		unlockScope: "both",
+		revenueCatEntitlementIdentifier: "Recapd Pro",
+		revenueCatOfferingIdentifier: null,
+		capabilities: {
+			maxParticipants: null,
+			participantWarningThreshold: null,
+			maxSingleVideoDurationMs: 300_000,
+			canUploadVideos: true,
+		},
+	},
+};
 
 let mockStatus = {
 	isActive: false,
@@ -33,16 +68,22 @@ let mockStatus = {
 };
 
 jest.mock("@/store/subscriptionStore", () => ({
-	useSubscriptionStore: () => ({
-		get status() {
-			return mockStatus;
-		},
-		showPaywall: mockShowPaywall,
-		showCustomerCenter: mockShowCustomerCenter,
-		restore: mockRestore,
-		isLoading: false,
-	}),
-	useIsPro: jest.fn(() => false),
+	useSubscriptionStore: (selector?: any) => {
+		const state = {
+			status: mockStatus,
+			showPaywall: mockShowPaywall,
+			showCustomerCenter: mockShowCustomerCenter,
+			restore: mockRestore,
+			isLoading: false,
+			isPro: mockIsPro,
+			planId: mockIsPro ? "pro" : "free",
+			plans: mockPlans,
+		};
+		return typeof selector === "function" ? selector(state) : state;
+	},
+	useIsPro: jest.fn(() => mockIsPro),
+	useSubscriptionPlanId: jest.fn(() => (mockIsPro ? "pro" : "free")),
+	useSubscriptionPlans: jest.fn(() => mockPlans),
 }));
 
 jest.mock("@/store/authStore", () => ({
@@ -119,10 +160,12 @@ describe("Settings - Subscription Status Text", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockSubscriptionsEnabled = true;
+		mockIsPro = false;
 		mockStatus = { isActive: false, expiresAt: null, productId: null, willRenew: false };
 	});
 
 	it("shows 'Renews' with date when subscription is active and will renew", () => {
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		mockStatus = {
 			isActive: true,
@@ -136,6 +179,7 @@ describe("Settings - Subscription Status Text", () => {
 	});
 
 	it("shows 'Expires' with date when subscription is cancelled (willRenew false)", () => {
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		mockStatus = {
 			isActive: true,
@@ -149,6 +193,7 @@ describe("Settings - Subscription Status Text", () => {
 	});
 
 	it("shows 'Active subscription' when pro but no expiration date", () => {
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		mockStatus = {
 			isActive: true,
@@ -161,9 +206,10 @@ describe("Settings - Subscription Status Text", () => {
 	});
 
 	it("shows free plan description when not pro", () => {
+		mockIsPro = false;
 		mockedUseIsPro.mockReturnValue(false);
 		const { getByText } = render(<SettingsScreen />);
-		expect(getByText("Longer videos & unlimited participants")).toBeTruthy();
+		expect(getByText("Unlimited participants · 5 min videos")).toBeTruthy();
 	});
 });
 
@@ -171,6 +217,7 @@ describe("Settings - Restore Button", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockSubscriptionsEnabled = true;
+		mockIsPro = false;
 		mockedUseIsPro.mockReturnValue(false);
 		mockStatus = { isActive: false, expiresAt: null, productId: null, willRenew: false };
 	});
@@ -181,6 +228,7 @@ describe("Settings - Restore Button", () => {
 	});
 
 	it("does not render Restore Purchases when isPro is true", () => {
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		const { queryByText } = render(<SettingsScreen />);
 		expect(queryByText("Restore Purchases")).toBeNull();
@@ -199,6 +247,7 @@ describe("Join - Event Full", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		mockSubscriptionsEnabled = true;
+		mockIsPro = false;
 		mockedUseIsPro.mockReturnValue(false);
 	});
 
@@ -225,7 +274,7 @@ describe("Join - Event Full", () => {
 
 		await waitFor(() => {
 			expect(getByText("Event Full")).toBeTruthy();
-			expect(queryByText(/free plan limit/)).toBeTruthy();
+			expect(queryByText(/current plan limit/)).toBeTruthy();
 		});
 	});
 
@@ -238,13 +287,14 @@ describe("Join - Event Full", () => {
 		fireEvent.press(getByText("Find Event"));
 
 		await waitFor(() => {
-			expect(getByText(/free plan limit/)).toBeTruthy();
+			expect(getByText(/current plan limit/)).toBeTruthy();
 		});
 
 		expect(queryByText("What should we call you?")).toBeNull();
 	});
 
 	it("does not show Event Full banner when hostIsPro is true", async () => {
+		mockIsPro = false;
 		mockFetchEventByCode.mockResolvedValue(makeEvent({ participant_count: 15, hostIsPro: true }));
 
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
@@ -256,10 +306,11 @@ describe("Join - Event Full", () => {
 			expect(getByText("Test Event")).toBeTruthy();
 		});
 
-		expect(queryByText(/free plan limit/)).toBeNull();
+		expect(queryByText(/current plan limit/)).toBeNull();
 	});
 
 	it("does not show Event Full banner when participant_count < 12", async () => {
+		mockIsPro = false;
 		mockFetchEventByCode.mockResolvedValue(makeEvent({ participant_count: 5, hostIsPro: false }));
 
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
@@ -271,7 +322,7 @@ describe("Join - Event Full", () => {
 			expect(getByText("Test Event")).toBeTruthy();
 		});
 
-		expect(queryByText(/free plan limit/)).toBeNull();
+		expect(queryByText(/current plan limit/)).toBeNull();
 	});
 });
 
@@ -282,12 +333,14 @@ describe("Home - Pro Badge", () => {
 	});
 
 	it("renders PRO badge when isPro is true and SUBSCRIPTIONS_ENABLED is true", () => {
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		const { getByText } = render(<HomeScreen />);
 		expect(getByText("PRO")).toBeTruthy();
 	});
 
 	it("does not render PRO badge when isPro is false", () => {
+		mockIsPro = false;
 		mockedUseIsPro.mockReturnValue(false);
 		const { queryByText } = render(<HomeScreen />);
 		expect(queryByText("PRO")).toBeNull();
@@ -295,6 +348,7 @@ describe("Home - Pro Badge", () => {
 
 	it("does not render PRO badge when SUBSCRIPTIONS_ENABLED is false", () => {
 		mockSubscriptionsEnabled = false;
+		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		const { queryByText } = render(<HomeScreen />);
 		expect(queryByText("PRO")).toBeNull();

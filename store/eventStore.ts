@@ -1,9 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { addDays } from "date-fns";
+import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
+import { DEMO_EVENTS, DEMO_MEDIA } from "@/lib/demoData";
+import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
-import { sendEventFullNotification, sendParticipantLimitNotification } from "@/lib/notifications";
+import type { UploadFailureReason } from "@/lib/storage";
+import { createVideoThumbnailUri } from "@/lib/storage";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { supabase } from "@/lib/supabase";
 import {
@@ -12,20 +16,191 @@ import {
 	processUploadQueue,
 	setUploadCallbacks,
 } from "@/lib/uploadQueue";
+import { useAuthStore } from "@/store/authStore";
+import { useSubscriptionStore } from "@/store/subscriptionStore";
 import type {
 	Event,
 	EventInsert,
 	EventParticipant,
 	EventParticipantInsert,
+	EventPreviewResult,
 	EventUpdate,
 	MediaItemWithUser,
 } from "@/types/database";
-import { FREE_PARTICIPANT_LIMIT } from "@/types/subscription";
+import { getParticipantLimit } from "@/types/subscription";
 
 const PENDING_UPLOADS_KEY = "recapd_pending_uploads";
+const SCAN_MATCH_TOLERANCE_MS = 1000;
+const VIDEO_DURATION_TOLERANCE_MS = 1500;
+const VIDEO_THUMBNAIL_BATCH_SIZE = 3;
+const MAX_PERSISTED_UPLOAD_ERROR_LENGTH = 256;
+
+type PersistedPendingUpload = Omit<PendingUpload, "capturedAt" | "thumbnailUri"> & {
+	capturedAt: string;
+	thumbnailUri?: null;
+};
+
+async function generateUuid(): Promise<string> {
+	const randomBytes = await Crypto.getRandomBytesAsync(16);
+
+	// Set version 4 and RFC 4122 variant bits.
+	randomBytes[6] = (randomBytes[6] & 0x0f) | 0x40;
+	randomBytes[8] = (randomBytes[8] & 0x3f) | 0x80;
+
+	const hex = Array.from(randomBytes)
+		.map((byte) => byte.toString(16).padStart(2, "0"))
+		.join("");
+
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function createPersistedPendingUpload(upload: PendingUpload): PersistedPendingUpload {
+	return {
+		...upload,
+		capturedAt: safeDate(upload.capturedAt).toISOString(),
+		error:
+			typeof upload.error === "string" && upload.error.length > MAX_PERSISTED_UPLOAD_ERROR_LENGTH
+				? `${upload.error.slice(0, MAX_PERSISTED_UPLOAD_ERROR_LENGTH - 3)}...`
+				: upload.error,
+		// Generated thumbnails are transient UI state. Persisting them can serialize oversized URIs.
+		thumbnailUri: null,
+	};
+}
+
+function createMinimalPersistedPendingUpload(upload: PendingUpload): PersistedPendingUpload {
+	return {
+		id: upload.id,
+		localUri: upload.localUri,
+		eventId: upload.eventId,
+		userId: upload.userId,
+		capturedAt: safeDate(upload.capturedAt).toISOString(),
+		width: upload.width,
+		height: upload.height,
+		status: upload.status === "syncing" ? "pending" : upload.status,
+		retryCount: upload.retryCount,
+		assetId: upload.assetId,
+		fileSize: upload.fileSize,
+		mediaType: upload.mediaType,
+		duration: upload.duration,
+		latitude: upload.latitude,
+		longitude: upload.longitude,
+		thumbnailUri: null,
+		thumbnailPath: upload.thumbnailPath ?? null,
+		error: undefined,
+		failureReason: undefined,
+		startedAt: undefined,
+		lastAttemptAt: undefined,
+		finishedAt: undefined,
+	};
+}
 
 async function persistPendingUploads(uploads: PendingUpload[]) {
-	await AsyncStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(uploads));
+	const snapshots = [
+		uploads.map(createPersistedPendingUpload),
+		uploads.map(createMinimalPersistedPendingUpload),
+	];
+
+	for (const snapshot of snapshots) {
+		try {
+			await AsyncStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(snapshot));
+			return;
+		} catch {
+			// Fall through to a smaller snapshot. Pending upload persistence should never crash the app.
+		}
+	}
+
+	await AsyncStorage.removeItem(PENDING_UPLOADS_KEY);
+}
+
+async function mapWithConcurrency<T, R>(
+	items: T[],
+	concurrency: number,
+	mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+	if (items.length === 0) return [];
+
+	const results = new Array<R>(items.length);
+	let nextIndex = 0;
+	const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+		while (nextIndex < items.length) {
+			const currentIndex = nextIndex;
+			nextIndex += 1;
+			results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+		}
+	});
+
+	await Promise.all(workers);
+	return results;
+}
+
+function sortMediaItems(items: MediaItemWithUser[]) {
+	return [...items].sort(
+		(a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime()
+	);
+}
+
+function upsertMediaItem(
+	items: MediaItemWithUser[],
+	newItem: MediaItemWithUser
+): MediaItemWithUser[] {
+	const index = items.findIndex(
+		(item) => item.id === newItem.id || item.storage_path === newItem.storage_path
+	);
+
+	if (index >= 0) {
+		const nextItems = [...items];
+		nextItems[index] = {
+			...nextItems[index],
+			...newItem,
+			uploader: newItem.uploader || nextItems[index].uploader,
+		};
+		return sortMediaItems(nextItems);
+	}
+
+	return sortMediaItems([...items, newItem]);
+}
+
+function getCaptureTime(value: string | number | Date) {
+	return new Date(value).getTime();
+}
+
+function scoreMediaMatch(
+	localPhoto: LocalPhoto,
+	uploadedPhoto: {
+		captured_at: string;
+		width: number | null;
+		height: number | null;
+		media_type?: string | null;
+		duration_milliseconds: number | null;
+	}
+) {
+	if (uploadedPhoto.media_type && uploadedPhoto.media_type !== localPhoto.mediaType) {
+		return null;
+	}
+
+	const capturedAt = getCaptureTime(uploadedPhoto.captured_at);
+	const timeDiff = Math.abs(localPhoto.creationTime - capturedAt);
+	if (timeDiff > SCAN_MATCH_TOLERANCE_MS) {
+		return null;
+	}
+
+	let score = timeDiff;
+
+	if (uploadedPhoto.width != null && uploadedPhoto.height != null) {
+		if (localPhoto.width !== uploadedPhoto.width || localPhoto.height !== uploadedPhoto.height) {
+			return null;
+		}
+	}
+
+	if (localPhoto.mediaType === "video" && uploadedPhoto.duration_milliseconds != null) {
+		const durationDiff = Math.abs((localPhoto.duration || 0) - uploadedPhoto.duration_milliseconds);
+		if (durationDiff > VIDEO_DURATION_TOLERANCE_MS) {
+			return null;
+		}
+		score += durationDiff;
+	}
+
+	return score;
 }
 
 async function loadPendingUploads(): Promise<PendingUpload[]> {
@@ -33,13 +208,14 @@ async function loadPendingUploads(): Promise<PendingUpload[]> {
 	if (!data) return [];
 	try {
 		const uploads = JSON.parse(data);
-		return uploads.map((u: PendingUpload & { capturedAt: string }) => ({
+		return uploads.map((u: PersistedPendingUpload) => ({
 			...u,
 			capturedAt: safeDate(u.capturedAt),
 			status: u.status === "syncing" ? "pending" : u.status,
+			thumbnailUri: null,
 		}));
 	} catch {
-		console.error("Corrupted pending uploads data, clearing");
+		logger.warn("Corrupted pending uploads data, clearing local queue");
 		await AsyncStorage.removeItem(PENDING_UPLOADS_KEY);
 		return [];
 	}
@@ -63,12 +239,15 @@ export interface ParticipantWithStats {
 }
 
 interface EventState {
+	isDemoMode: boolean;
 	events: EventWithParticipants[];
 	currentEvent: EventWithParticipants | null;
 	mediaItems: MediaItemWithUser[];
 	pendingUploads: PendingUpload[];
 	isLoading: boolean;
 	error: string | null;
+	enableDemoMode: () => void;
+	disableDemoMode: () => void;
 	fetchUserEvents: (userId: string) => Promise<void>;
 	fetchEventByCode: (joinCode: string) => Promise<EventWithParticipants | null>;
 	fetchEventById: (eventId: string) => Promise<EventWithParticipants | null>;
@@ -92,6 +271,7 @@ interface EventState {
 	) => Promise<{ added: number; skipped: number }>;
 	processPendingUploads: () => Promise<void>;
 	retryFailedUpload: (id: string) => void;
+	skipPendingUpload: (id: string) => Promise<void>;
 	removePendingUpload: (id: string) => void;
 	deletePhoto: (mediaItemId: string, eventId: string) => Promise<boolean>;
 	deleteEvent: (eventId: string, userId: string) => Promise<boolean>;
@@ -99,9 +279,13 @@ interface EventState {
 	getMergedTimeline: (eventId: string) => (MediaItemWithUser & {
 		isPending?: boolean;
 		localUri?: string;
+		localThumbnailUri?: string | null;
 		syncStatus?: string;
+		retryCount?: number;
+		error?: string;
+		failureReason?: UploadFailureReason;
 	})[];
-	initializePendingUploads: () => Promise<void>;
+	initializePendingUploads: (userId?: string | null) => Promise<void>;
 	getUploadedPhotoIdsForEvent: (
 		eventId: string,
 		userId: string,
@@ -131,34 +315,58 @@ function generateJoinCode(): string {
 
 export const useEventStore = create<EventState>((set, get) => {
 	setUploadCallbacks({
-		onComplete: async (id, _storagePath) => {
-			const completedUpload = get().pendingUploads.find((u) => u.id === id);
-			const newUploads = get().pendingUploads.filter((u) => u.id !== id);
-			set({ pendingUploads: newUploads });
-			await persistPendingUploads(newUploads);
-			if (completedUpload) {
+		onComplete: async (upload, result) => {
+			const currentUpload = get().pendingUploads.find((u) => u.id === upload.id);
+			const remainingUploads = get().pendingUploads.filter((u) => u.id !== upload.id);
+			set({ pendingUploads: remainingUploads });
+			await persistPendingUploads(remainingUploads);
+
+			if (!currentUpload) {
+				return;
+			}
+
+			if (currentUpload.status === "skipped") {
+				return;
+			}
+
+			if (result.mediaItem) {
+				set((state) => ({
+					mediaItems: upsertMediaItem(state.mediaItems, result.mediaItem as MediaItemWithUser),
+				}));
+			} else {
 				try {
-					await get().fetchMediaItems(completedUpload.eventId);
+					await get().fetchMediaItems(upload.eventId);
 				} catch (error) {
-					console.error("Failed to refresh media items after upload:", error);
+					logger.error("Failed to refresh media items after upload", error, {
+						eventId: upload.eventId,
+					});
 				}
 			}
 		},
-		onFailed: async (id, error) => {
+		onFailed: async (upload, error, failureReason) => {
 			const newUploads = get().pendingUploads.map((u) =>
-				u.id === id ? { ...u, status: "failed" as const, error } : u
+				u.id === upload.id
+					? {
+							...u,
+							status: "failed" as const,
+							error,
+							failureReason,
+							finishedAt: new Date().toISOString(),
+						}
+					: u
 			);
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
 		},
-		onStatusChange: async (id, status) => {
-			const newUploads = get().pendingUploads.map((u) => (u.id === id ? { ...u, status } : u));
+		onStatusChange: async (id, updates) => {
+			const newUploads = get().pendingUploads.map((u) => (u.id === id ? { ...u, ...updates } : u));
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
 		},
 	});
 
 	return {
+		isDemoMode: false,
 		events: [],
 		currentEvent: null,
 		mediaItems: [],
@@ -166,7 +374,36 @@ export const useEventStore = create<EventState>((set, get) => {
 		isLoading: false,
 		error: null,
 
+		enableDemoMode: () => {
+			AsyncStorage.setItem("recapd_demo_mode", "true");
+			set({
+				isDemoMode: true,
+				events: DEMO_EVENTS,
+				isLoading: false,
+				error: null,
+			});
+		},
+
+		disableDemoMode: () => {
+			AsyncStorage.removeItem("recapd_demo_mode");
+			set({
+				isDemoMode: false,
+				events: [],
+				currentEvent: null,
+				mediaItems: [],
+			});
+		},
+
 		fetchUserEvents: async (userId: string) => {
+			if (get().isDemoMode) {
+				set({ events: DEMO_EVENTS, isLoading: false });
+				return;
+			}
+			const demoFlag = await AsyncStorage.getItem("recapd_demo_mode");
+			if (demoFlag === "true") {
+				get().enableDemoMode();
+				return;
+			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -210,7 +447,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				set({ events: eventsWithCounts, isLoading: false });
 			} catch (error) {
-				console.error("Fetch events error:", error);
+				logger.error("Fetch events error", error, { userId });
 				set({ error: "Failed to load events", isLoading: false });
 			}
 		},
@@ -219,60 +456,40 @@ export const useEventStore = create<EventState>((set, get) => {
 			try {
 				set({ isLoading: true, error: null });
 
-				const { data, error } = await supabase
-					.from("events")
-					.select("*")
-					.eq("join_code", joinCode.toUpperCase())
-					.single();
+				const { data, error } = await supabase.rpc("get_event_preview", {
+					join_code_input: joinCode.toUpperCase(),
+				});
 
 				if (error) {
-					if (error.code === "PGRST116") {
-						set({ error: "Event not found", isLoading: false });
-						return null;
-					}
 					throw error;
 				}
 
-				const { count } = await supabase
-					.from("event_participants")
-					.select("*", { count: "exact", head: true })
-					.eq("event_id", data.id);
-
-				const { data: participants } = await supabase
-					.from("event_participants")
-					.select("role, user_id")
-					.eq("event_id", data.id);
-
-				const host = participants?.find((p) => p.role === "host");
-				let hostIsPro = false;
-
-				if (host) {
-					const { data: hostUser } = await supabase
-						.from("users")
-						.select("subscription_tier")
-						.eq("id", host.user_id)
-						.single();
-
-					if (hostUser) {
-						hostIsPro = hostUser.subscription_tier === "pro";
-					}
+				const preview = (data as EventPreviewResult[] | null)?.[0];
+				if (!preview) {
+					set({ error: "Event not found", isLoading: false });
+					return null;
 				}
 
 				const eventWithCount: EventWithParticipants = {
-					...(data as Event),
-					participant_count: count || 0,
-					hostIsPro,
+					...(preview as Event),
+					participant_count: preview.participant_count || 0,
+					hostIsPro: preview.host_is_pro,
 				};
 				set({ isLoading: false });
 				return eventWithCount;
 			} catch (error) {
-				console.error("Fetch event by code error:", error);
+				logger.error("Fetch event by code error", error, { joinCode });
 				set({ error: "Failed to find event", isLoading: false });
 				return null;
 			}
 		},
 
 		fetchEventById: async (eventId: string) => {
+			if (get().isDemoMode) {
+				const demoEvent = DEMO_EVENTS.find((e) => e.id === eventId) || null;
+				set({ currentEvent: demoEvent, isLoading: false });
+				return demoEvent;
+			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -317,7 +534,7 @@ export const useEventStore = create<EventState>((set, get) => {
 				set({ currentEvent: eventWithParticipants, isLoading: false });
 				return eventWithParticipants;
 			} catch (error) {
-				console.error("Fetch event by id error:", error);
+				logger.error("Fetch event by id error", error, { eventId });
 				set({ error: "Failed to load event", isLoading: false });
 				return null;
 			}
@@ -327,32 +544,43 @@ export const useEventStore = create<EventState>((set, get) => {
 			try {
 				set({ isLoading: true, error: null });
 
+				const eventId = await generateUuid();
 				const joinCode = generateJoinCode();
 				const expiresAt = addDays(new Date(eventData.ends_at), 14).toISOString();
 
 				const insertData: EventInsert = {
+					id: eventId,
 					...eventData,
 					join_code: joinCode,
 					expires_at: expiresAt,
 					created_by_user_id: userId,
 				};
 
-				const { data, error } = await supabase.from("events").insert(insertData).select().single();
+				const { error } = await supabase.from("events").insert(insertData);
 
 				if (error) throw error;
 
 				const participantData: EventParticipantInsert = {
-					event_id: data.id,
+					event_id: eventId,
 					user_id: userId,
 					role: "host",
 				};
 
-				await supabase.from("event_participants").insert(participantData);
+				const { error: participantError } = await supabase
+					.from("event_participants")
+					.insert(participantData);
+
+				if (participantError) throw participantError;
+
+				const createdEvent = await get().fetchEventById(eventId);
+				if (!createdEvent) {
+					throw new Error("Created event could not be loaded");
+				}
 
 				set({ isLoading: false });
-				return data as Event;
+				return createdEvent;
 			} catch (error) {
-				console.error("Create event error:", error);
+				logger.error("Create event error", error, { userId });
 				set({ error: "Failed to create event", isLoading: false });
 				return null;
 			}
@@ -375,7 +603,7 @@ export const useEventStore = create<EventState>((set, get) => {
 				set({ isLoading: false });
 				return true;
 			} catch (error) {
-				console.error("Update event error:", error);
+				logger.error("Update event error", error, { eventId });
 				set({ error: "Failed to update event", isLoading: false });
 				return false;
 			}
@@ -402,6 +630,7 @@ export const useEventStore = create<EventState>((set, get) => {
 				}
 
 				if (SUBSCRIPTIONS_ENABLED) {
+					const plans = useSubscriptionStore.getState().plans;
 					const { count: currentCount } = await supabase
 						.from("event_participants")
 						.select("*", { count: "exact", head: true })
@@ -420,29 +649,14 @@ export const useEventStore = create<EventState>((set, get) => {
 							.eq("id", eventData.created_by_user_id)
 							.single();
 
-						if (
-							(currentCount || 0) >= FREE_PARTICIPANT_LIMIT &&
-							hostUser?.subscription_tier !== "pro"
-						) {
-							const { data: joiningUser } = await supabase
-								.from("users")
-								.select("display_name, subscription_tier")
-								.eq("id", userId)
-								.single();
+						const participantLimit = getParticipantLimit(
+							hostUser?.subscription_tier === "pro",
+							plans
+						);
 
-							if (joiningUser?.subscription_tier === "pro") {
-								// Pro users can bypass the free event limit
-							} else {
-								sendEventFullNotification(
-									eventId,
-									eventData.title,
-									eventData.created_by_user_id,
-									joiningUser?.display_name || "Someone"
-								);
-
-								set({ error: "Event is full", isLoading: false });
-								return false;
-							}
+						if ((currentCount || 0) >= participantLimit) {
+							set({ error: "Event is full", isLoading: false });
+							return false;
 						}
 					}
 				}
@@ -456,43 +670,31 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const { error } = await supabase.from("event_participants").insert(participantData);
 
-				if (error) throw error;
-
-				const { count } = await supabase
-					.from("event_participants")
-					.select("*", { count: "exact", head: true })
-					.eq("event_id", eventId);
-
-				if (count === FREE_PARTICIPANT_LIMIT) {
-					const { data: event } = await supabase
-						.from("events")
-						.select("title, created_by_user_id")
-						.eq("id", eventId)
-						.single();
-
-					if (event?.created_by_user_id) {
-						const { data: hostUser } = await supabase
-							.from("users")
-							.select("subscription_tier")
-							.eq("id", event.created_by_user_id)
-							.single();
-
-						if (hostUser?.subscription_tier !== "pro") {
-							sendParticipantLimitNotification(eventId, event.title, event.created_by_user_id);
-						}
+				if (error) {
+					if (
+						error.code === "42501" ||
+						error.message?.toLowerCase().includes("row-level security")
+					) {
+						set({ error: "Event is full", isLoading: false });
+						return false;
 					}
+					throw error;
 				}
 
 				set({ isLoading: false });
 				return true;
 			} catch (error) {
-				console.error("Join event error:", error);
+				logger.error("Join event error", error, { eventId, userId });
 				set({ error: "Failed to join event", isLoading: false });
 				return false;
 			}
 		},
 
 		fetchMediaItems: async (eventId: string) => {
+			if (get().isDemoMode) {
+				set({ mediaItems: DEMO_MEDIA[eventId] || [], isLoading: false });
+				return;
+			}
 			try {
 				set({ isLoading: true, error: null });
 
@@ -501,21 +703,22 @@ export const useEventStore = create<EventState>((set, get) => {
 					.select("*, uploader:users!uploaded_by_user_id(display_name)")
 					.eq("event_id", eventId)
 					.eq("visibility", "shared")
-					.order("captured_at", { ascending: true });
+					.order("captured_at", { ascending: false });
 
 				if (error) throw error;
 
 				set({
-					mediaItems: (data || []) as MediaItemWithUser[],
+					mediaItems: sortMediaItems((data || []) as MediaItemWithUser[]),
 					isLoading: false,
 				});
 			} catch (error) {
-				console.error("Fetch media items error:", error);
+				logger.error("Fetch media items error", error, { eventId });
 				set({ error: "Failed to load photos", isLoading: false });
 			}
 		},
 
 		subscribeToMediaItems: (eventId: string) => {
+			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`media_items:${eventId}`)
 				.on(
@@ -527,8 +730,6 @@ export const useEventStore = create<EventState>((set, get) => {
 						filter: `event_id=eq.${eventId}`,
 					},
 					async (payload) => {
-						const { mediaItems } = get();
-
 						if (payload.eventType === "INSERT") {
 							const newItem = payload.new as MediaItemWithUser;
 							if (newItem.visibility === "shared") {
@@ -540,31 +741,25 @@ export const useEventStore = create<EventState>((set, get) => {
 										.single();
 									newItem.uploader = userData ?? { display_name: "Unknown" };
 								}
-								set({
-									mediaItems: [...mediaItems, newItem].sort(
-										(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
-									),
-								});
+								set((state) => ({
+									mediaItems: upsertMediaItem(state.mediaItems, newItem),
+								}));
 							}
 						} else if (payload.eventType === "DELETE") {
 							const oldItem = payload.old as { id: string };
-							set({
-								mediaItems: mediaItems.filter((item) => item.id !== oldItem.id),
-							});
+							set((state) => ({
+								mediaItems: state.mediaItems.filter((item) => item.id !== oldItem.id),
+							}));
 						} else if (payload.eventType === "UPDATE") {
 							const updatedItem = payload.new as MediaItemWithUser;
 							if (updatedItem.visibility !== "shared") {
-								set({
-									mediaItems: mediaItems.filter((item) => item.id !== updatedItem.id),
-								});
+								set((state) => ({
+									mediaItems: state.mediaItems.filter((item) => item.id !== updatedItem.id),
+								}));
 							} else {
-								const existingItem = mediaItems.find((item) => item.id === updatedItem.id);
-								updatedItem.uploader = existingItem?.uploader;
-								set({
-									mediaItems: mediaItems.map((item) =>
-										item.id === updatedItem.id ? updatedItem : item
-									),
-								});
+								set((state) => ({
+									mediaItems: upsertMediaItem(state.mediaItems, updatedItem),
+								}));
 							}
 						}
 					}
@@ -577,6 +772,7 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToParticipants: (eventId: string) => {
+			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`participants:${eventId}`)
 				.on(
@@ -601,27 +797,34 @@ export const useEventStore = create<EventState>((set, get) => {
 
 							if (!userData) return;
 
+							const alreadyPresent = (currentEvent.participants || []).some(
+								(p) => p.user_id === newParticipant.user_id
+							);
+							if (alreadyPresent) return;
+
 							const participantWithUser = {
 								...newParticipant,
 								user: userData,
 							};
 
+							const nextParticipants = [...(currentEvent.participants || []), participantWithUser];
 							set({
 								currentEvent: {
 									...currentEvent,
-									participants: [...(currentEvent.participants || []), participantWithUser],
-									participant_count: (currentEvent.participant_count || 0) + 1,
+									participants: nextParticipants,
+									participant_count: nextParticipants.length,
 								},
 							});
 						} else if (payload.eventType === "DELETE") {
 							const oldParticipant = payload.old as { user_id: string };
+							const remainingParticipants = (currentEvent.participants || []).filter(
+								(p) => p.user_id !== oldParticipant.user_id
+							);
 							set({
 								currentEvent: {
 									...currentEvent,
-									participants: (currentEvent.participants || []).filter(
-										(p) => p.user_id !== oldParticipant.user_id
-									),
-									participant_count: Math.max(0, (currentEvent.participant_count || 1) - 1),
+									participants: remainingParticipants,
+									participant_count: remainingParticipants.length,
 								},
 							});
 						}
@@ -635,6 +838,7 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToEvent: (eventId: string) => {
+			if (get().isDemoMode) return () => {};
 			const channel = supabase
 				.channel(`event:${eventId}`)
 				.on(
@@ -689,7 +893,7 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		subscribeToUserEvents: (userId: string) => {
-			// Subscribe to new participations (when user joins or is added to events)
+			if (get().isDemoMode) return () => {};
 			const participantChannel = supabase
 				.channel(`user_participations:${userId}`)
 				.on(
@@ -806,22 +1010,34 @@ export const useEventStore = create<EventState>((set, get) => {
 				return { added: 0, skipped: photos.length };
 			}
 
-			const newUploads: (PendingUpload & { assetId: string })[] = newPhotos.map((photo) => ({
-				id: generateUploadId(),
-				localUri: photo.uri,
-				eventId,
-				userId,
-				capturedAt: safeDate(photo.creationTime),
-				width: photo.width,
-				height: photo.height,
-				status: "pending" as const,
-				retryCount: 0,
-				assetId: photo.id,
-				mediaType: photo.mediaType,
-				duration: photo.duration,
-				latitude: photo.latitude,
-				longitude: photo.longitude,
-			}));
+			const newUploads = await mapWithConcurrency(
+				newPhotos,
+				VIDEO_THUMBNAIL_BATCH_SIZE,
+				async (photo) => {
+					const thumbnailUri =
+						photo.mediaType === "video" ? await createVideoThumbnailUri(photo.uri, 0) : null;
+
+					return {
+						id: generateUploadId(),
+						localUri: photo.uri,
+						eventId,
+						userId,
+						capturedAt: safeDate(photo.creationTime),
+						width: photo.width,
+						height: photo.height,
+						status: "pending" as const,
+						retryCount: 0,
+						assetId: photo.id,
+						fileSize: photo.fileSize,
+						mediaType: photo.mediaType,
+						duration: photo.duration,
+						latitude: photo.latitude,
+						longitude: photo.longitude,
+						thumbnailUri,
+						thumbnailPath: null,
+					};
+				}
+			);
 
 			const allUploads = [...get().pendingUploads, ...newUploads];
 			set({ pendingUploads: allUploads });
@@ -840,22 +1056,42 @@ export const useEventStore = create<EventState>((set, get) => {
 				pendingUploads,
 				() => get().pendingUploads,
 				(id, updates) => {
-					set((state) => ({
-						pendingUploads: state.pendingUploads.map((u) =>
+					set((state) => {
+						const nextUploads = state.pendingUploads.map((u) =>
 							u.id === id ? { ...u, ...updates } : u
-						),
-					}));
+						);
+						void persistPendingUploads(nextUploads);
+						return {
+							pendingUploads: nextUploads,
+						};
+					});
 				}
 			);
 		},
 
 		retryFailedUpload: async (id: string) => {
 			const newUploads = get().pendingUploads.map((u) =>
-				u.id === id ? { ...u, status: "pending" as const } : u
+				u.id === id
+					? { ...u, status: "pending" as const, error: undefined, failureReason: undefined }
+					: u
 			);
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
 			get().processPendingUploads();
+		},
+
+		skipPendingUpload: async (id: string) => {
+			const newUploads = get().pendingUploads.map((u) =>
+				u.id === id
+					? {
+							...u,
+							status: "skipped" as const,
+							finishedAt: new Date().toISOString(),
+						}
+					: u
+			);
+			set({ pendingUploads: newUploads });
+			await persistPendingUploads(newUploads);
 		},
 
 		removePendingUpload: async (id: string) => {
@@ -878,15 +1114,25 @@ export const useEventStore = create<EventState>((set, get) => {
 			}));
 
 			try {
-				// First delete from storage bucket
 				if (photoToDelete.storage_path) {
 					const { error: storageError } = await supabase.storage
 						.from("event-photos")
 						.remove([photoToDelete.storage_path]);
 
 					if (storageError) {
-						console.error("Storage delete error:", storageError);
+						logger.error("Storage delete error", storageError, { mediaItemId });
 						throw storageError;
+					}
+				}
+
+				if (photoToDelete.thumbnail_path) {
+					const { error: thumbnailDeleteError } = await supabase.storage
+						.from("thumbnails")
+						.remove([photoToDelete.thumbnail_path]);
+
+					if (thumbnailDeleteError) {
+						logger.error("Thumbnail delete error", thumbnailDeleteError, { mediaItemId });
+						throw thumbnailDeleteError;
 					}
 				}
 
@@ -897,17 +1143,17 @@ export const useEventStore = create<EventState>((set, get) => {
 					.eq("id", mediaItemId);
 
 				if (dbError) {
-					console.error("Database delete error:", dbError);
+					logger.error("Database delete error", dbError, { mediaItemId });
 					throw dbError;
 				}
 
 				return true;
 			} catch (error) {
-				console.error("Delete photo error:", error);
+				logger.error("Delete photo error", error, { mediaItemId });
 				// Restore photo on failure
 				set((state) => ({
 					mediaItems: [...state.mediaItems, photoToDelete].sort(
-						(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+						(a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime()
 					),
 				}));
 				return false;
@@ -915,6 +1161,7 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		fetchParticipantStats: async (eventId: string) => {
+			if (get().isDemoMode) return [];
 			const { data: participants, error: partError } = await supabase
 				.from("event_participants")
 				.select("*, user:users(id, display_name)")
@@ -949,20 +1196,20 @@ export const useEventStore = create<EventState>((set, get) => {
 			const { mediaItems, pendingUploads } = get();
 
 			const pending = pendingUploads
-				.filter((p) => p.eventId === eventId)
+				.filter((p) => p.eventId === eventId && p.status !== "skipped")
 				.map((p) => ({
 					id: p.id,
 					event_id: p.eventId,
 					uploaded_by_user_id: p.userId,
 					captured_at: safeDate(p.capturedAt).toISOString(),
 					uploaded_at: new Date().toISOString(),
-					media_type: "photo" as const,
+					media_type: p.mediaType,
 					width: p.width,
 					height: p.height,
-					duration_milliseconds: null,
+					duration_milliseconds: p.mediaType === "video" ? Math.round(p.duration || 0) : null,
 					file_size_bytes: null,
 					storage_path: "",
-					thumbnail_path: null,
+					thumbnail_path: p.thumbnailPath ?? null,
 					visibility: "shared" as const,
 					deleted_at: null,
 					latitude: p.latitude ?? null,
@@ -970,7 +1217,14 @@ export const useEventStore = create<EventState>((set, get) => {
 					uploader: null,
 					isPending: true,
 					localUri: p.localUri,
+					localThumbnailUri: p.thumbnailUri ?? null,
 					syncStatus: p.status,
+					retryCount: p.retryCount,
+					error: p.error,
+					failureReason: p.failureReason,
+					startedAt: p.startedAt,
+					lastAttemptAt: p.lastAttemptAt,
+					finishedAt: p.finishedAt,
 				}));
 
 			return [
@@ -981,7 +1235,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					syncStatus: undefined,
 				})),
 				...pending,
-			].sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
+			].sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
 		},
 
 		deleteEvent: async (eventId: string, userId: string) => {
@@ -1001,13 +1255,21 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const { data: mediaItems } = await supabase
 					.from("media_items")
-					.select("storage_path")
+					.select("storage_path, thumbnail_path")
 					.eq("event_id", eventId);
 
 				if (mediaItems?.length) {
-					const paths = mediaItems.map((m) => m.storage_path).filter(Boolean) as string[];
-					if (paths.length) {
-						await supabase.storage.from("event-photos").remove(paths);
+					const photoPaths = mediaItems
+						.map((mediaItem) => mediaItem.storage_path)
+						.filter(Boolean) as string[];
+					const thumbnailPaths = mediaItems
+						.map((mediaItem) => mediaItem.thumbnail_path)
+						.filter(Boolean) as string[];
+					if (photoPaths.length) {
+						await supabase.storage.from("event-photos").remove(photoPaths);
+					}
+					if (thumbnailPaths.length) {
+						await supabase.storage.from("thumbnails").remove(thumbnailPaths);
 					}
 				}
 
@@ -1027,7 +1289,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				return true;
 			} catch (error) {
-				console.error("Delete event error:", error);
+				logger.error("Delete event error", error, { eventId, userId });
 				set({
 					error: error instanceof Error ? error.message : "Failed to delete event",
 					isLoading: false,
@@ -1036,12 +1298,35 @@ export const useEventStore = create<EventState>((set, get) => {
 			}
 		},
 
-		initializePendingUploads: async () => {
-			const uploads = await loadPendingUploads();
-			if (uploads.length > 0) {
-				set({ pendingUploads: uploads });
-				get().processPendingUploads();
+		initializePendingUploads: async (userId?: string | null) => {
+			const demoFlag = await AsyncStorage.getItem("recapd_demo_mode");
+			if (demoFlag === "true") {
+				get().enableDemoMode();
+				return;
 			}
+			const activeUserId = userId ?? useAuthStore.getState().user?.id ?? null;
+			if (!activeUserId) {
+				set({ pendingUploads: [] });
+				return;
+			}
+			const uploads = await loadPendingUploads();
+			const activeUploads = uploads.filter((upload) => upload.userId === activeUserId);
+
+			if (activeUploads.length !== uploads.length) {
+				logger.warn("Discarding pending uploads for a stale profile", undefined, {
+					activeUserId,
+					discardedCount: uploads.length - activeUploads.length,
+				});
+				await persistPendingUploads(activeUploads);
+			}
+
+			if (activeUploads.length > 0) {
+				set({ pendingUploads: activeUploads });
+				get().processPendingUploads();
+				return;
+			}
+
+			set({ pendingUploads: [] });
 		},
 
 		getUploadedPhotoIdsForEvent: async (
@@ -1052,42 +1337,42 @@ export const useEventStore = create<EventState>((set, get) => {
 			// Fetch all photos uploaded by this user for this event from Supabase
 			const { data: uploadedPhotos, error } = await supabase
 				.from("media_items")
-				.select("captured_at, width, height")
+				.select("captured_at, width, height, media_type, duration_milliseconds")
 				.eq("event_id", eventId)
 				.eq("uploaded_by_user_id", userId);
 
 			if (error || !uploadedPhotos) {
-				console.error("Error fetching uploaded photos:", error);
+				logger.error("Error fetching uploaded photos", error, { eventId, userId });
 				return new Set<string>();
 			}
 
-			// Create a set of uploaded photo timestamps for quick lookup
-			const uploadedTimestamps = new Map<number, { width: number | null; height: number | null }>();
-			for (const photo of uploadedPhotos) {
-				const timestamp = new Date(photo.captured_at).getTime();
-				uploadedTimestamps.set(timestamp, {
-					width: photo.width,
-					height: photo.height,
-				});
-			}
-
+			const uploadedCandidates = uploadedPhotos
+				.map((photo) => ({
+					...photo,
+					capturedAt: new Date(photo.captured_at).getTime(),
+				}))
+				.sort((a, b) => a.capturedAt - b.capturedAt);
+			const matchedUploadedIndexes = new Set<number>();
 			const uploadedLocalIds = new Set<string>();
-			for (const localPhoto of localPhotos) {
-				const localTimestamp = localPhoto.creationTime;
+			const sortedLocalPhotos = [...localPhotos].sort((a, b) => a.creationTime - b.creationTime);
+			for (const localPhoto of sortedLocalPhotos) {
+				let bestIndex = -1;
+				let bestScore = Number.POSITIVE_INFINITY;
 
-				// Check if there's a matching uploaded photo (within 1 second tolerance)
-				for (const [uploadedTimestamp, dimensions] of uploadedTimestamps) {
-					const timeDiff = Math.abs(localTimestamp - uploadedTimestamp);
-					// Match by timestamp, and optionally by dimensions if available
-					const dimensionsMatch =
-						dimensions.width === null ||
-						dimensions.height === null ||
-						(localPhoto.width === dimensions.width && localPhoto.height === dimensions.height);
-
-					if (timeDiff <= 1000 && dimensionsMatch) {
-						uploadedLocalIds.add(localPhoto.id);
-						break;
+				for (let i = 0; i < uploadedCandidates.length; i++) {
+					if (matchedUploadedIndexes.has(i)) continue;
+					const candidate = uploadedCandidates[i];
+					const score = scoreMediaMatch(localPhoto, candidate);
+					if (score === null) continue;
+					if (score < bestScore) {
+						bestScore = score;
+						bestIndex = i;
 					}
+				}
+
+				if (bestIndex >= 0) {
+					matchedUploadedIndexes.add(bestIndex);
+					uploadedLocalIds.add(localPhoto.id);
 				}
 			}
 
@@ -1104,18 +1389,21 @@ export const useEventStore = create<EventState>((set, get) => {
 					.select();
 
 				if (error) {
-					console.error("Error marking no photos to upload:", error);
+					logger.error("Error marking no photos to upload", error, { eventId, userId });
 					return false;
 				}
 
 				if (!data || data.length === 0) {
-					console.error("No rows updated - participant not found");
+					logger.warn("No participant row updated when marking no photos to upload", undefined, {
+						eventId,
+						userId,
+					});
 					return false;
 				}
 
 				return true;
 			} catch (error) {
-				console.error("Error marking no photos to upload:", error);
+				logger.error("Error marking no photos to upload", error, { eventId, userId });
 				return false;
 			}
 		},
@@ -1176,7 +1464,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				return { success: true };
 			} catch (error) {
-				console.error("Leave event error:", error);
+				logger.error("Leave event error", error, { eventId, userId });
 				return { success: false };
 			}
 		},
@@ -1215,7 +1503,11 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				return true;
 			} catch (error) {
-				console.error("Remove participant error:", error);
+				logger.error("Remove participant error", error, {
+					eventId,
+					targetUserId,
+					hostUserId,
+				});
 				return false;
 			}
 		},

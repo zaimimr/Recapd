@@ -1,24 +1,35 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import Purchases, {
-	type CustomerInfo,
-	LOG_LEVEL,
-	PURCHASES_ERROR_CODE,
-	type PurchasesEntitlementInfo,
-	type PurchasesOffering,
-	type PurchasesPackage,
+import type {
+	CustomerInfo,
+	PurchasesEntitlementInfo,
+	PurchasesOffering,
+	PurchasesPackage,
 } from "react-native-purchases";
-import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
+
+export { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
+
+import {
+	type BillingProvider,
+	type CustomerCenterResult,
+	getBillingProvider,
+	type PurchaseResult,
+	resetBillingProvider,
+	setBillingProvider,
+} from "@/lib/billing/provider";
+import { logger } from "./logger";
 import { supabase } from "./supabase";
 
-const isExpoGo = Constants.appOwnership === "expo";
+function isExpoGo(): boolean {
+	return Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+}
 
-const REVENUECAT_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || "";
-const REVENUECAT_ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || "";
-const REVENUECAT_API_KEY = Platform.OS === "ios" ? REVENUECAT_IOS_KEY : REVENUECAT_ANDROID_KEY;
-const ENTITLEMENT_ID = "Recapd Pro";
+function getRuntimeEnvironment(): string {
+	return Constants.executionEnvironment ?? Constants.appOwnership ?? "unknown";
+}
 
-export const SUBSCRIPTIONS_ENABLED = process.env.EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED !== "false";
+const DEFAULT_ENTITLEMENT_ID = "Recapd Pro";
 
 export const PRODUCT_IDS = {
 	MONTHLY: "monthly",
@@ -27,139 +38,44 @@ export const PRODUCT_IDS = {
 
 export type ProductId = (typeof PRODUCT_IDS)[keyof typeof PRODUCT_IDS];
 
-let isConfigured = false;
-let currentUserId: string | null = null;
+export function getLastRevenueCatError(): string | null {
+	return getBillingProvider().getLastError();
+}
+
+function resolveEntitlementId(entitlementId?: string | null): string {
+	const normalized = entitlementId?.trim();
+	return normalized ? normalized : DEFAULT_ENTITLEMENT_ID;
+}
 
 export async function configureRevenueCat(userId: string): Promise<boolean> {
-	if (!SUBSCRIPTIONS_ENABLED) {
-		console.warn("Subscriptions are disabled");
-		return false;
-	}
-	if (isExpoGo) {
-		console.warn("RevenueCat requires a development build — skipping in Expo Go");
-		return false;
-	}
-	if (isConfigured && currentUserId === userId) return true;
-
-	try {
-		if (__DEV__) {
-			Purchases.setLogLevel(LOG_LEVEL.DEBUG);
-		}
-
-		await Purchases.configure({
-			apiKey: REVENUECAT_API_KEY,
-			appUserID: userId,
+	if (isExpoGo() && SUBSCRIPTIONS_ENABLED) {
+		logger.warn("RevenueCat is running in Expo Go preview mode", {
+			runtime: getRuntimeEnvironment(),
 		});
-
-		isConfigured = true;
-		currentUserId = userId;
-
-		console.log("RevenueCat configured successfully for user:", userId);
-		return true;
-	} catch (error) {
-		console.error("Failed to configure RevenueCat:", error);
-		return false;
 	}
+	return getBillingProvider().configure(userId);
 }
 
 export function isRevenueCatConfigured(): boolean {
-	return isConfigured;
+	return getBillingProvider().isConfigured();
 }
 
 export async function getCustomerInfo(): Promise<CustomerInfo | null> {
-	if (!isConfigured) {
-		console.warn("RevenueCat not configured");
-		return null;
-	}
-
-	try {
-		return await Purchases.getCustomerInfo();
-	} catch (error) {
-		console.error("Failed to get customer info:", error);
-		return null;
-	}
+	return getBillingProvider().getCustomerInfo();
 }
 
 export async function getOfferings(): Promise<PurchasesOffering | null> {
-	if (!isConfigured) {
-		console.warn("RevenueCat not configured");
-		return null;
-	}
-
-	try {
-		const offerings = await Purchases.getOfferings();
-		return offerings.current;
-	} catch (error) {
-		console.error("Failed to get offerings:", error);
-		return null;
-	}
+	return getBillingProvider().getOfferings();
 }
 
 export async function getAllOfferings(): Promise<{
 	[key: string]: PurchasesOffering;
 } | null> {
-	if (!isConfigured) return null;
-
-	try {
-		const offerings = await Purchases.getOfferings();
-		return offerings.all;
-	} catch (error) {
-		console.error("Failed to get all offerings:", error);
-		return null;
-	}
-}
-
-export interface PurchaseResult {
-	success: boolean;
-	customerInfo?: CustomerInfo;
-	error?: string;
-	errorCode?: PURCHASES_ERROR_CODE;
-	userCancelled?: boolean;
+	return getBillingProvider().getAllOfferings();
 }
 
 export async function purchasePackage(pkg: PurchasesPackage): Promise<PurchaseResult> {
-	if (!isConfigured) {
-		return { success: false, error: "RevenueCat not configured" };
-	}
-
-	try {
-		const { customerInfo } = await Purchases.purchasePackage(pkg);
-		return { success: true, customerInfo };
-	} catch (error: any) {
-		if (error.userCancelled) {
-			return {
-				success: false,
-				error: "Purchase cancelled",
-				userCancelled: true,
-			};
-		}
-
-		const errorCode = error.code as PURCHASES_ERROR_CODE;
-		let errorMessage = "Purchase failed";
-
-		switch (errorCode) {
-			case PURCHASES_ERROR_CODE.PURCHASE_NOT_ALLOWED_ERROR:
-				errorMessage = "Purchases are not allowed on this device";
-				break;
-			case PURCHASES_ERROR_CODE.PURCHASE_INVALID_ERROR:
-				errorMessage = "Invalid purchase";
-				break;
-			case PURCHASES_ERROR_CODE.PRODUCT_NOT_AVAILABLE_FOR_PURCHASE_ERROR:
-				errorMessage = "Product not available for purchase";
-				break;
-			case PURCHASES_ERROR_CODE.NETWORK_ERROR:
-				errorMessage = "Network error. Please check your connection";
-				break;
-			case PURCHASES_ERROR_CODE.RECEIPT_ALREADY_IN_USE_ERROR:
-				errorMessage = "This purchase is already associated with another account";
-				break;
-			default:
-				errorMessage = error.message || "Purchase failed";
-		}
-
-		console.error("Purchase failed:", error);
-		return { success: false, error: errorMessage, errorCode };
-	}
+	return getBillingProvider().purchasePackage(pkg);
 }
 
 export async function purchaseProduct(productId: ProductId): Promise<PurchaseResult> {
@@ -177,64 +93,51 @@ export async function purchaseProduct(productId: ProductId): Promise<PurchaseRes
 	return purchasePackage(pkg);
 }
 
-export async function restorePurchases(): Promise<PurchaseResult> {
-	if (!isConfigured) {
-		return { success: false, error: "RevenueCat not configured" };
-	}
-
-	try {
-		const customerInfo = await Purchases.restorePurchases();
-		const hasProAccess = checkProEntitlement(customerInfo);
-		const hasActiveSubscriptions = customerInfo.activeSubscriptions.length > 0;
-
-		if (hasProAccess || hasActiveSubscriptions) {
-			return { success: true, customerInfo };
-		} else {
-			return {
-				success: false,
-				customerInfo,
-				error: "No active subscriptions found",
-			};
-		}
-	} catch (error: any) {
-		if (error.userCancelled) {
-			return {
-				success: false,
-				error: "Restore cancelled",
-				userCancelled: true,
-			};
-		}
-		console.warn("Restore failed:", error);
-		return { success: false, error: error.message || "Restore failed" };
-	}
+export async function restorePurchases(entitlementId?: string | null): Promise<PurchaseResult> {
+	return getBillingProvider().restorePurchases(resolveEntitlementId(entitlementId));
 }
 
-export function checkProEntitlement(customerInfo: CustomerInfo): boolean {
+export function checkProEntitlement(
+	customerInfo: CustomerInfo,
+	entitlementId?: string | null
+): boolean {
+	const resolvedEntitlementId = resolveEntitlementId(entitlementId);
 	if (__DEV__) {
-		console.log("Active entitlements:", Object.keys(customerInfo.entitlements.active));
-		console.log("Active subscriptions:", customerInfo.activeSubscriptions);
+		logger.debug("Active entitlements", {
+			activeEntitlements: Object.keys(customerInfo.entitlements.active),
+			resolvedEntitlementId,
+		});
 	}
-	const entitlement = customerInfo.entitlements.active[ENTITLEMENT_ID];
+	const entitlement = customerInfo.entitlements.active[resolvedEntitlementId];
 	return entitlement?.isActive === true;
 }
 
-export function getProEntitlement(customerInfo: CustomerInfo): PurchasesEntitlementInfo | null {
-	return customerInfo.entitlements.active[ENTITLEMENT_ID] || null;
+export function getProEntitlement(
+	customerInfo: CustomerInfo,
+	entitlementId?: string | null
+): PurchasesEntitlementInfo | null {
+	return getBillingProvider().getEntitlement(customerInfo, resolveEntitlementId(entitlementId));
 }
 
-export function getSubscriptionExpirationDate(customerInfo: CustomerInfo): Date | null {
-	const entitlement = getProEntitlement(customerInfo);
+export function getSubscriptionExpirationDate(
+	customerInfo: CustomerInfo,
+	entitlementId?: string | null
+): Date | null {
+	const entitlement = getProEntitlement(customerInfo, entitlementId);
 	if (!entitlement?.expirationDate) return null;
 	return new Date(entitlement.expirationDate);
 }
 
-export function getSubscriptionStatus(customerInfo: CustomerInfo): {
+export function getSubscriptionStatus(
+	customerInfo: CustomerInfo,
+	entitlementId?: string | null
+): {
 	isActive: boolean;
 	expiresAt: Date | null;
 	productId: string | null;
 	willRenew: boolean;
 } {
-	const entitlement = getProEntitlement(customerInfo);
+	const entitlement = getProEntitlement(customerInfo, entitlementId);
 
 	if (!entitlement) {
 		return {
@@ -255,179 +158,85 @@ export function getSubscriptionStatus(customerInfo: CustomerInfo): {
 
 export async function syncSubscriptionToDatabase(
 	userId: string,
-	customerInfo: CustomerInfo
+	customerInfo: CustomerInfo,
+	entitlementId?: string | null
 ): Promise<void> {
-	const status = getSubscriptionStatus(customerInfo);
+	const status = getSubscriptionStatus(customerInfo, entitlementId);
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 
 	try {
-		const { error } = await supabase
-			.from("users")
-			.update({
-				subscription_tier: status.isActive ? "pro" : "free",
-				subscription_expires_at: status.expiresAt?.toISOString() || null,
-				subscription_platform: status.isActive ? platform : null,
-				subscription_id: customerInfo.originalAppUserId,
-			})
-			.eq("id", userId);
-		if (error) {
-			console.error("Failed to sync subscription to database:", error);
+		const [userUpdate, privateUpdate] = await Promise.all([
+			supabase
+				.from("users")
+				.update({
+					subscription_tier: status.isActive ? "pro" : "free",
+				})
+				.eq("id", userId),
+			supabase.from("user_private_data").upsert(
+				{
+					user_id: userId,
+					subscription_expires_at: status.expiresAt?.toISOString() || null,
+					subscription_platform: status.isActive ? platform : null,
+					subscription_id: customerInfo.originalAppUserId,
+				},
+				{ onConflict: "user_id" }
+			),
+		]);
+
+		if (userUpdate.error) {
+			throw userUpdate.error;
+		}
+
+		if (privateUpdate.error) {
+			throw privateUpdate.error;
 		}
 	} catch (error) {
-		console.error("Failed to sync subscription to database:", error);
+		logger.error("Failed to sync subscription to database", error, { userId });
 	}
 }
 
 export function setupCustomerInfoListener(
 	onUpdate: (customerInfo: CustomerInfo) => void
 ): () => void {
-	if (!isConfigured) return () => {};
-
-	Purchases.addCustomerInfoUpdateListener(onUpdate);
-
-	return () => {
-		Purchases.removeCustomerInfoUpdateListener(onUpdate);
-	};
+	return getBillingProvider().setupCustomerInfoListener(onUpdate);
 }
 
-async function waitForProEntitlement(): Promise<CustomerInfo | null> {
-	const info = await getCustomerInfo();
-	if (info && checkProEntitlement(info)) return info;
-
-	await new Promise((resolve) => setTimeout(resolve, 1500));
-	const retryInfo = await getCustomerInfo();
-	if (retryInfo && checkProEntitlement(retryInfo)) return retryInfo;
-
-	return retryInfo;
+export async function presentPaywall(
+	offering?: PurchasesOffering | null,
+	entitlementId?: string | null
+) {
+	return getBillingProvider().presentPaywall(offering, resolveEntitlementId(entitlementId));
 }
 
-export async function presentPaywall(): Promise<{
-	presented: boolean;
-	purchased: boolean;
-	customerInfo?: CustomerInfo;
-	error?: string;
-}> {
-	if (!isConfigured) {
-		return { presented: false, purchased: false, error: "RevenueCat not configured" };
-	}
-
-	try {
-		const result = await RevenueCatUI.presentPaywall({
-			displayCloseButton: true,
-		});
-
-		if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-			const customerInfo = await waitForProEntitlement();
-			return {
-				presented: true,
-				purchased: true,
-				customerInfo: customerInfo || undefined,
-			};
-		}
-
-		return { presented: true, purchased: false };
-	} catch (error: any) {
-		console.error("Failed to present paywall:", error);
-		return { presented: false, purchased: false, error: error.message };
-	}
+export async function presentPaywallIfNeeded(
+	offering?: PurchasesOffering | null,
+	entitlementId?: string | null
+) {
+	return getBillingProvider().presentPaywallIfNeeded(offering, resolveEntitlementId(entitlementId));
 }
 
-export async function presentPaywallIfNeeded(): Promise<{
-	presented: boolean;
-	purchased: boolean;
-	customerInfo?: CustomerInfo;
-	error?: string;
-}> {
-	if (!isConfigured) {
-		return { presented: false, purchased: false, error: "RevenueCat not configured" };
-	}
-
-	try {
-		const result = await RevenueCatUI.presentPaywallIfNeeded({
-			requiredEntitlementIdentifier: ENTITLEMENT_ID,
-			displayCloseButton: true,
-		});
-
-		if (result === PAYWALL_RESULT.NOT_PRESENTED) {
-			return { presented: false, purchased: false };
-		}
-
-		if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
-			const customerInfo = await waitForProEntitlement();
-			return {
-				presented: true,
-				purchased: true,
-				customerInfo: customerInfo || undefined,
-			};
-		}
-
-		return { presented: true, purchased: false };
-	} catch (error: any) {
-		console.error("Failed to present paywall:", error);
-		return { presented: false, purchased: false, error: error.message };
-	}
-}
-
-export async function presentCustomerCenter(): Promise<void> {
-	if (!isConfigured) {
-		console.warn("RevenueCat not configured");
-		return;
-	}
-
-	try {
-		await RevenueCatUI.presentCustomerCenter();
-	} catch (error) {
-		console.error("Failed to present customer center:", error);
-	}
+export async function presentCustomerCenter(): Promise<CustomerCenterResult> {
+	return getBillingProvider().presentCustomerCenter();
 }
 
 export async function logInUser(userId: string): Promise<CustomerInfo | null> {
-	if (!isConfigured) {
-		await configureRevenueCat(userId);
-	}
-
-	try {
-		const { customerInfo } = await Purchases.logIn(userId);
-		currentUserId = userId;
-		return customerInfo;
-	} catch (error) {
-		console.error("Failed to log in user:", error);
-		return null;
-	}
+	return getBillingProvider().logInUser(userId);
 }
 
 export async function logOutUser(): Promise<CustomerInfo | null> {
-	if (!isConfigured) return null;
-
-	try {
-		const customerInfo = await Purchases.logOut();
-		currentUserId = null;
-		return customerInfo;
-	} catch (error) {
-		console.error("Failed to log out user:", error);
-		return null;
-	}
+	return getBillingProvider().logOutUser();
 }
 
 export async function setUserEmail(email: string): Promise<void> {
-	if (!isConfigured) return;
-
-	try {
-		await Purchases.setEmail(email);
-	} catch (error) {
-		console.error("Failed to set user email:", error);
-	}
+	return getBillingProvider().setUserEmail(email);
 }
 
 export async function setUserDisplayName(displayName: string): Promise<void> {
-	if (!isConfigured) return;
-
-	try {
-		await Purchases.setDisplayName(displayName);
-	} catch (error) {
-		console.error("Failed to set display name:", error);
-	}
+	return getBillingProvider().setUserDisplayName(displayName);
 }
+
+export { resetBillingProvider, setBillingProvider };
+export type { BillingProvider, CustomerCenterResult, PurchaseResult };
 
 export function getPackageByProductId(
 	offering: PurchasesOffering,

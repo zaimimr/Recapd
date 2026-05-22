@@ -51,9 +51,12 @@ describe("uploadQueue", () => {
 			const upload = makePendingUpload();
 			const result = await processUpload(upload);
 
-			expect(result).toBe(true);
-			expect(onStatusChangeCb).toHaveBeenCalledWith("upload_123", "syncing");
-			expect(onComplete).toHaveBeenCalledWith("upload_123", "some/path");
+			expect(result).toEqual({ success: true, retryable: false });
+			expect(onStatusChangeCb).toHaveBeenCalledWith(
+				"upload_123",
+				expect.objectContaining({ status: "syncing" })
+			);
+			expect(onComplete).toHaveBeenCalledWith(upload, { success: true, path: "some/path" });
 			expect(onFailed).not.toHaveBeenCalled();
 		});
 
@@ -63,9 +66,15 @@ describe("uploadQueue", () => {
 			const upload = makePendingUpload({ retryCount: 1 });
 			const result = await processUpload(upload);
 
-			expect(result).toBe(false);
-			expect(onStatusChangeCb).toHaveBeenCalledWith("upload_123", "syncing");
-			expect(onStatusChangeCb).toHaveBeenCalledWith("upload_123", "failed");
+			expect(result).toEqual({ success: false, retryable: true });
+			expect(onStatusChangeCb).toHaveBeenCalledWith(
+				"upload_123",
+				expect.objectContaining({ status: "syncing" })
+			);
+			expect(onStatusChangeCb).toHaveBeenCalledWith(
+				"upload_123",
+				expect.objectContaining({ status: "failed" })
+			);
 			expect(onFailed).not.toHaveBeenCalled();
 		});
 
@@ -75,9 +84,24 @@ describe("uploadQueue", () => {
 			const upload = makePendingUpload({ retryCount: 3 });
 			const result = await processUpload(upload);
 
-			expect(result).toBe(false);
-			expect(onFailed).toHaveBeenCalledWith("upload_123", "permanent fail");
-			expect(onStatusChangeCb).toHaveBeenCalledWith("upload_123", "syncing");
+			expect(result).toEqual({ success: false, retryable: true });
+			expect(onFailed).toHaveBeenCalledWith(upload, "permanent fail", "unknown");
+			expect(onStatusChangeCb).toHaveBeenCalledWith(
+				"upload_123",
+				expect.objectContaining({ status: "syncing" })
+			);
+		});
+
+		it("marks storage authorization failures as non-retryable", async () => {
+			mockedUploadMedia.mockResolvedValue({
+				success: false,
+				error: "Your session changed. Re-select the media and try again.",
+				failureReason: "storage",
+			});
+
+			const result = await processUpload(makePendingUpload());
+
+			expect(result).toEqual({ success: false, retryable: false });
 		});
 	});
 
@@ -155,6 +179,27 @@ describe("uploadQueue", () => {
 			await processUploadQueue(uploads, getLatestUploads, updateUpload);
 
 			expect(mockedUploadMedia).toHaveBeenCalledTimes(2);
+		});
+
+		it("does not retry non-retryable failures", async () => {
+			const uploads = [makePendingUpload({ status: "pending" })];
+			let currentUploads = uploads;
+			mockedUploadMedia.mockResolvedValue({
+				success: false,
+				error: "Your session changed. Re-select the media and try again.",
+				failureReason: "storage",
+			});
+
+			const getLatestUploads = jest.fn(() => currentUploads);
+			const updateUpload = jest.fn((id: string, updates: Partial<PendingUpload>) => {
+				currentUploads = currentUploads.map((upload) =>
+					upload.id === id ? { ...upload, ...updates } : upload
+				);
+			});
+
+			await processUploadQueue(uploads, getLatestUploads, updateUpload);
+
+			expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
 		});
 	});
 

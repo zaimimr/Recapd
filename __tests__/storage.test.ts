@@ -2,22 +2,22 @@ jest.mock("@/lib/supabase", () => ({
 	supabase: {
 		storage: { from: jest.fn() },
 		from: jest.fn(),
+		auth: { getSession: jest.fn() },
 	},
 }));
 jest.mock("expo-file-system/legacy", () => ({
-	readAsStringAsync: jest.fn(),
 	downloadAsync: jest.fn(),
-	cacheDirectory: "/cache/",
-	EncodingType: { Base64: "base64" },
+	copyAsync: jest.fn(),
+	uploadAsync: jest.fn(),
+	cacheDirectory: "file:///cache/",
+	FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
+	getInfoAsync: jest.fn(),
 }));
 jest.mock("expo-media-library", () => ({
 	getAssetInfoAsync: jest.fn(),
 }));
 jest.mock("expo-video-thumbnails", () => ({
 	getThumbnailAsync: jest.fn(),
-}));
-jest.mock("base64-arraybuffer", () => ({
-	decode: jest.fn().mockReturnValue(new ArrayBuffer(8)),
 }));
 jest.mock("@/lib/dateUtils", () => ({
 	safeDate: jest.fn((v: any) => (v instanceof Date ? v : new Date(v || Date.now()))),
@@ -32,22 +32,27 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { downloadAsync, readAsStringAsync } from "expo-file-system/legacy";
+import { renderHook, waitFor } from "@testing-library/react-native";
+import { copyAsync, downloadAsync, getInfoAsync, uploadAsync } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import {
+	createVideoThumbnailUri,
 	downloadPhoto,
 	getDownloadedPhotoIds,
-	getPhotoUrl,
 	isPhotoDownloaded,
 	markPhotoDownloaded,
+	resolveStorageUrl,
 	uploadMedia,
+	usePhotoThumbnailUrl,
 } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 
 const mockedSupabase = supabase as any;
-const mockedReadAsStringAsync = readAsStringAsync as jest.MockedFunction<typeof readAsStringAsync>;
 const mockedDownloadAsync = downloadAsync as jest.MockedFunction<typeof downloadAsync>;
+const mockedCopyAsync = copyAsync as jest.MockedFunction<typeof copyAsync>;
+const mockedGetInfoAsync = getInfoAsync as jest.MockedFunction<typeof getInfoAsync>;
+const mockedUploadAsync = uploadAsync as jest.MockedFunction<typeof uploadAsync>;
 const mockedGetAssetInfoAsync = MediaLibrary.getAssetInfoAsync as jest.MockedFunction<
 	typeof MediaLibrary.getAssetInfoAsync
 >;
@@ -55,6 +60,23 @@ const mockedGetThumbnailAsync = VideoThumbnails.getThumbnailAsync as jest.Mocked
 	typeof VideoThumbnails.getThumbnailAsync
 >;
 const mockedAsyncStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
+const mockedFetch = jest.fn();
+
+function mockBlobResponse(size: number = 8) {
+	return {
+		ok: true,
+		blob: jest.fn().mockResolvedValue({ size } as Blob),
+	};
+}
+
+function mockNativeUploadResponse(body: Record<string, unknown> = { Key: "uploaded/path" }) {
+	return {
+		status: 200,
+		headers: {},
+		mimeType: "application/json",
+		body: JSON.stringify(body),
+	};
+}
 
 function setupStorageMock(
 	overrides: { uploadError?: any; uploadPath?: string; removeError?: any } = {}
@@ -70,24 +92,44 @@ function setupStorageMock(
 	const mockGetPublicUrl = jest.fn().mockReturnValue({
 		data: { publicUrl: "https://cdn.example.com/photo.jpg" },
 	});
+	const mockCreateSignedUrl = jest.fn().mockResolvedValue({
+		data: { signedUrl: "https://cdn.example.com/signed/photo.jpg" },
+		error: null,
+	});
 
 	mockedSupabase.storage.from.mockReturnValue({
 		upload: mockUpload,
 		getPublicUrl: mockGetPublicUrl,
+		createSignedUrl: mockCreateSignedUrl,
 		remove: mockRemove,
 	});
 
-	return { mockUpload, mockGetPublicUrl, mockRemove };
+	return { mockUpload, mockGetPublicUrl, mockCreateSignedUrl, mockRemove };
 }
 
 function setupDbMock(overrides: { insertError?: any } = {}) {
-	const mockInsert = jest.fn().mockReturnValue({
-		error: overrides.insertError || null,
+	const mockSingle = jest
+		.fn()
+		.mockResolvedValue(
+			overrides.insertError
+				? { data: null, error: overrides.insertError }
+				: { data: { id: "media-item-1" }, error: null }
+		);
+	const mockSelect = jest.fn().mockReturnValue({ single: mockSingle });
+	const mockInsert = jest.fn().mockReturnValue({ select: mockSelect });
+	const mockMaybeSingle = jest.fn().mockResolvedValue({ data: { id: "user1" }, error: null });
+	const mockEq = jest.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+	const mockUserSelect = jest.fn().mockReturnValue({ eq: mockEq });
+
+	mockedSupabase.from.mockImplementation((table: string) => {
+		if (table === "users") {
+			return { select: mockUserSelect };
+		}
+
+		return { insert: mockInsert };
 	});
 
-	mockedSupabase.from.mockReturnValue({ insert: mockInsert });
-
-	return { mockInsert };
+	return { mockInsert, mockSelect, mockSingle, mockUserSelect, mockEq, mockMaybeSingle };
 }
 
 const baseUploadOptions = {
@@ -102,23 +144,50 @@ const baseUploadOptions = {
 describe("storage", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
-		mockedReadAsStringAsync.mockResolvedValue("base64data");
+		jest.useRealTimers();
+		mockedFetch.mockResolvedValue(mockBlobResponse());
+		(global as typeof globalThis & { fetch: typeof fetch }).fetch = mockedFetch as typeof fetch;
+		mockedUploadAsync.mockResolvedValue(mockNativeUploadResponse() as any);
+		mockedGetInfoAsync.mockResolvedValue({
+			exists: true,
+			isDirectory: false,
+			uri: "file:///photos/photo.jpg",
+			size: 8,
+			modificationTime: Date.now(),
+		} as any);
+		mockedCopyAsync.mockResolvedValue();
+		mockedSupabase.auth.getSession.mockResolvedValue({
+			data: { session: { access_token: "user-token", user: { id: "auth-user-1" } } },
+		});
 	});
 
 	describe("uploadMedia", () => {
-		it("uploads a photo successfully", async () => {
-			const { mockUpload } = setupStorageMock({ uploadPath: "event1/user1/123.jpg" });
+		it("uploads a photo successfully without generating a local thumbnail", async () => {
 			const { mockInsert } = setupDbMock();
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
 			expect(result.success).toBe(true);
-			expect(result.path).toBe("event1/user1/123.jpg");
-			expect(mockedReadAsStringAsync).toHaveBeenCalled();
-			expect(mockUpload).toHaveBeenCalledTimes(1);
+			expect(result.path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.jpg$/);
+			expect(mockedUploadAsync).toHaveBeenCalledTimes(1);
 
-			const uploadCallArgs = mockUpload.mock.calls[0];
-			expect(uploadCallArgs[0]).toMatch(/^event1\/user1\/\d+\.jpg$/);
+			const uploadCallArgs = mockedUploadAsync.mock.calls[0];
+			expect(uploadCallArgs[0]).toMatch(
+				/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.jpg$/
+			);
+			expect(uploadCallArgs[1]).toMatch(/^file:\/\/\/cache\/recapd-upload-\d+_[a-z0-9]+\.jpg$/);
+			expect(uploadCallArgs[2]).toEqual(
+				expect.objectContaining({
+					httpMethod: "POST",
+					uploadType: 0,
+					headers: expect.objectContaining({
+						Authorization: "Bearer user-token",
+						apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+						"content-type": "image/jpeg",
+						"x-upsert": "false",
+					}),
+				})
+			);
 
 			expect(mockInsert).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -126,28 +195,24 @@ describe("storage", () => {
 					uploaded_by_user_id: "user1",
 					media_type: "photo",
 					duration_milliseconds: null,
+					thumbnail_path: null,
 				})
 			);
 		});
 
 		it("uploads a video with thumbnail", async () => {
-			const mockUpload = jest
-				.fn()
-				.mockResolvedValueOnce({ data: { path: "event1/user1/123.mp4" }, error: null })
-				.mockResolvedValueOnce({ data: { path: "event1/user1/123_thumb.jpg" }, error: null });
-
-			mockedSupabase.storage.from.mockReturnValue({
-				upload: mockUpload,
-				remove: jest.fn(),
-			});
-			setupDbMock();
+			mockedUploadAsync
+				.mockResolvedValueOnce(mockNativeUploadResponse({ Key: "event1/user1/123.mp4" }) as any)
+				.mockResolvedValueOnce(
+					mockNativeUploadResponse({ Key: "event1/user1/123_thumb.jpg" }) as any
+				);
+			const { mockInsert } = setupDbMock();
 
 			mockedGetThumbnailAsync.mockResolvedValue({
 				uri: "file:///thumb.jpg",
 				width: 320,
 				height: 240,
 			});
-
 			const result = await uploadMedia({
 				...baseUploadOptions,
 				uri: "file:///video.mp4",
@@ -160,51 +225,135 @@ describe("storage", () => {
 				expect.any(String),
 				expect.objectContaining({ time: 1000 })
 			);
-			expect(mockUpload).toHaveBeenCalledTimes(2);
+			expect(mockedUploadAsync).toHaveBeenCalledTimes(2);
 
-			const thumbUploadArgs = mockUpload.mock.calls[1];
-			expect(thumbUploadArgs[0]).toMatch(/_thumb\.jpg$/);
+			const thumbUploadArgs = mockedUploadAsync.mock.calls[1];
+			expect(thumbUploadArgs[0]).toMatch(
+				/\/storage\/v1\/object\/thumbnails\/event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/
+			);
+			expect(thumbUploadArgs[1]).toBe("file:///thumb.jpg");
 
-			const insertCall = mockedSupabase.from.mock.results[0].value.insert.mock.calls[0][0];
+			const insertCall = mockInsert.mock.calls[0][0];
 			expect(insertCall.media_type).toBe("video");
 			expect(insertCall.duration_milliseconds).toBe(Math.round(5500.7));
-			expect(insertCall.thumbnail_path).toBe("event1/user1/123_thumb.jpg");
+			expect(insertCall.thumbnail_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/);
+		});
+
+		it("sanitizes decorated picker URIs before deriving the upload extension", async () => {
+			const { mockInsert } = setupDbMock();
+			mockedGetThumbnailAsync.mockResolvedValue({
+				uri: "file:///thumb.jpg",
+				width: 320,
+				height: 240,
+			});
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				uri: "file:///tmp/clip.mov#security-scoped-token",
+				mediaType: "video",
+				duration: 3000,
+			});
+
+			expect(result.success).toBe(true);
+			expect(mockedCopyAsync).toHaveBeenCalled();
+			const insertCall = mockInsert.mock.calls[0][0];
+			expect(insertCall.storage_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mov$/);
+		});
+
+		it("allows video uploads to stay in flight longer than the photo timeout", async () => {
+			jest.useFakeTimers();
+			setupDbMock();
+			mockedGetThumbnailAsync.mockResolvedValue({
+				uri: "file:///thumb.jpg",
+				width: 320,
+				height: 240,
+			});
+
+			mockedUploadAsync
+				.mockImplementationOnce(
+					() =>
+						new Promise((resolve) => {
+							setTimeout(
+								() => resolve(mockNativeUploadResponse({ Key: "event1/user1/123.mp4" }) as any),
+								3 * 60 * 1000
+							);
+						})
+				)
+				.mockResolvedValueOnce(
+					mockNativeUploadResponse({ Key: "event1/user1/123_thumb.jpg" }) as any
+				);
+
+			const uploadPromise = uploadMedia({
+				...baseUploadOptions,
+				uri: "file:///video.mp4",
+				mediaType: "video",
+				duration: 5500,
+			});
+
+			await jest.advanceTimersByTimeAsync(3 * 60 * 1000);
+			const result = await uploadPromise;
+
+			expect(result.success).toBe(true);
 		});
 
 		it("returns error when storage upload fails", async () => {
-			setupStorageMock({ uploadError: { message: "Storage full" } });
 			const { mockInsert } = setupDbMock();
+			mockedUploadAsync.mockResolvedValueOnce({
+				status: 400,
+				headers: {},
+				mimeType: "application/json",
+				body: JSON.stringify({ message: "Storage full" }),
+			} as any);
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result).toEqual({ success: false, error: "Storage full" });
+			expect(result).toEqual(
+				expect.objectContaining({ success: false, error: "Storage full", failureReason: "storage" })
+			);
+			expect(mockInsert).not.toHaveBeenCalled();
+		});
+
+		it("surfaces native upload timeouts as timeout failures", async () => {
+			jest.useFakeTimers();
+			const { mockInsert } = setupDbMock();
+			mockedUploadAsync.mockImplementation(() => new Promise(() => {}));
+
+			const uploadPromise = uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
+			await jest.advanceTimersByTimeAsync(2 * 60 * 1000);
+			const result = await uploadPromise;
+
+			expect(result).toEqual(
+				expect.objectContaining({ success: false, error: "timeout", failureReason: "timeout" })
+			);
 			expect(mockInsert).not.toHaveBeenCalled();
 		});
 
 		it("cleans up storage files when DB insert fails for photo", async () => {
-			const { mockRemove } = setupStorageMock({ uploadPath: "event1/user1/123.jpg" });
+			const mockRemove = jest.fn().mockResolvedValue({ error: null });
+			mockedSupabase.storage.from.mockReturnValue({
+				remove: mockRemove,
+			});
 			setupDbMock({ insertError: { message: "DB error" } });
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result).toEqual({ success: false, error: "DB error" });
-			expect(mockRemove).toHaveBeenCalledWith(["event1/user1/123.jpg"]);
+			expect(result).toEqual(
+				expect.objectContaining({ success: false, error: "DB error", failureReason: "database" })
+			);
+			expect(mockRemove).toHaveBeenCalledWith([
+				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+\.jpg$/),
+			]);
+			expect(mockedSupabase.storage.from).not.toHaveBeenCalledWith("thumbnails");
 		});
 
 		it("cleans up both video and thumbnail when DB insert fails for video", async () => {
 			const mockRemove = jest.fn().mockResolvedValue({ error: null });
-			const mockUpload = jest
-				.fn()
-				.mockResolvedValueOnce({ data: { path: "event1/user1/123.mp4" }, error: null })
-				.mockResolvedValueOnce({ data: { path: "event1/user1/123_thumb.jpg" }, error: null });
 
 			mockedSupabase.storage.from.mockReturnValue({
-				upload: mockUpload,
 				remove: mockRemove,
 			});
 
-			const mockInsert = jest.fn().mockReturnValue({ error: { message: "DB error" } });
-			mockedSupabase.from.mockReturnValue({ insert: mockInsert });
+			setupDbMock({ insertError: { message: "DB error" } });
 
 			mockedGetThumbnailAsync.mockResolvedValue({
 				uri: "file:///thumb.jpg",
@@ -219,11 +368,16 @@ describe("storage", () => {
 				duration: 3000,
 			});
 
-			expect(result).toEqual({ success: false, error: "DB error" });
-			const removeCall = mockRemove.mock.calls[0][0];
-			expect(removeCall).toHaveLength(2);
-			expect(removeCall[0]).toMatch(/\.mp4$/);
-			expect(removeCall[1]).toMatch(/_thumb\.jpg$/);
+			expect(result).toEqual(
+				expect.objectContaining({ success: false, error: "DB error", failureReason: "database" })
+			);
+			expect(mockRemove).toHaveBeenCalledWith([
+				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+\.mp4$/),
+			]);
+			expect(mockRemove).toHaveBeenCalledWith([
+				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/),
+			]);
+			expect(mockedSupabase.storage.from).toHaveBeenCalledWith("thumbnails");
 		});
 
 		it("continues with null thumbnail when getThumbnailAsync throws", async () => {
@@ -236,8 +390,7 @@ describe("storage", () => {
 				remove: jest.fn(),
 			});
 
-			const mockInsert = jest.fn().mockReturnValue({ error: null });
-			mockedSupabase.from.mockReturnValue({ insert: mockInsert });
+			const { mockInsert } = setupDbMock();
 
 			mockedGetThumbnailAsync.mockRejectedValue(new Error("Thumbnail generation failed"));
 
@@ -268,34 +421,180 @@ describe("storage", () => {
 
 			expect(result.success).toBe(true);
 			expect(mockedGetAssetInfoAsync).toHaveBeenCalled();
-			expect(mockedReadAsStringAsync).toHaveBeenCalledWith(
-				"file:///resolved/photo.jpg",
-				expect.any(Object)
+		});
+
+		it("uploads HEIC photos with the correct content type", async () => {
+			setupDbMock();
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				uri: "file:///photos/photo.heic",
+				mediaType: "photo",
+			});
+
+			expect(result.success).toBe(true);
+			expect(mockedUploadAsync).toHaveBeenCalledWith(
+				expect.stringMatching(
+					/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.heic$/
+				),
+				expect.stringMatching(/^file:\/\/\/cache\/recapd-upload-\d+_[a-z0-9]+\.heic$/),
+				expect.objectContaining({
+					headers: expect.objectContaining({ "content-type": "image/heic" }),
+				})
+			);
+		});
+
+		it("rejects empty local files instead of creating broken uploads", async () => {
+			const { mockInsert } = setupDbMock();
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				mediaType: "photo",
+				fileSize: 0,
+			});
+
+			expect(result).toEqual(
+				expect.objectContaining({
+					success: false,
+					error: "Selected file is empty",
+					failureReason: "storage",
+				})
+			);
+			expect(mockedUploadAsync).not.toHaveBeenCalled();
+			expect(mockInsert).not.toHaveBeenCalled();
+		});
+
+		it("stores photos without a thumbnail path", async () => {
+			const { mockInsert } = setupDbMock();
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				mediaType: "photo",
+			});
+
+			expect(result.success).toBe(true);
+			const insertData = mockInsert.mock.calls[0][0];
+			expect(insertData.thumbnail_path).toBeNull();
+		});
+	});
+
+	describe("createVideoThumbnailUri", () => {
+		it("resolves iOS asset URIs before generating thumbnails", async () => {
+			mockedGetAssetInfoAsync.mockResolvedValue({
+				localUri: "file:///resolved-video.mov",
+			} as any);
+			mockedGetThumbnailAsync.mockResolvedValue({
+				uri: "file:///thumb.jpg",
+				width: 320,
+				height: 240,
+			});
+
+			const result = await createVideoThumbnailUri("ph://ABC123/L0/001", 0);
+
+			expect(result).toBe("file:///thumb.jpg");
+			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("ABC123");
+			expect(mockedGetThumbnailAsync).toHaveBeenCalledWith(
+				expect.stringMatching(/^file:\/\/\/cache\/recapd-upload-thumb-\d+-[a-z0-9]+\.mov$/),
+				expect.objectContaining({ time: 0 })
 			);
 		});
 	});
 
-	describe("getPhotoUrl", () => {
-		it("returns public URL from supabase", () => {
-			const mockGetPublicUrl = jest.fn().mockReturnValue({
-				data: { publicUrl: "https://cdn.example.com/photos/test.jpg" },
-			});
-			mockedSupabase.storage.from.mockReturnValue({ getPublicUrl: mockGetPublicUrl });
+	describe("resolveStorageUrl", () => {
+		it("returns a signed URL for event photos", async () => {
+			const { mockCreateSignedUrl, mockGetPublicUrl } = setupStorageMock();
 
-			const url = getPhotoUrl("photos/test.jpg");
+			const url = await resolveStorageUrl("photos/test.jpg");
 
-			expect(url).toBe("https://cdn.example.com/photos/test.jpg");
+			expect(url).toBe("https://cdn.example.com/signed/photo.jpg");
 			expect(mockedSupabase.storage.from).toHaveBeenCalledWith("event-photos");
-			expect(mockGetPublicUrl).toHaveBeenCalledWith("photos/test.jpg");
+			expect(mockCreateSignedUrl).toHaveBeenCalledWith("photos/test.jpg", 60 * 60, undefined);
+			expect(mockGetPublicUrl).not.toHaveBeenCalled();
+		});
+
+		it("returns a signed URL for thumbnails", async () => {
+			const { mockCreateSignedUrl } = setupStorageMock();
+
+			const url = await resolveStorageUrl("photos/test_thumb.jpg");
+
+			expect(url).toBe("https://cdn.example.com/signed/photo.jpg");
+			expect(mockedSupabase.storage.from).toHaveBeenCalledWith("thumbnails");
+			expect(mockCreateSignedUrl).toHaveBeenCalledWith("photos/test_thumb.jpg", 60 * 60, undefined);
+		});
+
+		it("passes transform options through to signed URLs", async () => {
+			const { mockCreateSignedUrl } = setupStorageMock();
+
+			const url = await resolveStorageUrl("photos/test.jpg", {
+				transform: {
+					width: 720,
+					height: 720,
+					quality: 60,
+					resize: "cover",
+				},
+			});
+
+			expect(url).toBe("https://cdn.example.com/signed/photo.jpg");
+			expect(mockCreateSignedUrl).toHaveBeenCalledWith("photos/test.jpg", 60 * 60, {
+				transform: {
+					width: 720,
+					height: 720,
+					quality: 60,
+					resize: "cover",
+				},
+			});
+		});
+
+		it("skips transform options for HEIC thumbnails", async () => {
+			setupStorageMock();
+			const { result } = renderHook(() => usePhotoThumbnailUrl("photos/test.HEIC"));
+
+			await waitFor(() => {
+				expect(result.current).toBe("https://cdn.example.com/signed/photo.jpg");
+			});
+
+			const mockCreateSignedUrl = mockedSupabase.storage.from.mock.results[0].value.createSignedUrl;
+			expect(mockCreateSignedUrl).toHaveBeenCalledWith("photos/test.HEIC", 60 * 60, undefined);
+		});
+
+		it("returns http URLs unchanged", async () => {
+			setupStorageMock();
+
+			const url = await resolveStorageUrl("https://cdn.example.com/existing.jpg");
+
+			expect(url).toBe("https://cdn.example.com/existing.jpg");
+			expect(mockedSupabase.storage.from).not.toHaveBeenCalled();
+		});
+
+		it("throws when signed URL creation fails instead of falling back to a public URL", async () => {
+			const failingPath = "photos/failing-test.jpg";
+			const mockGetPublicUrl = jest.fn().mockReturnValue({
+				data: { publicUrl: "https://cdn.example.com/public-photo.jpg" },
+			});
+			const mockCreateSignedUrl = jest.fn().mockResolvedValue({
+				data: null,
+				error: { message: "Object not found" },
+			});
+			mockedSupabase.storage.from.mockReturnValue({
+				createSignedUrl: mockCreateSignedUrl,
+				getPublicUrl: mockGetPublicUrl,
+			});
+
+			await expect(resolveStorageUrl(failingPath)).rejects.toEqual({
+				message: "Object not found",
+			});
+			expect(mockCreateSignedUrl).toHaveBeenCalledWith(failingPath, 60 * 60, undefined);
+			expect(mockGetPublicUrl).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("downloadPhoto", () => {
 		beforeEach(() => {
-			const mockGetPublicUrl = jest.fn().mockReturnValue({
-				data: { publicUrl: "https://cdn.example.com/photo.jpg" },
+			const mockCreateSignedUrl = jest.fn().mockResolvedValue({
+				data: { signedUrl: "https://cdn.example.com/photo.jpg" },
+				error: null,
 			});
-			mockedSupabase.storage.from.mockReturnValue({ getPublicUrl: mockGetPublicUrl });
+			mockedSupabase.storage.from.mockReturnValue({ createSignedUrl: mockCreateSignedUrl });
 		});
 
 		it("returns downloaded URI on success", async () => {
@@ -312,7 +611,7 @@ describe("storage", () => {
 			expect(result).toBe("/cache/photo.jpg");
 			expect(mockedDownloadAsync).toHaveBeenCalledWith(
 				"https://cdn.example.com/photo.jpg",
-				"/cache/photo.jpg"
+				"file:///cache/photo.jpg"
 			);
 		});
 

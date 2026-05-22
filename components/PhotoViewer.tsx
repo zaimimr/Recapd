@@ -1,25 +1,32 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { format } from "date-fns";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	Animated,
 	Dimensions,
 	FlatList,
 	Modal,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent,
+	PanResponder,
+	Pressable,
 	ScrollView,
 	StyleSheet,
 	Text,
-	TouchableOpacity,
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getAvatarColor } from "@/lib/colors";
 import { saveToLibrary } from "@/lib/mediaLibrary";
-import { downloadPhoto, getPhotoUrl, isPhotoDownloaded, markPhotoDownloaded } from "@/lib/storage";
+import {
+	downloadPhoto,
+	isPhotoDownloaded,
+	markPhotoDownloaded,
+	usePhotoThumbnailUrl,
+	useStorageUrl,
+} from "@/lib/storage";
+import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import type { MergedMediaItem } from "./MomentCluster";
 import VideoPlayer from "./VideoPlayer";
 
@@ -41,31 +48,32 @@ interface ZoomableImageProps {
 	thumbnailUri?: string;
 }
 
+function clampIndex(index: number, length: number): number {
+	if (length <= 0) return 0;
+	return Math.max(0, Math.min(index, length - 1));
+}
+
 function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
 	const scrollRef = useRef<ScrollView>(null);
 	const [isZoomed, setIsZoomed] = useState(false);
+	const signedPhotoUrl = useStorageUrl(photo.isPending ? null : photo.storage_path);
+	const photoUri = photo.isPending && photo.localUri ? photo.localUri : signedPhotoUrl;
 
-	const imageUri =
-		photo.isPending && photo.localUri ? photo.localUri : getPhotoUrl(photo.storage_path);
-
-	const placeholderUri = photo.localUri || thumbnailUri;
-
-	const handleDoubleTap = useCallback(() => {
+	const handlePress = useCallback(() => {
 		if (isZoomed) {
 			scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
 		}
 	}, [isZoomed]);
 
 	const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-		const zoomScale = event.nativeEvent.zoomScale;
-		setIsZoomed(zoomScale > 1);
+		setIsZoomed(event.nativeEvent.zoomScale > 1);
 	}, []);
 
 	return (
 		<ScrollView
 			ref={scrollRef}
-			style={styles.scrollView}
-			contentContainerStyle={styles.scrollContent}
+			style={styles.mediaFill}
+			contentContainerStyle={styles.mediaFill}
 			maximumZoomScale={4}
 			minimumZoomScale={1}
 			showsHorizontalScrollIndicator={false}
@@ -75,18 +83,80 @@ function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
 			bouncesZoom
 			centerContent
 		>
-			<TouchableOpacity activeOpacity={1} onPress={handleDoubleTap} style={styles.imageWrapper}>
-				<Image
-					source={{ uri: imageUri }}
-					style={styles.image}
-					contentFit="contain"
-					cachePolicy="memory-disk"
-					placeholder={placeholderUri ? { uri: placeholderUri } : undefined}
-					placeholderContentFit="contain"
-					transition={100}
-				/>
-			</TouchableOpacity>
+			<Pressable onPress={handlePress} style={styles.mediaFill}>
+				{photoUri ? (
+					<Image
+						source={{ uri: photoUri }}
+						style={styles.mediaFill}
+						contentFit="contain"
+						cachePolicy="memory-disk"
+						enableLiveTextInteraction={false}
+						placeholder={thumbnailUri ? { uri: thumbnailUri } : undefined}
+						placeholderContentFit="contain"
+						transition={120}
+					/>
+				) : (
+					<View style={styles.loadingState}>
+						<ActivityIndicator size="large" color="#fff" />
+					</View>
+				)}
+			</Pressable>
 		</ScrollView>
+	);
+}
+
+function PhotoPage({
+	photo,
+	initialThumbnailUri,
+	isInitial,
+}: {
+	photo: MergedMediaItem;
+	initialThumbnailUri?: string;
+	isInitial: boolean;
+}) {
+	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
+	const signedPhotoUrl = usePhotoThumbnailUrl(
+		photo.isPending || photo.media_type !== "photo" ? null : photo.storage_path
+	);
+	const thumbnailUri =
+		isInitial && initialThumbnailUri
+			? initialThumbnailUri
+			: photo.localThumbnailUri ||
+				signedThumbnailUrl ||
+				(photo.isPending ? photo.localUri : signedPhotoUrl) ||
+				undefined;
+
+	return <ZoomableImage photo={photo} thumbnailUri={thumbnailUri} />;
+}
+
+function VideoPage({
+	photo,
+	initialThumbnailUri,
+	isInitial,
+	isActive,
+}: {
+	photo: MergedMediaItem;
+	initialThumbnailUri?: string;
+	isInitial: boolean;
+	isActive: boolean;
+}) {
+	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
+	const thumbnailUri =
+		isInitial && initialThumbnailUri
+			? initialThumbnailUri
+			: photo.localThumbnailUri || signedThumbnailUrl || undefined;
+
+	return (
+		<View style={styles.mediaFill}>
+			<VideoPlayer
+				media={photo}
+				autoPlay
+				isActive={isActive}
+				nativeControls={false}
+				allowTapToggle
+				thumbnailUri={thumbnailUri}
+			/>
+		</View>
 	);
 }
 
@@ -97,25 +167,85 @@ export default function PhotoViewer({
 	onClose,
 	onDelete,
 	currentUserId,
-	isDark: _isDark,
+	isDark,
 	initialThumbnailUri,
 }: PhotoViewerProps) {
 	const insets = useSafeAreaInsets();
-	const safeInitialIndex = Math.max(0, Math.min(initialIndex, photos.length - 1));
+	const flatListRef = useRef<FlatList<MergedMediaItem>>(null);
+	const safeInitialIndex = clampIndex(initialIndex, photos.length);
 	const [currentIndex, setCurrentIndex] = useState(safeInitialIndex);
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
-	const flatListRef = useRef<FlatList>(null);
-
-	useEffect(() => {
-		if (visible) {
-			setCurrentIndex(Math.max(0, Math.min(initialIndex, photos.length - 1)));
-		}
-	}, [visible, initialIndex, photos.length]);
+	const translateY = useRef(new Animated.Value(0)).current;
+	const backdropOpacity = translateY.interpolate({
+		inputRange: [0, SCREEN_HEIGHT * 0.7, SCREEN_HEIGHT],
+		outputRange: [1, 0.2, 0],
+		extrapolate: "clamp",
+	});
 
 	const currentPhoto = photos[currentIndex];
 	const canDelete =
 		currentPhoto && !currentPhoto.isPending && currentPhoto.uploaded_by_user_id === currentUserId;
+	const capturedAt = currentPhoto?.captured_at;
+	const captureDateLabel = capturedAt
+		? formatLocalizedDate(capturedAt, {
+				month: "short",
+				day: "numeric",
+				year: "numeric",
+			})
+		: null;
+	const captureTimeLabel = capturedAt ? formatLocalizedTime(capturedAt) : null;
+
+	const buttonSurface = isDark ? "rgba(15, 23, 42, 0.56)" : "rgba(15, 23, 42, 0.44)";
+	const buttonBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.18)";
+
+	const scrollToPhoto = useCallback((index: number, animated: boolean) => {
+		flatListRef.current?.scrollToOffset({
+			offset: SCREEN_WIDTH * index,
+			animated,
+		});
+	}, []);
+
+	useEffect(() => {
+		if (!visible) {
+			setSaving(false);
+			setDeleting(false);
+			return;
+		}
+
+		translateY.setValue(0);
+		const nextIndex = clampIndex(initialIndex, photos.length);
+		setCurrentIndex(nextIndex);
+
+		requestAnimationFrame(() => {
+			scrollToPhoto(nextIndex, false);
+		});
+	}, [visible, initialIndex, photos.length, scrollToPhoto, translateY]);
+
+	useEffect(() => {
+		if (!visible) return;
+		if (photos.length === 0) {
+			onClose();
+			return;
+		}
+
+		const nextIndex = clampIndex(currentIndex, photos.length);
+		if (nextIndex !== currentIndex) {
+			setCurrentIndex(nextIndex);
+			requestAnimationFrame(() => {
+				scrollToPhoto(nextIndex, false);
+			});
+		}
+	}, [visible, currentIndex, photos.length, onClose, scrollToPhoto]);
+
+	const handleMomentumEnd = useCallback(
+		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+			setCurrentIndex(
+				clampIndex(Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH), photos.length)
+			);
+		},
+		[photos.length]
+	);
 
 	const handleDownload = useCallback(async () => {
 		if (!currentPhoto || currentPhoto.isPending) return;
@@ -137,22 +267,28 @@ export default function PhotoViewer({
 				currentPhoto.storage_path,
 				`recapd_${currentPhoto.id}.${extension}`
 			);
-			if (localUri) {
-				const asset = await saveToLibrary(localUri);
-				if (asset) {
-					await markPhotoDownloaded(currentPhoto.id);
-					Alert.alert("Saved", `${isVideo ? "Video" : "Photo"} saved to your camera roll`);
-				} else {
-					Alert.alert("Error", `Failed to save ${mediaLabel}`);
-				}
+
+			if (!localUri) {
+				Alert.alert("Error", `Failed to download ${mediaLabel}`);
+				return;
 			}
+
+			const asset = await saveToLibrary(localUri);
+			if (!asset) {
+				Alert.alert("Error", `Failed to save ${mediaLabel}`);
+				return;
+			}
+
+			await markPhotoDownloaded(currentPhoto.id);
+			Alert.alert("Saved", `${isVideo ? "Video" : "Photo"} saved to your camera roll`);
 		} catch {
 			Alert.alert(
 				"Error",
 				`Failed to download ${currentPhoto.media_type === "video" ? "video" : "photo"}`
 			);
+		} finally {
+			setSaving(false);
 		}
-		setSaving(false);
 	}, [currentPhoto]);
 
 	const handleDelete = useCallback(async () => {
@@ -173,32 +309,69 @@ export default function PhotoViewer({
 						setDeleting(true);
 						const success = await onDelete(currentPhoto.id);
 						setDeleting(false);
-						if (success) {
-							if (photos.length <= 1) {
-								onClose();
-							} else if (currentIndex >= photos.length - 1) {
-								setCurrentIndex(currentIndex - 1);
-							}
-						} else {
+
+						if (!success) {
 							Alert.alert("Error", `Failed to delete ${mediaLabel}`);
+							return;
+						}
+
+						if (photos.length <= 1) {
+							onClose();
+							return;
+						}
+
+						if (currentIndex >= photos.length - 1) {
+							const nextIndex = Math.max(0, currentIndex - 1);
+							setCurrentIndex(nextIndex);
+							requestAnimationFrame(() => {
+								scrollToPhoto(nextIndex, false);
+							});
 						}
 					},
 				},
 			]
 		);
-	}, [currentPhoto, onDelete, currentIndex, photos.length, onClose]);
+	}, [currentPhoto, onDelete, photos.length, currentIndex, onClose, scrollToPhoto]);
 
-	const onViewableItemsChanged = useRef(
-		({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
-			if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-				setCurrentIndex(viewableItems[0].index);
+	const animateClose = useCallback(() => {
+		Animated.timing(translateY, {
+			toValue: SCREEN_HEIGHT,
+			duration: 180,
+			useNativeDriver: true,
+		}).start(({ finished }) => {
+			if (finished) {
+				onClose();
 			}
-		}
-	).current;
+		});
+	}, [onClose, translateY]);
 
-	const viewabilityConfig = useRef({
-		itemVisiblePercentThreshold: 50,
-	}).current;
+	const resetPosition = useCallback(() => {
+		Animated.spring(translateY, {
+			toValue: 0,
+			useNativeDriver: true,
+			bounciness: 0,
+			speed: 18,
+		}).start();
+	}, [translateY]);
+
+	const panResponder = useRef(
+		PanResponder.create({
+			onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+				gestureState.dy > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+			onPanResponderMove: (_, gestureState) => {
+				translateY.setValue(Math.max(0, gestureState.dy));
+			},
+			onPanResponderRelease: (_, gestureState) => {
+				if (gestureState.dy > 120 || gestureState.vy > 1.05) {
+					animateClose();
+					return;
+				}
+
+				resetPosition();
+			},
+			onPanResponderTerminate: resetPosition,
+		})
+	).current;
 
 	if (!visible || !currentPhoto) return null;
 
@@ -206,256 +379,221 @@ export default function PhotoViewer({
 		<Modal
 			visible={visible}
 			animationType="none"
-			transparent={false}
+			transparent
+			presentationStyle="overFullScreen"
 			statusBarTranslucent
 			onRequestClose={onClose}
 		>
-			<View style={styles.container}>
-				<View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-					<TouchableOpacity
-						style={styles.headerButton}
-						onPress={onClose}
-						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-					>
-						<FontAwesome name="chevron-down" size={20} color="#fff" />
-					</TouchableOpacity>
-					<View style={styles.headerCenter}>
-						<Text style={styles.counter}>
-							{currentIndex + 1} / {photos.length}
-						</Text>
-					</View>
-					<View style={styles.headerRight}>
-						{canDelete ? (
-							<TouchableOpacity
-								style={styles.headerButton}
-								onPress={handleDelete}
-								disabled={deleting}
-								hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-							>
-								{deleting ? (
-									<ActivityIndicator size="small" color="#fff" />
+			<View style={styles.modalRoot}>
+				<Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]} />
+				<Animated.View
+					style={[
+						styles.container,
+						{
+							transform: [{ translateY }],
+						},
+					]}
+					{...panResponder.panHandlers}
+				>
+					<FlatList
+						ref={flatListRef}
+						data={photos}
+						horizontal
+						pagingEnabled
+						showsHorizontalScrollIndicator={false}
+						keyExtractor={(item) => item.id}
+						initialScrollIndex={safeInitialIndex}
+						getItemLayout={(_, index) => ({
+							length: SCREEN_WIDTH,
+							offset: SCREEN_WIDTH * index,
+							index,
+						})}
+						onMomentumScrollEnd={handleMomentumEnd}
+						onScrollToIndexFailed={({ index }) => {
+							requestAnimationFrame(() => {
+								scrollToPhoto(index, false);
+							});
+						}}
+						renderItem={({ item, index }) => (
+							<View style={styles.page}>
+								{item.media_type === "video" ? (
+									<VideoPage
+										photo={item}
+										isActive={index === currentIndex}
+										isInitial={index === safeInitialIndex}
+										initialThumbnailUri={initialThumbnailUri}
+									/>
 								) : (
-									<FontAwesome name="trash-o" size={20} color="#fff" />
+									<PhotoPage
+										photo={item}
+										isInitial={index === safeInitialIndex}
+										initialThumbnailUri={initialThumbnailUri}
+									/>
 								)}
-							</TouchableOpacity>
-						) : (
-							<View style={styles.headerButtonPlaceholder} />
+							</View>
 						)}
-					</View>
-				</View>
+					/>
 
-				<FlatList
-					ref={flatListRef}
-					data={photos}
-					horizontal
-					pagingEnabled
-					showsHorizontalScrollIndicator={false}
-					keyExtractor={(item) => item.id}
-					initialScrollIndex={safeInitialIndex}
-					getItemLayout={(_, index) => ({
-						length: SCREEN_WIDTH,
-						offset: SCREEN_WIDTH * index,
-						index,
-					})}
-					onViewableItemsChanged={onViewableItemsChanged}
-					viewabilityConfig={viewabilityConfig}
-					renderItem={({ item, index }) => (
-						<View style={styles.imageContainer}>
-							{item.media_type === "video" ? (
-								<VideoPlayer media={item} />
-							) : (
-								<ZoomableImage
-									photo={item}
-									thumbnailUri={index === initialIndex ? initialThumbnailUri : undefined}
-								/>
-							)}
-						</View>
-					)}
-				/>
+					<View pointerEvents="box-none" style={styles.overlay}>
+						<Pressable
+							onPress={animateClose}
+							hitSlop={12}
+							style={[
+								styles.topButton,
+								{
+									top: insets.top + 12,
+									backgroundColor: buttonSurface,
+									borderColor: buttonBorder,
+								},
+							]}
+						>
+							<FontAwesome name="chevron-down" size={18} color="#fff" />
+						</Pressable>
 
-				<View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-					<View style={styles.footerContent}>
-						<View style={styles.attribution}>
-							{currentPhoto.uploader?.display_name && !currentPhoto.isPending ? (
-								<View style={styles.uploaderRow}>
-									<View
-										style={[
-											styles.uploaderAvatar,
-											{
-												backgroundColor: getAvatarColor(currentPhoto.uploader.display_name),
-											},
-										]}
-									>
-										<Text style={styles.uploaderInitial}>
-											{currentPhoto.uploader.display_name.charAt(0).toUpperCase()}
-										</Text>
-									</View>
-									<View style={styles.uploaderInfo}>
-										<Text style={styles.uploaderName}>{currentPhoto.uploader.display_name}</Text>
-										<Text style={styles.captureTime}>
-											{format(new Date(currentPhoto.captured_at), "MMM d, yyyy · h:mm a")}
-										</Text>
-									</View>
-								</View>
-							) : currentPhoto.isPending ? (
-								<View style={styles.pendingRow}>
-									<ActivityIndicator size="small" color="#fbbf24" />
-									<Text style={styles.pendingText}>Uploading...</Text>
-								</View>
-							) : (
-								<Text style={styles.captureTime}>
-									{format(new Date(currentPhoto.captured_at), "MMM d, yyyy · h:mm a")}
-								</Text>
-							)}
-						</View>
-						{!currentPhoto.isPending && (
-							<TouchableOpacity
-								style={styles.downloadButton}
-								onPress={handleDownload}
-								disabled={saving}
+						{captureDateLabel && captureTimeLabel ? (
+							<View
+								style={[
+									styles.timestampBadge,
+									{
+										left: 16,
+										bottom: insets.bottom + 18,
+										backgroundColor: buttonSurface,
+										borderColor: buttonBorder,
+									},
+								]}
 							>
-								{saving ? (
-									<ActivityIndicator size="small" color="#fff" />
-								) : (
-									<FontAwesome name="arrow-down" size={18} color="#fff" />
-								)}
-							</TouchableOpacity>
-						)}
+								<Text style={styles.timestampDate}>{captureDateLabel}</Text>
+								<Text style={styles.timestampTime}>{captureTimeLabel}</Text>
+							</View>
+						) : null}
+
+						<View
+							style={[
+								styles.bottomActions,
+								{
+									bottom: insets.bottom + 18,
+								},
+							]}
+						>
+							{canDelete ? (
+								<Pressable
+									onPress={handleDelete}
+									disabled={deleting}
+									style={[
+										styles.actionButton,
+										{
+											backgroundColor: buttonSurface,
+											borderColor: buttonBorder,
+										},
+									]}
+								>
+									{deleting ? (
+										<ActivityIndicator size="small" color="#fff" />
+									) : (
+										<FontAwesome name="trash-o" size={20} color="#fff" />
+									)}
+								</Pressable>
+							) : null}
+
+							{!currentPhoto.isPending ? (
+								<Pressable
+									onPress={handleDownload}
+									disabled={saving}
+									style={[
+										styles.actionButton,
+										{
+											backgroundColor: buttonSurface,
+											borderColor: buttonBorder,
+										},
+									]}
+								>
+									{saving ? (
+										<ActivityIndicator size="small" color="#fff" />
+									) : (
+										<FontAwesome name="arrow-down" size={20} color="#fff" />
+									)}
+								</Pressable>
+							) : null}
+						</View>
 					</View>
-				</View>
+				</Animated.View>
 			</View>
 		</Modal>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	modalRoot: {
 		flex: 1,
+	},
+	backdrop: {
+		...StyleSheet.absoluteFillObject,
 		backgroundColor: "#000",
 	},
-	header: {
-		position: "absolute",
-		top: 0,
-		left: 0,
-		right: 0,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-		paddingHorizontal: 16,
-		paddingBottom: 12,
-		zIndex: 10,
+	container: {
+		flex: 1,
 	},
-	headerButton: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		backgroundColor: "rgba(255, 255, 255, 0.15)",
+	page: {
+		width: SCREEN_WIDTH,
+		height: SCREEN_HEIGHT,
+		backgroundColor: "#000",
+	},
+	mediaFill: {
+		flex: 1,
+		width: SCREEN_WIDTH,
+		height: SCREEN_HEIGHT,
+		backgroundColor: "#000",
+	},
+	loadingState: {
+		flex: 1,
 		justifyContent: "center",
 		alignItems: "center",
 	},
-	headerButtonPlaceholder: {
-		width: 40,
-		height: 40,
+	overlay: {
+		...StyleSheet.absoluteFillObject,
 	},
-	headerCenter: {
-		flex: 1,
+	topButton: {
+		position: "absolute",
+		left: 16,
+		width: 46,
+		height: 46,
+		borderRadius: 23,
+		borderWidth: 1,
 		alignItems: "center",
+		justifyContent: "center",
 	},
-	headerRight: {
-		width: 40,
+	timestampBadge: {
+		position: "absolute",
+		maxWidth: SCREEN_WIDTH - 108,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		borderRadius: 16,
+		borderWidth: 1,
 	},
-	counter: {
+	timestampDate: {
+		color: "#fff",
+		fontSize: 14,
+		fontWeight: "600",
+	},
+	timestampTime: {
+		marginTop: 2,
 		color: "rgba(255, 255, 255, 0.8)",
-		fontSize: 15,
+		fontSize: 13,
 		fontWeight: "500",
 	},
-	imageContainer: {
-		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT,
-	},
-	scrollView: {
-		flex: 1,
-	},
-	scrollContent: {
-		flexGrow: 1,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	imageWrapper: {
-		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	image: {
-		width: SCREEN_WIDTH,
-		height: SCREEN_HEIGHT * 0.75,
-	},
-	footer: {
+	bottomActions: {
 		position: "absolute",
-		bottom: 0,
-		left: 0,
-		right: 0,
-		paddingHorizontal: 20,
-		paddingTop: 16,
-		zIndex: 10,
-		backgroundColor: "rgba(0, 0, 0, 0.4)",
-	},
-	footerContent: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "space-between",
-	},
-	attribution: {
-		flex: 1,
-	},
-	uploaderRow: {
+		right: 16,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: 12,
 	},
-	uploaderAvatar: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
+	actionButton: {
+		width: 52,
+		height: 52,
+		borderRadius: 26,
+		borderWidth: 1,
+		alignItems: "center",
 		justifyContent: "center",
-		alignItems: "center",
-	},
-	uploaderInitial: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	uploaderInfo: {
-		flex: 1,
-	},
-	uploaderName: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-		marginBottom: 2,
-	},
-	pendingRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-	},
-	pendingText: {
-		color: "#fbbf24",
-		fontSize: 15,
-		fontWeight: "500",
-	},
-	captureTime: {
-		color: "rgba(255, 255, 255, 0.6)",
-		fontSize: 13,
-	},
-	downloadButton: {
-		width: 48,
-		height: 48,
-		borderRadius: 24,
-		backgroundColor: "rgba(255, 255, 255, 0.2)",
-		justifyContent: "center",
-		alignItems: "center",
-		marginLeft: 16,
 	},
 });

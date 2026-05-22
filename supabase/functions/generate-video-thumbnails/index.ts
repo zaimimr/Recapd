@@ -4,10 +4,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-	"Access-Control-Allow-Origin": "*",
-	"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const jsonHeaders = {
+	"Content-Type": "application/json",
 };
+const CRON_SECRET_HEADER = "x-cron-secret";
 
 interface MediaItem {
 	id: string;
@@ -17,9 +17,12 @@ interface MediaItem {
 }
 
 Deno.serve(async (req) => {
-	// Handle CORS preflight
-	if (req.method === "OPTIONS") {
-		return new Response("ok", { headers: corsHeaders });
+	const cronSecret = Deno.env.get("CRON_SECRET");
+	if (!cronSecret || req.headers.get(CRON_SECRET_HEADER) !== cronSecret) {
+		return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+			headers: jsonHeaders,
+			status: 401,
+		});
 	}
 
 	try {
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
 					results,
 				}),
 				{
-					headers: { ...corsHeaders, "Content-Type": "application/json" },
+					headers: jsonHeaders,
 				}
 			);
 		}
@@ -150,19 +153,19 @@ Deno.serve(async (req) => {
 				results,
 			}),
 			{
-				headers: { ...corsHeaders, "Content-Type": "application/json" },
+				headers: jsonHeaders,
 			}
 		);
 	} catch (error) {
-		console.error("Function error:", error);
+		console.error("Function error", error);
 		return new Response(
 			JSON.stringify({
 				success: false,
-				error: error instanceof Error ? error.message : "Unknown error",
+				error: "Internal server error",
 			}),
 			{
 				status: 500,
-				headers: { ...corsHeaders, "Content-Type": "application/json" },
+				headers: jsonHeaders,
 			}
 		);
 	}

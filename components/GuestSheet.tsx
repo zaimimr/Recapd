@@ -173,7 +173,7 @@ export default function GuestSheet({
 							const canRemove = isHost && item.role !== "host" && !isCurrentUser;
 
 							return (
-								<View style={styles.participantRow}>
+								<View style={[styles.participantRow, isDark && styles.participantRowDark]}>
 									<View
 										style={[styles.avatar, { backgroundColor: getAvatarColor(item.displayName) }]}
 									>
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
 	},
 	sheet: {
 		backgroundColor: "#fff",
-		borderTopLeftRadius: 14,
-		borderTopRightRadius: 14,
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
 		maxHeight: SHEET_HEIGHT,
 		shadowColor: "#000",
 		shadowOffset: { width: 0, height: -3 },
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
 		elevation: 20,
 	},
 	sheetDark: {
-		backgroundColor: "#1c1c1e",
+		backgroundColor: "#0f1115",
 	},
 	handleContainer: {
 		alignItems: "center",
@@ -275,17 +275,17 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 20,
 		paddingTop: 4,
 		paddingBottom: 14,
-		borderBottomWidth: StyleSheet.hairlineWidth,
-		borderBottomColor: "rgba(60, 60, 67, 0.12)",
+		borderBottomWidth: 1,
+		borderBottomColor: "#e5e7eb",
 	},
 	headerDark: {
-		borderBottomColor: "rgba(84, 84, 88, 0.65)",
+		borderBottomColor: "#242833",
 	},
 	title: {
-		fontSize: 17,
-		fontWeight: "600",
-		color: "#000",
-		letterSpacing: -0.4,
+		fontSize: 19,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.5,
 	},
 	closeButton: {
 		padding: 6,
@@ -298,7 +298,12 @@ const styles = StyleSheet.create({
 	participantRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: 11,
+		paddingVertical: 12,
+		borderBottomWidth: 1,
+		borderBottomColor: "#e5e7eb",
+	},
+	participantRowDark: {
+		borderBottomColor: "#242833",
 	},
 	avatar: {
 		width: 40,
@@ -322,16 +327,16 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	participantName: {
-		fontSize: 17,
-		fontWeight: "400",
-		color: "#000",
+		fontSize: 16,
+		fontWeight: "600",
+		color: "#111827",
 		letterSpacing: -0.4,
 	},
 	hostBadge: {
-		backgroundColor: "#007AFF",
-		paddingHorizontal: 7,
-		paddingVertical: 2,
-		borderRadius: 4,
+		backgroundColor: "#111827",
+		paddingHorizontal: 9,
+		paddingVertical: 4,
+		borderRadius: 999,
 	},
 	hostBadgeText: {
 		color: "#fff",
@@ -339,9 +344,11 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	status: {
-		fontSize: 14,
-		color: "#8e8e93",
+		fontSize: 13,
+		color: "#6b7280",
 		marginTop: 2,
+		textTransform: "uppercase",
+		letterSpacing: 0.8,
 	},
 	photoCount: {
 		flexDirection: "row",
@@ -361,7 +368,7 @@ const styles = StyleSheet.create({
 	},
 	youLabel: {
 		fontSize: 14,
-		color: "#8e8e93",
+		color: "#6b7280",
 	},
 	removeButton: {
 		paddingHorizontal: 8,
@@ -371,6 +378,9 @@ const styles = StyleSheet.create({
 		paddingVertical: 14,
 		marginTop: 8,
 		marginBottom: 8,
+		borderWidth: 1,
+		borderColor: "#ef4444",
+		borderRadius: 999,
 	},
 	leaveButtonText: {
 		color: "#ef4444",

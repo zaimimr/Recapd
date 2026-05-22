@@ -1,5 +1,5 @@
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { addHours, format, isBefore, setHours, setMinutes } from "date-fns";
+import { addHours, isBefore, setHours, setMinutes } from "date-fns";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -17,9 +17,11 @@ import {
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
-import { useIsPro } from "@/store/subscriptionStore";
+import { useIsPro, useSubscriptionPlans } from "@/store/subscriptionStore";
+import { getPlanMarketingHighlights } from "@/types/subscription";
 
 export default function CreateEventScreen() {
 	const router = useRouter();
@@ -29,6 +31,7 @@ export default function CreateEventScreen() {
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
 	const isPro = useIsPro();
+	const plans = useSubscriptionPlans();
 
 	// Calculate default dates for initial state
 	const now = new Date();
@@ -146,8 +149,17 @@ export default function CreateEventScreen() {
 			contentContainerStyle={styles.content}
 			keyboardShouldPersistTaps="handled"
 		>
+			<View style={[styles.heroPanel, isDark && styles.panelDark]}>
+				<Text style={[styles.kicker, isDark && styles.textMuted]}>Create</Text>
+				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
+					Set the window for the shared recap
+				</Text>
+				<Text style={[styles.heroText, isDark && styles.textMuted]}>
+					Guests will only be asked for photos and videos captured during this event timeframe.
+				</Text>
+			</View>
 			<View style={styles.form}>
-				<View style={styles.field}>
+				<View style={[styles.field, isDark && styles.panelDark]}>
 					<Text style={[styles.label, isDark && styles.textDark]}>Event Name</Text>
 					<TextInput
 						style={[styles.input, isDark && styles.inputDark]}
@@ -164,45 +176,65 @@ export default function CreateEventScreen() {
 					/>
 				</View>
 
-				<View style={styles.field}>
+				<View style={[styles.field, isDark && styles.panelDark]}>
 					<Text style={[styles.label, isDark && styles.textDark]}>Start Time</Text>
 					<TouchableOpacity
 						style={[styles.dateButton, isDark && styles.dateButtonDark]}
 						onPress={openStartPicker}
 						accessibilityRole="button"
-						accessibilityLabel={`Start Time: ${format(startDate, "EEE, MMM d, yyyy")} at ${format(startDate, "h:mm a")}`}
+						accessibilityLabel={`Start Time: ${formatLocalizedDate(startDate, {
+							weekday: "short",
+							month: "short",
+							day: "numeric",
+							year: "numeric",
+						})} at ${formatLocalizedTime(startDate)}`}
 						accessibilityHint="Opens date and time picker"
 					>
 						<Text style={[styles.dateText, isDark && styles.textDark]}>
-							{format(startDate, "EEE, MMM d, yyyy")}
+							{formatLocalizedDate(startDate, {
+								weekday: "short",
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}
 						</Text>
 						<Text style={[styles.timeText, isDark && styles.textMuted]}>
-							{format(startDate, "h:mm a")}
+							{formatLocalizedTime(startDate)}
 						</Text>
 					</TouchableOpacity>
 				</View>
 
-				<View style={styles.field}>
+				<View style={[styles.field, isDark && styles.panelDark]}>
 					<Text style={[styles.label, isDark && styles.textDark]}>End Time</Text>
 					<TouchableOpacity
 						style={[styles.dateButton, isDark && styles.dateButtonDark]}
 						onPress={openEndPicker}
 						accessibilityRole="button"
-						accessibilityLabel={`End Time: ${format(endDate, "EEE, MMM d, yyyy")} at ${format(endDate, "h:mm a")}`}
+						accessibilityLabel={`End Time: ${formatLocalizedDate(endDate, {
+							weekday: "short",
+							month: "short",
+							day: "numeric",
+							year: "numeric",
+						})} at ${formatLocalizedTime(endDate)}`}
 						accessibilityHint="Opens date and time picker"
 					>
 						<Text style={[styles.dateText, isDark && styles.textDark]}>
-							{format(endDate, "EEE, MMM d, yyyy")}
+							{formatLocalizedDate(endDate, {
+								weekday: "short",
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}
 						</Text>
 						<Text style={[styles.timeText, isDark && styles.textMuted]}>
-							{format(endDate, "h:mm a")}
+							{formatLocalizedTime(endDate)}
 						</Text>
 					</TouchableOpacity>
 				</View>
 
 				{error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-				<View style={styles.infoBox}>
+				<View style={[styles.infoBox, isDark && styles.panelDark]}>
 					<Text style={[styles.infoText, isDark && styles.textMuted]}>
 						After the event ends, guests will be prompted to share photos taken during this time
 						window.
@@ -213,13 +245,13 @@ export default function CreateEventScreen() {
 						<View style={[styles.proBadge, isDark && styles.proBadgeDark]}>
 							<Text style={styles.proBadgeTitle}>Pro Plan Active</Text>
 							<Text style={[styles.proBadgeSubtitle, isDark && styles.textMuted]}>
-								Unlimited participants {"\u00B7"} 5-min videos
+								{getPlanMarketingHighlights("pro", plans)}
 							</Text>
 						</View>
 					) : (
 						<View style={[styles.freeTierInfo, isDark && styles.freeTierInfoDark]}>
 							<Text style={[styles.freeTierInfoText, isDark && styles.textMuted]}>
-								Free plan — up to 12 participants, 30s videos
+								Free plan — {getPlanMarketingHighlights("free", plans)}
 							</Text>
 						</View>
 					))}
@@ -291,82 +323,127 @@ export default function CreateEventScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	loadingContainer: {
 		justifyContent: "center",
 		alignItems: "center",
 	},
 	content: {
-		padding: 24,
+		padding: 16,
+		gap: 14,
+	},
+	heroPanel: {
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
+		gap: 6,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
+	},
+	heroTitle: {
+		fontSize: 24,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.7,
+	},
+	heroText: {
+		fontSize: 14,
+		lineHeight: 21,
+		color: "#6b7280",
 	},
 	form: {
-		gap: 24,
-		marginBottom: 32,
+		gap: 14,
+		marginBottom: 20,
 	},
 	field: {
-		gap: 8,
+		gap: 10,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
 	},
 	label: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#000",
+		fontSize: 12,
+		fontWeight: "700",
+		color: "#111827",
+		textTransform: "uppercase",
+		letterSpacing: 1,
 	},
 	input: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 17,
-		color: "#000",
+		color: "#111827",
 		fontWeight: "400",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	inputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	dateButton: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	dateButtonDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	dateText: {
 		fontSize: 16,
-		fontWeight: "500",
-		color: "#000",
+		fontWeight: "600",
+		color: "#111827",
 	},
 	timeText: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 	},
 	errorText: {
 		color: "#ef4444",
 		fontSize: 14,
 	},
 	infoBox: {
-		backgroundColor: "#f0f9ff",
-		borderRadius: 12,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 		padding: 16,
 	},
 	infoText: {
 		fontSize: 14,
-		color: "#0369a1",
+		color: "#6b7280",
 		lineHeight: 20,
 	},
 	button: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	buttonDisabled: {
@@ -374,7 +451,7 @@ const styles = StyleSheet.create({
 	},
 	buttonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	textDark: {
@@ -389,9 +466,9 @@ const styles = StyleSheet.create({
 		justifyContent: "flex-end",
 	},
 	pickerSheet: {
-		backgroundColor: "#f8f8f8",
-		borderTopLeftRadius: 20,
-		borderTopRightRadius: 20,
+		backgroundColor: "#f8fafc",
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
 		paddingBottom: 34,
 	},
 	pickerSheetDark: {
@@ -433,37 +510,40 @@ const styles = StyleSheet.create({
 		height: 216,
 	},
 	proBadge: {
-		backgroundColor: "#fef3c7",
-		borderRadius: 12,
+		backgroundColor: "#fff",
 		padding: 16,
 		borderWidth: 1,
-		borderColor: "#f59e0b",
+		borderColor: "#e5e7eb",
 	},
 	proBadgeDark: {
-		backgroundColor: "#422006",
-		borderColor: "#b45309",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	proBadgeTitle: {
-		fontSize: 16,
+		fontSize: 14,
 		fontWeight: "600",
-		color: "#b45309",
+		color: "#111827",
 		marginBottom: 4,
+		textTransform: "uppercase",
+		letterSpacing: 0.8,
 	},
 	proBadgeSubtitle: {
 		fontSize: 14,
-		color: "#92400e",
+		color: "#6b7280",
 	},
 	freeTierInfo: {
-		backgroundColor: "#f5f5f5",
-		borderRadius: 12,
+		backgroundColor: "#fff",
 		padding: 14,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	freeTierInfoDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	freeTierInfoText: {
 		fontSize: 14,
-		color: "#666",
+		color: "#6b7280",
 		textAlign: "center",
 	},
 });

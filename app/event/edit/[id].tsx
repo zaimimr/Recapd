@@ -1,6 +1,6 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { addDays, format, isBefore } from "date-fns";
+import { addDays, isBefore } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -17,6 +17,7 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 
@@ -192,8 +193,16 @@ export default function EditEventScreen() {
 				contentContainerStyle={styles.content}
 				keyboardShouldPersistTaps="handled"
 			>
+				<View style={[styles.heroPanel, isDark && styles.panelDark]}>
+					<Text style={[styles.kicker, isDark && styles.textMuted]}>Edit</Text>
+					<Text style={[styles.heroTitle, isDark && styles.textDark]}>Refine the event window</Text>
+					<Text style={[styles.heroText, isDark && styles.textMuted]}>
+						Update the title and timing without breaking the clean feed structure guests already
+						see.
+					</Text>
+				</View>
 				<View style={styles.form}>
-					<View style={styles.field}>
+					<View style={[styles.field, isDark && styles.panelDark]}>
 						<Text style={[styles.label, isDark && styles.textDark]}>Event Name</Text>
 						<TextInput
 							style={[styles.input, isDark && styles.inputDark]}
@@ -208,42 +217,57 @@ export default function EditEventScreen() {
 						/>
 					</View>
 
-					<View style={styles.field}>
+					<View style={[styles.field, isDark && styles.panelDark]}>
 						<Text style={[styles.label, isDark && styles.textDark]}>Start Time</Text>
 						<TouchableOpacity
 							style={[styles.dateButton, isDark && styles.dateButtonDark]}
 							onPress={openStartPicker}
 						>
 							<Text style={[styles.dateText, isDark && styles.textDark]}>
-								{format(startDate, "EEE, MMM d, yyyy")}
+								{formatLocalizedDate(startDate, {
+									weekday: "short",
+									month: "short",
+									day: "numeric",
+									year: "numeric",
+								})}
 							</Text>
 							<Text style={[styles.timeText, isDark && styles.textMuted]}>
-								{format(startDate, "h:mm a")}
+								{formatLocalizedTime(startDate)}
 							</Text>
 						</TouchableOpacity>
 					</View>
 
-					<View style={styles.field}>
+					<View style={[styles.field, isDark && styles.panelDark]}>
 						<Text style={[styles.label, isDark && styles.textDark]}>End Time</Text>
 						<TouchableOpacity
 							style={[styles.dateButton, isDark && styles.dateButtonDark]}
 							onPress={openEndPicker}
 						>
 							<Text style={[styles.dateText, isDark && styles.textDark]}>
-								{format(endDate, "EEE, MMM d, yyyy")}
+								{formatLocalizedDate(endDate, {
+									weekday: "short",
+									month: "short",
+									day: "numeric",
+									year: "numeric",
+								})}
 							</Text>
 							<Text style={[styles.timeText, isDark && styles.textMuted]}>
-								{format(endDate, "h:mm a")}
+								{formatLocalizedTime(endDate)}
 							</Text>
 						</TouchableOpacity>
 					</View>
 
 					{error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-					<View style={styles.infoBox}>
+					<View style={[styles.infoBox, isDark && styles.panelDark]}>
 						<Text style={[styles.infoText, isDark && styles.textMuted]}>
-							Photos will expire on {format(newExpiryDate, "MMM d, yyyy")} (14 days after event
-							ends).
+							Photos will expire on{" "}
+							{formatLocalizedDate(newExpiryDate, {
+								month: "short",
+								day: "numeric",
+								year: "numeric",
+							})}{" "}
+							(14 days after event ends).
 						</Text>
 					</View>
 				</View>
@@ -263,7 +287,7 @@ export default function EditEventScreen() {
 					)}
 				</TouchableOpacity>
 
-				<View style={styles.dangerZone}>
+				<View style={[styles.dangerZone, isDark && styles.panelDark]}>
 					<Text style={[styles.dangerZoneTitle, isDark && styles.textMuted]}>Danger Zone</Text>
 					<TouchableOpacity
 						style={[styles.deleteButton, (isDeleting || isSaving) && styles.buttonDisabled]}
@@ -332,81 +356,126 @@ export default function EditEventScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	loadingContainer: {
 		justifyContent: "center",
 		alignItems: "center",
 	},
 	content: {
-		padding: 24,
+		padding: 16,
+		gap: 14,
+	},
+	heroPanel: {
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
+		gap: 6,
+	},
+	panelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	kicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.2,
+		textTransform: "uppercase",
+		color: "#6b7280",
+	},
+	heroTitle: {
+		fontSize: 24,
+		fontWeight: "700",
+		color: "#111827",
+		letterSpacing: -0.7,
+	},
+	heroText: {
+		fontSize: 14,
+		lineHeight: 21,
+		color: "#6b7280",
 	},
 	form: {
-		gap: 24,
-		marginBottom: 32,
+		gap: 14,
+		marginBottom: 20,
 	},
 	field: {
-		gap: 8,
+		gap: 10,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 16,
+		paddingVertical: 16,
 	},
 	label: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#000",
+		fontSize: 12,
+		fontWeight: "700",
+		color: "#111827",
+		textTransform: "uppercase",
+		letterSpacing: 1,
 	},
 	input: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		fontSize: 18,
-		color: "#000",
+		color: "#111827",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	inputDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 		color: "#fff",
 	},
 	dateButton: {
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		borderRadius: 14,
 		paddingVertical: 16,
 		paddingHorizontal: 20,
 		flexDirection: "row",
 		justifyContent: "space-between",
 		alignItems: "center",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	dateButtonDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	dateText: {
 		fontSize: 16,
-		fontWeight: "500",
-		color: "#000",
+		fontWeight: "600",
+		color: "#111827",
 	},
 	timeText: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 	},
 	errorText: {
 		color: "#ef4444",
 		fontSize: 14,
 	},
 	infoBox: {
-		backgroundColor: "#f0f9ff",
-		borderRadius: 12,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 		padding: 16,
 	},
 	infoText: {
 		fontSize: 14,
-		color: "#0369a1",
+		color: "#6b7280",
 		lineHeight: 20,
 	},
 	button: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		alignItems: "center",
 	},
 	buttonDisabled: {
@@ -414,7 +483,7 @@ const styles = StyleSheet.create({
 	},
 	buttonText: {
 		color: "#fff",
-		fontSize: 18,
+		fontSize: 16,
 		fontWeight: "600",
 	},
 	textDark: {
@@ -424,23 +493,24 @@ const styles = StyleSheet.create({
 		color: "#888",
 	},
 	dangerZone: {
-		marginTop: 32,
-		paddingTop: 24,
-		borderTopWidth: StyleSheet.hairlineWidth,
-		borderTopColor: "#e5e5e5",
+		marginTop: 12,
+		paddingHorizontal: 16,
+		paddingVertical: 16,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	dangerZoneTitle: {
 		fontSize: 13,
 		fontWeight: "600",
-		color: "#666",
+		color: "#6b7280",
 		textTransform: "uppercase",
-		letterSpacing: 0.5,
+		letterSpacing: 1,
 		marginBottom: 12,
 	},
 	deleteButton: {
 		backgroundColor: "#ef4444",
 		paddingVertical: 16,
-		borderRadius: 14,
+		borderRadius: 999,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
@@ -459,9 +529,9 @@ const styles = StyleSheet.create({
 		justifyContent: "flex-end",
 	},
 	pickerSheet: {
-		backgroundColor: "#f8f8f8",
-		borderTopLeftRadius: 20,
-		borderTopRightRadius: 20,
+		backgroundColor: "#f8fafc",
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
 		paddingBottom: 34,
 	},
 	pickerSheetDark: {

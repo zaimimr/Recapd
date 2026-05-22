@@ -6,6 +6,9 @@ export type MediaType = "photo" | "video";
 export type MediaVisibility = "shared" | "hidden" | "deleted";
 export type SubscriptionTier = "free" | "pro";
 export type SubscriptionPlatform = "ios" | "android" | "web";
+export type SubscriptionUnlockScope = "none" | "self" | "event" | "both";
+export type TelemetryEventKind = "error" | "trace";
+export type TelemetrySeverity = "debug" | "info" | "warn" | "error" | "fatal";
 
 export interface Database {
 	public: {
@@ -13,41 +16,196 @@ export interface Database {
 			users: {
 				Row: {
 					id: string;
+					auth_user_id: string | null;
 					display_name: string;
-					device_id: string | null;
-					push_token: string | null;
+					subscription_tier: SubscriptionTier;
 					created_at: string;
 					last_seen_at: string;
-					subscription_tier: SubscriptionTier;
-					subscription_expires_at: string | null;
-					subscription_platform: SubscriptionPlatform | null;
-					subscription_id: string | null;
 				};
 				Insert: {
 					id?: string;
+					auth_user_id?: string | null;
 					display_name: string;
-					device_id?: string | null;
-					push_token?: string | null;
+					subscription_tier?: SubscriptionTier;
 					created_at?: string;
 					last_seen_at?: string;
+				};
+				Update: {
+					id?: string;
+					auth_user_id?: string | null;
+					display_name?: string;
 					subscription_tier?: SubscriptionTier;
-					subscription_expires_at?: string | null;
-					subscription_platform?: SubscriptionPlatform | null;
-					subscription_id?: string | null;
+					created_at?: string;
+					last_seen_at?: string;
+				};
+				Relationships: [];
+			};
+			subscription_plans: {
+				Row: {
+					id: string;
+					display_name: string;
+					description: string | null;
+					is_active: boolean;
+					sort_order: number;
+					unlock_scope: SubscriptionUnlockScope;
+					revenuecat_entitlement_identifier: string | null;
+					revenuecat_offering_identifier: string | null;
+					capabilities: Json;
+					created_at: string;
+					updated_at: string;
+				};
+				Insert: {
+					id: string;
+					display_name: string;
+					description?: string | null;
+					is_active?: boolean;
+					sort_order?: number;
+					unlock_scope?: SubscriptionUnlockScope;
+					revenuecat_entitlement_identifier?: string | null;
+					revenuecat_offering_identifier?: string | null;
+					capabilities?: Json;
+					created_at?: string;
+					updated_at?: string;
 				};
 				Update: {
 					id?: string;
 					display_name?: string;
+					description?: string | null;
+					is_active?: boolean;
+					sort_order?: number;
+					unlock_scope?: SubscriptionUnlockScope;
+					revenuecat_entitlement_identifier?: string | null;
+					revenuecat_offering_identifier?: string | null;
+					capabilities?: Json;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Relationships: [];
+			};
+			telemetry_events: {
+				Row: {
+					id: string;
+					created_at: string;
+					occurred_at: string;
+					event_kind: TelemetryEventKind;
+					severity: TelemetrySeverity;
+					name: string;
+					message: string | null;
+					stack_trace: string | null;
+					source: string | null;
+					platform: SubscriptionPlatform;
+					app_version: string | null;
+					build_number: string | null;
+					session_id: string | null;
+					trace_id: string | null;
+					span_id: string | null;
+					parent_span_id: string | null;
+					route: string | null;
+					screen: string | null;
+					actor_user_id: string;
+					event_id: string | null;
+					metadata: Json;
+				};
+				Insert: {
+					id?: string;
+					created_at?: string;
+					occurred_at?: string;
+					event_kind: TelemetryEventKind;
+					severity?: TelemetrySeverity;
+					name: string;
+					message?: string | null;
+					stack_trace?: string | null;
+					source?: string | null;
+					platform: SubscriptionPlatform;
+					app_version?: string | null;
+					build_number?: string | null;
+					session_id?: string | null;
+					trace_id?: string | null;
+					span_id?: string | null;
+					parent_span_id?: string | null;
+					route?: string | null;
+					screen?: string | null;
+					actor_user_id: string;
+					event_id?: string | null;
+					metadata?: Json;
+				};
+				Update: {
+					id?: string;
+					created_at?: string;
+					occurred_at?: string;
+					event_kind?: TelemetryEventKind;
+					severity?: TelemetrySeverity;
+					name?: string;
+					message?: string | null;
+					stack_trace?: string | null;
+					source?: string | null;
+					platform?: SubscriptionPlatform;
+					app_version?: string | null;
+					build_number?: string | null;
+					session_id?: string | null;
+					trace_id?: string | null;
+					span_id?: string | null;
+					parent_span_id?: string | null;
+					route?: string | null;
+					screen?: string | null;
+					actor_user_id?: string;
+					event_id?: string | null;
+					metadata?: Json;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "telemetry_events_actor_user_id_fkey";
+						columns: ["actor_user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "telemetry_events_event_id_fkey";
+						columns: ["event_id"];
+						referencedRelation: "events";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			user_private_data: {
+				Row: {
+					user_id: string;
+					device_id: string | null;
+					push_token: string | null;
+					subscription_expires_at: string | null;
+					subscription_platform: SubscriptionPlatform | null;
+					subscription_id: string | null;
+					created_at: string;
+					updated_at: string;
+				};
+				Insert: {
+					user_id: string;
 					device_id?: string | null;
 					push_token?: string | null;
-					created_at?: string;
-					last_seen_at?: string;
-					subscription_tier?: SubscriptionTier;
 					subscription_expires_at?: string | null;
 					subscription_platform?: SubscriptionPlatform | null;
 					subscription_id?: string | null;
+					created_at?: string;
+					updated_at?: string;
 				};
-				Relationships: [];
+				Update: {
+					user_id?: string;
+					device_id?: string | null;
+					push_token?: string | null;
+					subscription_expires_at?: string | null;
+					subscription_platform?: SubscriptionPlatform | null;
+					subscription_id?: string | null;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "user_private_data_user_id_fkey";
+						columns: ["user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
 			};
 			events: {
 				Row: {
@@ -216,23 +374,85 @@ export interface Database {
 			};
 		};
 		Views: {};
-		Functions: {};
-		Enums: {};
+		Functions: {
+			is_telemetry_admin: {
+				Args: Record<string, never>;
+				Returns: boolean;
+			};
+			get_subscription_plan_capabilities: {
+				Args: {
+					plan_id_input: string;
+				};
+				Returns: Json;
+			};
+			get_event_preview: {
+				Args: {
+					join_code_input: string;
+				};
+				Returns: {
+					id: string;
+					title: string;
+					starts_at: string;
+					ends_at: string;
+					timezone: string;
+					join_code: string;
+					created_by_user_id: string | null;
+					status: EventStatus;
+					expires_at: string;
+					created_at: string;
+					updated_at: string;
+					participant_count: number;
+					host_plan_id: string;
+					host_is_pro: boolean;
+				}[];
+			};
+			resolve_event_subscription_policy: {
+				Args: {
+					host_plan_id_input: string;
+					viewer_plan_id_input: string;
+				};
+				Returns: {
+					host_plan_id: string;
+					viewer_plan_id: string;
+					host_unlock_scope: SubscriptionUnlockScope;
+					viewer_unlock_scope: SubscriptionUnlockScope;
+					event_capabilities: Json;
+					viewer_capabilities: Json;
+					event_max_participants: number | null;
+					participant_warning_threshold: number | null;
+					event_max_single_video_duration_ms: number | null;
+					viewer_max_single_video_duration_ms: number | null;
+					event_can_upload_videos: boolean;
+					viewer_can_upload_videos: boolean;
+				}[];
+			};
+		};
+		Enums: {
+			subscription_unlock_scope: SubscriptionUnlockScope;
+			telemetry_event_kind: TelemetryEventKind;
+			telemetry_severity: TelemetrySeverity;
+		};
 		CompositeTypes: {};
 	};
 }
 
 export type User = Database["public"]["Tables"]["users"]["Row"];
+export type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
+export type UserPrivateData = Database["public"]["Tables"]["user_private_data"]["Row"];
 export type Event = Database["public"]["Tables"]["events"]["Row"];
 export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];
 export type MediaItem = Database["public"]["Tables"]["media_items"]["Row"];
 
 export type UserInsert = Database["public"]["Tables"]["users"]["Insert"];
+export type SubscriptionPlanInsert = Database["public"]["Tables"]["subscription_plans"]["Insert"];
+export type UserPrivateDataInsert = Database["public"]["Tables"]["user_private_data"]["Insert"];
 export type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
 export type EventParticipantInsert = Database["public"]["Tables"]["event_participants"]["Insert"];
 export type MediaItemInsert = Database["public"]["Tables"]["media_items"]["Insert"];
 
 export type UserUpdate = Database["public"]["Tables"]["users"]["Update"];
+export type SubscriptionPlanUpdate = Database["public"]["Tables"]["subscription_plans"]["Update"];
+export type UserPrivateDataUpdate = Database["public"]["Tables"]["user_private_data"]["Update"];
 export type EventUpdate = Database["public"]["Tables"]["events"]["Update"];
 export type EventParticipantUpdate = Database["public"]["Tables"]["event_participants"]["Update"];
 export type MediaItemUpdate = Database["public"]["Tables"]["media_items"]["Update"];
@@ -241,4 +461,21 @@ export interface MediaItemWithUser extends MediaItem {
 	uploader?: {
 		display_name: string;
 	} | null;
+}
+
+export interface EventPreviewResult {
+	id: string;
+	title: string;
+	starts_at: string;
+	ends_at: string;
+	timezone: string;
+	join_code: string;
+	created_by_user_id: string | null;
+	status: EventStatus;
+	expires_at: string;
+	created_at: string;
+	updated_at: string;
+	participant_count: number;
+	host_plan_id: string;
+	host_is_pro: boolean;
 }

@@ -1,8 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image as ExpoImage } from "expo-image";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import * as VideoThumbnails from "expo-video-thumbnails";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -15,21 +14,42 @@ import {
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
+import { logger } from "@/lib/logger";
 import {
-	getMediaInTimeRange,
 	type LocalPhoto,
 	pickMediaFromLibrary,
 	requestMediaPermissions,
+	scanMediaInTimeRange,
 } from "@/lib/mediaLibrary";
+import { createVideoThumbnailUri } from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
-import { useIsPro } from "@/store/subscriptionStore";
-import { getMaxVideoDurationMs } from "@/types/subscription";
+import { useIsPro, useSubscriptionPlans } from "@/store/subscriptionStore";
+import {
+	formatFileSizeLabel,
+	formatVideoDurationLabel,
+	getMaxFileSizeBytes,
+	getMaxVideoDurationMs,
+	PRO_MAX_FILE_SIZE_BYTES,
+	PRO_MAX_VIDEO_DURATION_MS,
+} from "@/types/subscription";
 
 const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
+const SCAN_ACTION_DELAY_MS = 4000;
+
+function formatDurationHms(milliseconds: number): string {
+	if (!Number.isFinite(milliseconds) || milliseconds < 0) return "00:00:00";
+	const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds
+		.toString()
+		.padStart(2, "0")}`;
+}
 
 const VideoThumbnail = memo(function VideoThumbnail({
 	uri,
@@ -42,8 +62,8 @@ const VideoThumbnail = memo(function VideoThumbnail({
 
 	useEffect(() => {
 		let mounted = true;
-		VideoThumbnails.getThumbnailAsync(uri, { time: 0, quality: 0.5 })
-			.then(({ uri: thumbUri }) => {
+		createVideoThumbnailUri(uri, 0)
+			.then((thumbUri) => {
 				if (mounted) setThumbnailUri(thumbUri);
 			})
 			.catch(() => {});
@@ -67,15 +87,6 @@ const VideoThumbnail = memo(function VideoThumbnail({
 	);
 });
 
-function formatVideoDuration(milliseconds: number): string {
-	const totalSeconds = Math.floor(milliseconds / 1000);
-	const mins = Math.floor(totalSeconds / 60);
-	const secs = totalSeconds % 60;
-	if (mins === 0) return `${secs} seconds`;
-	if (secs === 0) return mins === 1 ? `${mins} minute` : `${mins} minutes`;
-	return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
 type Step = "loading" | "select" | "empty" | "error";
 
 export default function ContributeScreen() {
@@ -92,8 +103,35 @@ export default function ContributeScreen() {
 		: 0;
 
 	const isPro = useIsPro();
+	const plans = useSubscriptionPlans();
 	const hostIsPro = currentEvent?.hostIsPro || false;
-	const maxVideoDurationMilliseconds = getMaxVideoDurationMs(isPro, hostIsPro);
+	const maxVideoDurationMilliseconds = getMaxVideoDurationMs(isPro, hostIsPro, plans);
+	const maxFileSizeBytes = getMaxFileSizeBytes(isPro, hostIsPro, plans);
+	const canUpgradeForMoreLimits = !isPro && !hostIsPro;
+
+	const notifySkippedMedia = useCallback(
+		(videosTooLong: number, filesTooLarge: number) => {
+			if (videosTooLong > 0) {
+				const base = `${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatDuration(maxVideoDurationMilliseconds)}).`;
+				Alert.alert(
+					"Videos Too Long",
+					canUpgradeForMoreLimits
+						? `${base} Upgrade to Pro for videos up to ${formatVideoDurationLabel(PRO_MAX_VIDEO_DURATION_MS)}.`
+						: base
+				);
+			}
+			if (filesTooLarge > 0) {
+				const base = `${filesTooLarge} file${filesTooLarge > 1 ? "s were" : " was"} skipped (over ${formatFileSizeLabel(maxFileSizeBytes)}).`;
+				Alert.alert(
+					"Files Too Large",
+					canUpgradeForMoreLimits
+						? `${base} Upgrade to Pro for files up to ${formatFileSizeLabel(PRO_MAX_FILE_SIZE_BYTES)}.`
+						: base
+				);
+			}
+		},
+		[canUpgradeForMoreLimits, maxVideoDurationMilliseconds, maxFileSizeBytes]
+	);
 
 	const [step, setStep] = useState<Step>("loading");
 	const [photos, setPhotos] = useState<LocalPhoto[]>([]);
@@ -103,37 +141,137 @@ export default function ContributeScreen() {
 	const [permissionDenied, setPermissionDenied] = useState(false);
 	const [scanError, setScanError] = useState(false);
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+	const [showSlowScanActions, setShowSlowScanActions] = useState(false);
+	const [isQueueingUploads, setIsQueueingUploads] = useState(false);
+	const scanRequestIdRef = useRef(0);
 
-	const allPhotos = [...photos, ...manualPhotos];
+	const allPhotos = useMemo(() => [...photos, ...manualPhotos], [photos, manualPhotos]);
+
+	const cancelActiveScan = useCallback(() => {
+		scanRequestIdRef.current += 1;
+		setShowSlowScanActions(false);
+	}, []);
+
+	const applyScannedMedia = useCallback(
+		(filteredMedia: LocalPhoto[], alreadyUploaded: Set<string>) => {
+			const newPhotoIds = filteredMedia.filter((p) => !alreadyUploaded.has(p.id)).map((p) => p.id);
+			startTransition(() => {
+				setPhotos(filteredMedia);
+				setUploadedIds(alreadyUploaded);
+				setSelectedIds(new Set(newPhotoIds));
+				setStep(filteredMedia.length > 0 ? "select" : "empty");
+			});
+		},
+		[]
+	);
+
+	const mergeManualMedia = useCallback(
+		async (picked: LocalPhoto[], options?: { replaceExisting?: boolean }) => {
+			if (!eventId || picked.length === 0) return;
+
+			const replaceExisting = options?.replaceExisting ?? false;
+			const existingUris = new Set((replaceExisting ? [] : allPhotos).map((photo) => photo.uri));
+			const uniqueMedia = picked
+				.filter((photo) => !existingUris.has(photo.uri))
+				.filter((photo) => {
+					if (photo.mediaType === "video" && photo.duration > maxVideoDurationMilliseconds) {
+						return false;
+					}
+					if (typeof photo.fileSize === "number" && photo.fileSize > maxFileSizeBytes) {
+						return false;
+					}
+					return true;
+				});
+			const uploadedForPicked =
+				user && uniqueMedia.length > 0
+					? await getUploadedPhotoIdsForEvent(eventId, user.id, uniqueMedia)
+					: new Set<string>();
+
+			startTransition(() => {
+				setManualPhotos((prev) => (replaceExisting ? uniqueMedia : [...prev, ...uniqueMedia]));
+				setUploadedIds((prev) => new Set([...prev, ...uploadedForPicked]));
+				setSelectedIds((prev) => {
+					const next = replaceExisting ? new Set<string>() : new Set(prev);
+					for (const item of uniqueMedia) {
+						if (!uploadedForPicked.has(item.id)) {
+							next.add(item.id);
+						}
+					}
+					return next;
+				});
+				setStep("select");
+			});
+		},
+		[
+			allPhotos,
+			eventId,
+			getUploadedPhotoIdsForEvent,
+			maxVideoDurationMilliseconds,
+			maxFileSizeBytes,
+			user,
+		]
+	);
 
 	const loadPhotos = useCallback(async () => {
 		if (!eventId) return;
 
+		const requestId = scanRequestIdRef.current + 1;
+		scanRequestIdRef.current = requestId;
 		setStep("loading");
+		setPermissionDenied(false);
 		setScanError(false);
+		setShowSlowScanActions(false);
 
-		const event = currentEvent || (await fetchEventById(eventId));
-		if (!event) {
-			setStep("error");
-			return;
-		}
-
-		const hasPermission = await requestMediaPermissions();
-		if (!hasPermission) {
-			setPermissionDenied(true);
-			setStep("error");
-			return;
-		}
+		const slowScanTimer = setTimeout(() => {
+			if (scanRequestIdRef.current === requestId) {
+				setShowSlowScanActions(true);
+			}
+		}, SCAN_ACTION_DELAY_MS);
 
 		try {
+			const event = currentEvent?.id === eventId ? currentEvent : await fetchEventById(eventId);
+			if (!event || scanRequestIdRef.current !== requestId) {
+				return;
+			}
+
+			const hasPermission = await requestMediaPermissions();
+			if (!hasPermission) {
+				setPermissionDenied(true);
+				setStep("error");
+				return;
+			}
+
 			const startTime = new Date(event.starts_at);
 			const endTime = new Date(event.ends_at);
 
-			const foundMedia = await getMediaInTimeRange(startTime, endTime, 1000, true);
+			const scanResult = await scanMediaInTimeRange(startTime, endTime, {
+				limit: 1000,
+				includeVideos: true,
+				timeoutMs: 20000,
+				paddingMs: 2 * 60 * 1000,
+			});
+			if (scanRequestIdRef.current !== requestId) {
+				return;
+			}
 
-			const filteredMedia = foundMedia.filter((item) => {
-				if (item.mediaType === "video" && maxVideoDurationMilliseconds > 0) {
-					return item.duration <= maxVideoDurationMilliseconds;
+			if (scanResult.timedOut) {
+				setShowSlowScanActions(true);
+			}
+
+			const filteredMedia = scanResult.media.filter((item) => {
+				if (
+					item.mediaType === "video" &&
+					maxVideoDurationMilliseconds > 0 &&
+					item.duration > maxVideoDurationMilliseconds
+				) {
+					return false;
+				}
+				if (
+					maxFileSizeBytes > 0 &&
+					typeof item.fileSize === "number" &&
+					item.fileSize > maxFileSizeBytes
+				) {
+					return false;
 				}
 				return true;
 			});
@@ -141,30 +279,29 @@ export default function ContributeScreen() {
 			const alreadyUploaded = user
 				? await getUploadedPhotoIdsForEvent(eventId, user.id, filteredMedia)
 				: new Set<string>();
-
-			setPhotos(filteredMedia);
-			setUploadedIds(alreadyUploaded);
-
-			const newPhotoIds = filteredMedia.filter((p) => !alreadyUploaded.has(p.id)).map((p) => p.id);
-			setSelectedIds(new Set(newPhotoIds));
-
-			if (filteredMedia.length > 0) {
-				setStep("select");
-			} else {
-				setStep("empty");
+			if (scanRequestIdRef.current !== requestId) {
+				return;
 			}
+			applyScannedMedia(filteredMedia, alreadyUploaded);
 		} catch (error) {
-			console.error("Photo scanning failed:", error);
+			logger.error("Photo scanning failed", error, { eventId });
 			setScanError(true);
 			setStep("error");
+		} finally {
+			clearTimeout(slowScanTimer);
+			if (scanRequestIdRef.current === requestId) {
+				setShowSlowScanActions(false);
+			}
 		}
 	}, [
+		applyScannedMedia,
 		eventId,
 		currentEvent,
 		fetchEventById,
 		getUploadedPhotoIdsForEvent,
 		user,
 		maxVideoDurationMilliseconds,
+		maxFileSizeBytes,
 	]);
 
 	useEffect(() => {
@@ -172,6 +309,7 @@ export default function ContributeScreen() {
 	}, [loadPhotos]);
 
 	function handleSkip() {
+		cancelActiveScan();
 		router.back();
 	}
 
@@ -196,45 +334,51 @@ export default function ContributeScreen() {
 	}
 
 	async function handleManualPick() {
-		const { media: picked, videosTooLong } = await pickMediaFromLibrary({
+		const {
+			media: picked,
+			videosTooLong,
+			filesTooLarge,
+			error,
+		} = await pickMediaFromLibrary({
 			includeVideos: true,
 			maxVideoDuration: maxVideoDurationMilliseconds,
+			maxFileSizeBytes,
 		});
 
-		if (videosTooLong > 0) {
-			Alert.alert(
-				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
-			);
+		if (error) {
+			Alert.alert("Media Access Error", error);
+			return;
 		}
 
+		notifySkippedMedia(videosTooLong, filesTooLarge);
+
 		if (picked.length > 0) {
-			const existingUris = new Set(allPhotos.map((p) => p.uri));
-			const newPhotos = picked.filter((p) => !existingUris.has(p.uri));
-			setManualPhotos((prev) => [...prev, ...newPhotos]);
-			const newIds = new Set(newPhotos.map((p) => p.id));
-			setSelectedIds((prev) => new Set([...prev, ...newIds]));
+			await mergeManualMedia(picked);
 		}
 	}
 
-	async function handleManualPickFromError() {
-		const { media: picked, videosTooLong } = await pickMediaFromLibrary({
+	async function handleManualPickFromRecovery() {
+		cancelActiveScan();
+		const {
+			media: picked,
+			videosTooLong,
+			filesTooLarge,
+			error,
+		} = await pickMediaFromLibrary({
 			includeVideos: true,
 			maxVideoDuration: maxVideoDurationMilliseconds,
+			maxFileSizeBytes,
 		});
 
-		if (videosTooLong > 0) {
-			Alert.alert(
-				"Videos Too Long",
-				`${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatVideoDuration(maxVideoDurationMilliseconds)}). Upgrade to Pro for videos up to 5 minutes.`
-			);
+		if (error) {
+			Alert.alert("Media Access Error", error);
+			return;
 		}
 
+		notifySkippedMedia(videosTooLong, filesTooLarge);
+
 		if (picked.length > 0) {
-			setManualPhotos(picked);
-			const newIds = new Set(picked.map((p) => p.id));
-			setSelectedIds(newIds);
-			setStep("select");
+			await mergeManualMedia(picked, { replaceExisting: true });
 		}
 	}
 
@@ -250,14 +394,17 @@ export default function ContributeScreen() {
 	const selectedVideosCount = allPhotos.filter(
 		(p) => selectedIds.has(p.id) && p.mediaType === "video"
 	).length;
+	const selectedVideoDuration = allPhotos
+		.filter((p) => selectedIds.has(p.id) && p.mediaType === "video")
+		.reduce((total, item) => total + item.duration, 0);
 
 	function getShareButtonText(): string {
 		if (selectedIds.size === 0) return "Select media to share";
 		const parts: string[] = [];
 		if (selectedPhotosCount > 0)
-			parts.push(`${selectedPhotosCount} Photo${selectedPhotosCount !== 1 ? "s" : ""}`);
+			parts.push(`${selectedPhotosCount} photo${selectedPhotosCount !== 1 ? "s" : ""}`);
 		if (selectedVideosCount > 0)
-			parts.push(`${selectedVideosCount} Video${selectedVideosCount !== 1 ? "s" : ""}`);
+			parts.push(`${selectedVideosCount} video${selectedVideosCount !== 1 ? "s" : ""}`);
 		return `Share ${parts.join(" & ")}`;
 	}
 
@@ -268,20 +415,70 @@ export default function ContributeScreen() {
 		return parts.join(", ") || "No new media";
 	}
 
-	function handleUpload() {
-		if (!user || !eventId || selectedIds.size === 0) return;
+	function getSelectionSummary(): string {
+		if (selectedIds.size === 0) return "Nothing selected yet";
+		const parts = [`${selectedIds.size} selected`];
+		if (selectedVideosCount > 0) {
+			parts.push(`${formatDurationHms(selectedVideoDuration)} total video duration`);
+		}
+		return parts.join(" · ");
+	}
+
+	async function handleUpload() {
+		if (!user || !eventId || selectedIds.size === 0 || isQueueingUploads) return;
 		const selectedPhotos = allPhotos.filter((p) => selectedIds.has(p.id));
-		addPendingUploads(selectedPhotos, eventId, user.id);
-		router.replace(`/event/${eventId}`);
+
+		setIsQueueingUploads(true);
+		try {
+			await addPendingUploads(selectedPhotos, eventId, user.id);
+			router.replace(`/event/${eventId}`);
+		} catch (error) {
+			logger.error("Failed to queue uploads", error, {
+				eventId,
+				userId: user.id,
+				selectedCount: selectedPhotos.length,
+			});
+			Alert.alert("Upload Error", "We couldn't prepare your uploads. Please try again.");
+		} finally {
+			setIsQueueingUploads(false);
+		}
 	}
 
 	if (step === "loading") {
 		return (
 			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-				<Text style={[styles.loadingText, isDark && styles.textMuted]}>
-					Scanning your photos...
-				</Text>
+				<View style={[styles.statePanel, isDark && styles.statePanelDark]}>
+					<ActivityIndicator size="large" color={isDark ? "#fff" : "#111827"} />
+					<Text style={[styles.loadingText, isDark && styles.textMuted]}>
+						Scanning your photos and videos...
+					</Text>
+					<Text style={[styles.loadingHint, isDark && styles.textMuted]}>
+						We’re checking the event time window and preparing previews.
+					</Text>
+					{showSlowScanActions && (
+						<View style={styles.loadingActions}>
+							<Text style={[styles.loadingSlowText, isDark && styles.textMuted]}>
+								This is taking longer than usual. You can keep waiting, choose media manually, or
+								skip for now.
+							</Text>
+							<TouchableOpacity
+								style={styles.manualPickButton}
+								onPress={handleManualPickFromRecovery}
+							>
+								<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
+								<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								style={[styles.emptyButtonSecondary, isDark && styles.emptyButtonSecondaryDark]}
+								onPress={handleSkip}
+							>
+								<Text style={[styles.emptyButtonSecondaryText, isDark && styles.textMuted]}>
+									Skip for now
+								</Text>
+							</TouchableOpacity>
+						</View>
+					)}
+				</View>
 			</View>
 		);
 	}
@@ -293,30 +490,45 @@ export default function ContributeScreen() {
 				? "Scanning Issue"
 				: "Something went wrong";
 		const errorMessage = permissionDenied
-			? "Please allow access to your photos in Settings to continue"
+			? "Please allow access to your photos and videos in Settings to continue"
 			: scanError
-				? "We had trouble scanning your photos automatically"
+				? "We had trouble scanning your photos and videos automatically"
 				: "Unable to load the event. Please try again.";
 
 		return (
 			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
-				<Text style={[styles.errorTitle, isDark && styles.textDark]}>{errorTitle}</Text>
-				<Text style={[styles.errorText, isDark && styles.textMuted]}>{errorMessage}</Text>
-				{scanError && (
-					<TouchableOpacity style={styles.manualPickButton} onPress={handleManualPickFromError}>
-						<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-						<Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+				<View style={[styles.statePanel, isDark && styles.statePanelDark]}>
+					<FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
+					<Text style={[styles.errorTitle, isDark && styles.textDark]}>{errorTitle}</Text>
+					<Text style={[styles.errorText, isDark && styles.textMuted]}>{errorMessage}</Text>
+					{scanError && (
+						<TouchableOpacity
+							style={styles.manualPickButton}
+							onPress={handleManualPickFromRecovery}
+						>
+							<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
+							<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
+						</TouchableOpacity>
+					)}
+					<TouchableOpacity
+						style={[styles.errorButton, styles.retryScanButton]}
+						onPress={loadPhotos}
+					>
+						<Text style={styles.errorButtonText}>Try scanning again</Text>
 					</TouchableOpacity>
-				)}
-				<TouchableOpacity
-					style={[styles.errorButton, scanError && styles.errorButtonSecondary]}
-					onPress={handleSkip}
-				>
-					<Text style={[styles.errorButtonText, scanError && styles.errorButtonTextSecondary]}>
-						Go Back
-					</Text>
-				</TouchableOpacity>
+					<TouchableOpacity
+						style={[
+							styles.errorButton,
+							scanError && styles.errorButtonSecondary,
+							scanError && isDark && styles.errorButtonSecondaryDark,
+						]}
+						onPress={handleSkip}
+					>
+						<Text style={[styles.errorButtonText, scanError && styles.errorButtonTextSecondary]}>
+							Go Back
+						</Text>
+					</TouchableOpacity>
+				</View>
 			</View>
 		);
 	}
@@ -335,23 +547,31 @@ export default function ContributeScreen() {
 					}}
 				/>
 				<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-					<View style={styles.emptyContent}>
+					<View style={[styles.emptyContent, isDark && styles.statePanelDark]}>
 						<View style={[styles.emptyIcon, isDark && styles.emptyIconDark]}>
 							<FontAwesome name="camera" size={32} color={isDark ? "#888" : "#666"} />
 						</View>
-						<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Photos Found</Text>
+						<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Media Found</Text>
 						<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-							We couldn't find any photos from the event time window.
+							We couldn't find any photos or videos from the event time window.
 						</Text>
 						<Text style={[styles.emptyHint, isDark && styles.textMuted]}>
-							Or select photos manually from your library.
+							Select media manually or skip this for now.
 						</Text>
-						<TouchableOpacity style={styles.manualPickButton} onPress={handleManualPickFromError}>
+						<TouchableOpacity
+							style={styles.manualPickButton}
+							onPress={handleManualPickFromRecovery}
+						>
 							<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-							<Text style={styles.manualPickButtonText}>Select Photos Manually</Text>
+							<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
 						</TouchableOpacity>
-						<TouchableOpacity style={styles.emptyButtonSecondary} onPress={handleSkip}>
-							<Text style={styles.emptyButtonSecondaryText}>Go Back</Text>
+						<TouchableOpacity
+							style={[styles.emptyButtonSecondary, isDark && styles.emptyButtonSecondaryDark]}
+							onPress={handleSkip}
+						>
+							<Text style={[styles.emptyButtonSecondaryText, isDark && styles.textMuted]}>
+								Go Back
+							</Text>
 						</TouchableOpacity>
 					</View>
 				</View>
@@ -361,15 +581,19 @@ export default function ContributeScreen() {
 
 	return (
 		<>
-			<Stack.Screen options={{ title: `Select Photos (${selectedIds.size})` }} />
+			<Stack.Screen options={{ title: `Select Media (${selectedIds.size})` }} />
 
 			<View
 				style={[styles.container, isDark && styles.containerDark]}
 				onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
 			>
-				<View style={styles.selectHeader}>
+				<View style={[styles.selectHeader, isDark && styles.selectHeaderDark]}>
 					<View>
+						<Text style={[styles.headerKicker, isDark && styles.textMuted]}>Add Your Media</Text>
 						<Text style={[styles.selectCount, isDark && styles.textMuted]}>{getCountText()}</Text>
+						<Text style={[styles.selectionSummary, isDark && styles.textMuted]}>
+							{getSelectionSummary()}
+						</Text>
 						{alreadyUploadedCount > 0 && (
 							<Text style={[styles.uploadedCount, isDark && styles.textMuted]}>
 								{alreadyUploadedCount} already uploaded
@@ -377,17 +601,24 @@ export default function ContributeScreen() {
 						)}
 					</View>
 					<View style={styles.selectActions}>
-						<TouchableOpacity onPress={selectAll}>
-							<Text style={styles.selectAction}>Select All</Text>
+						<TouchableOpacity
+							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
+							onPress={selectAll}
+						>
+							<Text style={[styles.selectAction, isDark && styles.textDark]}>Select All</Text>
 						</TouchableOpacity>
-						<Text style={[styles.selectDivider, isDark && styles.textMuted]}>|</Text>
-						<TouchableOpacity onPress={deselectAll}>
-							<Text style={styles.selectAction}>Clear</Text>
+						<TouchableOpacity
+							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
+							onPress={deselectAll}
+						>
+							<Text style={[styles.selectAction, isDark && styles.textDark]}>Clear</Text>
 						</TouchableOpacity>
-						<Text style={[styles.selectDivider, isDark && styles.textMuted]}>|</Text>
-						<TouchableOpacity onPress={handleManualPick} style={styles.addPhotosButton}>
-							<FontAwesome name="plus" size={14} color="#3b82f6" />
-							<Text style={styles.selectAction}> Add</Text>
+						<TouchableOpacity
+							onPress={handleManualPick}
+							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
+						>
+							<FontAwesome name="plus" size={12} color={isDark ? "#fff" : "#111827"} />
+							<Text style={[styles.selectAction, isDark && styles.textDark]}>Add Media</Text>
 						</TouchableOpacity>
 					</View>
 				</View>
@@ -427,7 +658,7 @@ export default function ContributeScreen() {
 										<FontAwesome name="play-circle" size={28} color="#fff" />
 										{item.duration > 0 && (
 											<View style={styles.durationBadge}>
-												<Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
+												<Text style={styles.durationText}>{formatDurationHms(item.duration)}</Text>
 											</View>
 										)}
 									</View>
@@ -457,10 +688,16 @@ export default function ContributeScreen() {
 					<TouchableOpacity
 						style={[styles.uploadButton, selectedIds.size === 0 && styles.uploadButtonDisabled]}
 						onPress={handleUpload}
-						disabled={selectedIds.size === 0}
+						disabled={selectedIds.size === 0 || isQueueingUploads}
 					>
-						<FontAwesome name="cloud-upload" size={20} color="#fff" style={styles.uploadIcon} />
-						<Text style={styles.uploadButtonText}>{getShareButtonText()}</Text>
+						{isQueueingUploads ? (
+							<ActivityIndicator size="small" color="#fff" style={styles.uploadIcon} />
+						) : (
+							<FontAwesome name="cloud-upload" size={20} color="#fff" style={styles.uploadIcon} />
+						)}
+						<Text style={styles.uploadButtonText}>
+							{isQueueingUploads ? "Preparing uploads..." : getShareButtonText()}
+						</Text>
 					</TouchableOpacity>
 				</View>
 			</View>
@@ -481,39 +718,72 @@ export default function ContributeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: "#fff",
+		backgroundColor: "#f3f4f6",
 	},
 	containerDark: {
-		backgroundColor: "#000",
+		backgroundColor: "#05070b",
 	},
 	centered: {
 		justifyContent: "center",
 		alignItems: "center",
 		padding: 24,
 	},
+	statePanel: {
+		width: "100%",
+		maxWidth: 360,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingHorizontal: 20,
+		paddingVertical: 24,
+		alignItems: "center",
+	},
+	statePanelDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
 	loadingText: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		marginTop: 16,
+		fontWeight: "600",
+	},
+	loadingHint: {
+		fontSize: 14,
+		color: "#6b7280",
+		marginTop: 8,
+		textAlign: "center",
+	},
+	loadingActions: {
+		marginTop: 24,
+		width: "100%",
+		alignItems: "center",
+	},
+	loadingSlowText: {
+		fontSize: 14,
+		color: "#6b7280",
+		textAlign: "center",
+		marginBottom: 16,
+		maxWidth: 320,
 	},
 	errorTitle: {
 		fontSize: 20,
-		fontWeight: "600",
-		color: "#000",
+		fontWeight: "700",
+		color: "#111827",
 		marginTop: 16,
 		marginBottom: 8,
 	},
 	errorText: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		textAlign: "center",
 		marginBottom: 24,
 	},
 	errorButton: {
-		backgroundColor: "#000",
+		backgroundColor: "#111827",
 		paddingVertical: 14,
 		paddingHorizontal: 32,
-		borderRadius: 12,
+		borderRadius: 999,
 	},
 	errorButtonText: {
 		color: "#fff",
@@ -521,20 +791,27 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	errorButtonSecondary: {
-		backgroundColor: "transparent",
+		backgroundColor: "#fff",
 		borderWidth: 1,
-		borderColor: "#666",
+		borderColor: "#d1d5db",
+	},
+	errorButtonSecondaryDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	errorButtonTextSecondary: {
-		color: "#666",
+		color: "#6b7280",
+	},
+	retryScanButton: {
+		marginBottom: 12,
 	},
 	manualPickButton: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#3b82f6",
+		backgroundColor: "#111827",
 		paddingVertical: 14,
 		paddingHorizontal: 24,
-		borderRadius: 12,
+		borderRadius: 999,
 		marginBottom: 12,
 	},
 	manualPickButtonText: {
@@ -545,18 +822,25 @@ const styles = StyleSheet.create({
 	emptyContent: {
 		alignItems: "center",
 		paddingHorizontal: 32,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
+		paddingVertical: 28,
 	},
 	emptyIcon: {
 		width: 72,
 		height: 72,
 		borderRadius: 36,
-		backgroundColor: "#f5f5f5",
+		backgroundColor: "#f9fafb",
 		justifyContent: "center",
 		alignItems: "center",
 		marginBottom: 24,
+		borderWidth: 1,
+		borderColor: "#e5e7eb",
 	},
 	emptyIconDark: {
-		backgroundColor: "#1a1a1a",
+		backgroundColor: "#151821",
+		borderColor: "#242833",
 	},
 	emptyTitle: {
 		fontSize: 24,
@@ -567,13 +851,13 @@ const styles = StyleSheet.create({
 	},
 	emptyText: {
 		fontSize: 16,
-		color: "#666",
+		color: "#6b7280",
 		textAlign: "center",
 		marginBottom: 8,
 	},
 	emptyHint: {
 		fontSize: 14,
-		color: "#888",
+		color: "#6b7280",
 		textAlign: "center",
 		marginBottom: 32,
 	},
@@ -591,40 +875,74 @@ const styles = StyleSheet.create({
 	emptyButtonSecondary: {
 		paddingVertical: 14,
 		paddingHorizontal: 32,
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+		borderRadius: 999,
+		backgroundColor: "#fff",
+	},
+	emptyButtonSecondaryDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
 	},
 	emptyButtonSecondaryText: {
-		color: "#666",
-		fontSize: 16,
-		fontWeight: "500",
+		color: "#6b7280",
+		fontSize: 15,
+		fontWeight: "600",
 	},
 	selectHeader: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
 		padding: 16,
 		borderBottomWidth: 1,
-		borderBottomColor: "#e5e5e5",
+		borderBottomColor: "#e5e7eb",
+		backgroundColor: "#fff",
+		gap: 12,
+	},
+	selectHeaderDark: {
+		backgroundColor: "#0f1115",
+		borderBottomColor: "#242833",
+	},
+	headerKicker: {
+		fontSize: 11,
+		fontWeight: "700",
+		letterSpacing: 1.1,
+		textTransform: "uppercase",
+		color: "#6b7280",
+		marginBottom: 4,
 	},
 	selectCount: {
-		fontSize: 14,
-		color: "#666",
+		fontSize: 15,
+		color: "#374151",
+		fontWeight: "600",
+	},
+	selectionSummary: {
+		fontSize: 12,
+		color: "#6b7280",
+		marginTop: 4,
 	},
 	selectActions: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
+		gap: 8,
+		flexWrap: "wrap",
 	},
-	selectAction: {
-		fontSize: 14,
-		color: "#3b82f6",
-		fontWeight: "500",
-	},
-	selectDivider: {
-		color: "#e5e5e5",
-	},
-	addPhotosButton: {
+	selectActionButton: {
 		flexDirection: "row",
 		alignItems: "center",
+		gap: 6,
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		borderRadius: 999,
+		backgroundColor: "#fff",
+		borderWidth: 1,
+		borderColor: "#d1d5db",
+	},
+	selectActionButtonDark: {
+		backgroundColor: "#0f1115",
+		borderColor: "#242833",
+	},
+	selectAction: {
+		fontSize: 13,
+		color: "#111827",
+		fontWeight: "600",
 	},
 	selectGrid: {
 		padding: GRID_PADDING,
@@ -685,22 +1003,22 @@ const styles = StyleSheet.create({
 		paddingBottom: 32,
 		backgroundColor: "#fff",
 		borderTopWidth: 1,
-		borderTopColor: "#e5e5e5",
+		borderTopColor: "#e5e7eb",
 	},
 	selectFooterDark: {
-		backgroundColor: "#000",
-		borderTopColor: "#333",
+		backgroundColor: "#0f1115",
+		borderTopColor: "#242833",
 	},
 	uploadButton: {
-		backgroundColor: "#3b82f6",
+		backgroundColor: "#111827",
 		paddingVertical: 18,
-		borderRadius: 14,
+		borderRadius: 999,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#3b82f6",
+		shadowColor: "#111827",
 		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.3,
+		shadowOpacity: 0.18,
 		shadowRadius: 8,
 		elevation: 8,
 	},
