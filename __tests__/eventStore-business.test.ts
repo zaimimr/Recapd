@@ -796,6 +796,7 @@ describe("deleteEvent", () => {
 					expires_at: "",
 					created_at: "",
 					updated_at: "",
+					last_host_reminder_at: null,
 					userRole: "host" as const,
 				},
 			],
@@ -811,6 +812,7 @@ describe("deleteEvent", () => {
 				expires_at: "",
 				created_at: "",
 				updated_at: "",
+				last_host_reminder_at: null,
 			},
 			pendingUploads: [
 				{

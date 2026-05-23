@@ -1,6 +1,8 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	ActivityIndicator,
+	Alert,
 	Animated,
 	Dimensions,
 	FlatList,
@@ -13,6 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { getAvatarColor } from "@/lib/colors";
+import { type HostReminderType, sendHostReminder } from "@/lib/hostReminders";
 import type { ParticipantWithStats } from "@/store/eventStore";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -26,6 +29,7 @@ interface GuestSheetProps {
 	isDark: boolean;
 	isHost: boolean;
 	currentUserId: string;
+	eventId: string;
 	onRemoveParticipant: (userId: string, displayName: string) => void;
 	onLeaveEvent: () => void;
 }
@@ -37,12 +41,55 @@ export default function GuestSheet({
 	isDark,
 	isHost,
 	currentUserId,
+	eventId,
 	onRemoveParticipant,
 	onLeaveEvent,
 }: GuestSheetProps) {
 	const insets = useSafeAreaInsets();
 	const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
 	const backdropOpacity = useRef(new Animated.Value(0)).current;
+	const [sendingType, setSendingType] = useState<HostReminderType | null>(null);
+
+	const handleSendReminder = useCallback(
+		async (type: HostReminderType) => {
+			if (sendingType) return;
+			setSendingType(type);
+			const result = await sendHostReminder(eventId, type);
+			setSendingType(null);
+
+			if (result.ok) {
+				const noun = result.sent === 1 ? "guest" : "guests";
+				const message =
+					result.sent === 0
+						? "No guests have notifications enabled yet."
+						: `Reminder sent to ${result.sent} ${noun}.`;
+				Alert.alert("Reminder sent", message);
+				return;
+			}
+
+			if (result.reason === "cooldown") {
+				const minutes = Math.max(1, Math.ceil(result.retryAfterSeconds / 60));
+				Alert.alert(
+					"Slow down",
+					`You can send another reminder in about ${minutes} minute${minutes === 1 ? "" : "s"}.`
+				);
+				return;
+			}
+
+			if (result.reason === "event_inactive") {
+				Alert.alert("Event ended", "This event is no longer active.");
+				return;
+			}
+
+			if (result.reason === "unauthorized") {
+				Alert.alert("Not allowed", "Only the event host can send reminders.");
+				return;
+			}
+
+			Alert.alert("Couldn't send reminder", result.message ?? "Please try again.");
+		},
+		[eventId, sendingType]
+	);
 
 	const sortedParticipants = [...participants].sort((a, b) => {
 		if (a.role === "host" && b.role !== "host") return -1;
@@ -220,9 +267,67 @@ export default function GuestSheet({
 							);
 						}}
 						ListFooterComponent={
-							<TouchableOpacity style={styles.leaveButton} onPress={onLeaveEvent}>
-								<Text style={styles.leaveButtonText}>Leave Event</Text>
-							</TouchableOpacity>
+							<>
+								{isHost && (
+									<View style={styles.hostActions}>
+										<TouchableOpacity
+											style={[
+												styles.reminderButton,
+												isDark && styles.reminderButtonDark,
+												sendingType !== null && styles.reminderButtonDisabled,
+											]}
+											onPress={() => handleSendReminder("upload")}
+											disabled={sendingType !== null}
+										>
+											{sendingType === "upload" ? (
+												<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
+											) : (
+												<>
+													<FontAwesome
+														name="cloud-upload"
+														size={14}
+														color={isDark ? "#fff" : "#111827"}
+													/>
+													<Text
+														style={[styles.reminderButtonText, isDark && styles.textDark]}
+													>
+														Remind to upload
+													</Text>
+												</>
+											)}
+										</TouchableOpacity>
+										<TouchableOpacity
+											style={[
+												styles.reminderButton,
+												isDark && styles.reminderButtonDark,
+												sendingType !== null && styles.reminderButtonDisabled,
+											]}
+											onPress={() => handleSendReminder("take_photos")}
+											disabled={sendingType !== null}
+										>
+											{sendingType === "take_photos" ? (
+												<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
+											) : (
+												<>
+													<FontAwesome
+														name="camera"
+														size={14}
+														color={isDark ? "#fff" : "#111827"}
+													/>
+													<Text
+														style={[styles.reminderButtonText, isDark && styles.textDark]}
+													>
+														Remind to snap
+													</Text>
+												</>
+											)}
+										</TouchableOpacity>
+									</View>
+								)}
+								<TouchableOpacity style={styles.leaveButton} onPress={onLeaveEvent}>
+									<Text style={styles.leaveButtonText}>Leave Event</Text>
+								</TouchableOpacity>
+							</>
 						}
 					/>
 				</Animated.View>
@@ -372,6 +477,35 @@ const styles = StyleSheet.create({
 	},
 	removeButton: {
 		paddingHorizontal: 8,
+	},
+	hostActions: {
+		flexDirection: "row",
+		gap: 10,
+		marginTop: 14,
+	},
+	reminderButton: {
+		flex: 1,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: 8,
+		paddingVertical: 12,
+		borderWidth: 1,
+		borderColor: "#111827",
+		borderRadius: 999,
+		minHeight: 44,
+	},
+	reminderButtonDark: {
+		borderColor: "#fff",
+	},
+	reminderButtonDisabled: {
+		opacity: 0.5,
+	},
+	reminderButtonText: {
+		color: "#111827",
+		fontSize: 14,
+		fontWeight: "600",
+		letterSpacing: -0.2,
 	},
 	leaveButton: {
 		alignItems: "center",
