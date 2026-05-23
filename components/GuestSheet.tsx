@@ -288,9 +288,7 @@ export default function GuestSheet({
 														size={14}
 														color={isDark ? "#fff" : "#111827"}
 													/>
-													<Text
-														style={[styles.reminderButtonText, isDark && styles.textDark]}
-													>
+													<Text style={[styles.reminderButtonText, isDark && styles.textDark]}>
 														Remind to upload
 													</Text>
 												</>
@@ -314,9 +312,7 @@ export default function GuestSheet({
 														size={14}
 														color={isDark ? "#fff" : "#111827"}
 													/>
-													<Text
-														style={[styles.reminderButtonText, isDark && styles.textDark]}
-													>
+													<Text style={[styles.reminderButtonText, isDark && styles.textDark]}>
 														Remind to snap
 													</Text>
 												</>

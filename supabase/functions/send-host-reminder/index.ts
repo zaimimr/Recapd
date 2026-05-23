@@ -107,7 +107,8 @@ Deno.serve(async (req) => {
 	}
 
 	const eventId = body.event_id;
-	const reminderType: ReminderType = body.reminder_type === "take_photos" ? "take_photos" : "upload";
+	const reminderType: ReminderType =
+		body.reminder_type === "take_photos" ? "take_photos" : "upload";
 
 	if (!eventId || typeof eventId !== "string") {
 		return jsonResponse(400, { success: false, error: "event_id is required" });
