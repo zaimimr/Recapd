@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "839409657465",
+    "project_id": "recapd-c211a",
+    "storage_bucket": "recapd-c211a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:839409657465:android:86d2de4c23fc1fca4296a8",
+        "android_client_info": {
+          "package_name": "com.zaimimran.recapd"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtZUn1YWGWHEH4zGXTT9_sc3dIArrz7G4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
