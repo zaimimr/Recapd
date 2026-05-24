@@ -483,11 +483,19 @@ export default function EventScreen() {
 
 						<View style={styles.actionStack}>
 							<TouchableOpacity
-								style={[styles.secondaryActionButton, styles.remindButton]}
+								style={[
+									styles.secondaryActionButton,
+									styles.remindButton,
+									isDark && styles.remindButtonDark,
+								]}
 								onPress={handleContribute}
 							>
-								<FontAwesome name="plus" size={16} color="#fff" />
-								<Text style={styles.contributeButtonText}>Add Your Media</Text>
+								<FontAwesome name="plus" size={16} color={isDark ? "#0a0d12" : "#fff"} />
+								<Text
+									style={[styles.contributeButtonText, isDark && styles.contributeButtonTextDark]}
+								>
+									Add Your Media
+								</Text>
 							</TouchableOpacity>
 
 							{mediaItems.length > 0 ? (
@@ -570,13 +578,10 @@ export default function EventScreen() {
 					{mergedPhotos.length === 0 ? (
 						<View style={[styles.emptyState, isDark && styles.panelDark]}>
 							<FontAwesome name="camera" size={48} color={isDark ? "#444" : "#ccc"} />
-							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Media Yet</Text>
+							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No media yet</Text>
 							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Media from the event will appear here after it's uploaded
+								Photos and videos appear here as guests share them.
 							</Text>
-							<TouchableOpacity style={styles.emptyButton} onPress={handleContribute}>
-								<Text style={styles.emptyButtonText}>Add Media</Text>
-							</TouchableOpacity>
 						</View>
 					) : (
 						<MasonryGrid
@@ -770,6 +775,9 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 		fontWeight: "600",
 	},
+	contributeButtonTextDark: {
+		color: "#0a0d12",
+	},
 	secondaryActionRow: {
 		flexDirection: "row",
 		gap: 10,
@@ -799,6 +807,10 @@ const styles = StyleSheet.create({
 	remindButton: {
 		backgroundColor: "#111827",
 		borderColor: "#111827",
+	},
+	remindButtonDark: {
+		backgroundColor: "#ffffff",
+		borderColor: "#ffffff",
 	},
 	remindButtonText: {
 		color: "#fff",

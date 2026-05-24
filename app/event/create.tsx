@@ -251,7 +251,7 @@ export default function CreateEventScreen() {
 					) : (
 						<View style={[styles.freeTierInfo, isDark && styles.freeTierInfoDark]}>
 							<Text style={[styles.freeTierInfoText, isDark && styles.textMuted]}>
-								Free plan — {getPlanMarketingHighlights("free", plans)}
+								Free plan · {getPlanMarketingHighlights("free", plans)}
 							</Text>
 						</View>
 					))}

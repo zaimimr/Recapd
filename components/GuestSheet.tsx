@@ -235,18 +235,24 @@ export default function GuestSheet({
 											</Text>
 											{isCurrentUser && <Text style={styles.youLabel}>(You)</Text>}
 											{item.role === "host" && (
-												<View style={styles.hostBadge}>
-													<Text style={styles.hostBadgeText}>Host</Text>
+												<View style={[styles.hostBadge, isDark && styles.hostBadgeDark]}>
+													<Text
+														style={[styles.hostBadgeText, isDark && styles.hostBadgeTextDark]}
+													>
+														Host
+													</Text>
 												</View>
 											)}
 										</View>
-										<Text style={styles.status}>
-											{item.photoCount > 0
-												? "shared"
-												: item.noPhotosToUpload
-													? "nothing to share"
-													: "waiting"}
-										</Text>
+										{!(isCurrentUser && item.role === "host") && (
+											<Text style={styles.status}>
+												{item.photoCount > 0
+													? "shared"
+													: item.noPhotosToUpload
+														? "nothing to share"
+														: "waiting"}
+											</Text>
+										)}
 									</View>
 									{canRemove && (
 										<TouchableOpacity
@@ -439,10 +445,16 @@ const styles = StyleSheet.create({
 		paddingVertical: 4,
 		borderRadius: 999,
 	},
+	hostBadgeDark: {
+		backgroundColor: "#ffffff",
+	},
 	hostBadgeText: {
 		color: "#fff",
 		fontSize: 11,
 		fontWeight: "600",
+	},
+	hostBadgeTextDark: {
+		color: "#0a0d12",
 	},
 	status: {
 		fontSize: 13,
@@ -505,16 +517,13 @@ const styles = StyleSheet.create({
 	},
 	leaveButton: {
 		alignItems: "center",
-		paddingVertical: 14,
-		marginTop: 8,
-		marginBottom: 8,
-		borderWidth: 1,
-		borderColor: "#ef4444",
-		borderRadius: 999,
+		paddingVertical: 10,
+		marginTop: 16,
+		marginBottom: 4,
 	},
 	leaveButtonText: {
 		color: "#ef4444",
-		fontSize: 16,
+		fontSize: 14,
 		fontWeight: "500",
 	},
 });

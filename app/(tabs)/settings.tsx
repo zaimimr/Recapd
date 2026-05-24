@@ -19,6 +19,7 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { getAvatarColor } from "@/lib/colors";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -45,6 +46,18 @@ export default function SettingsScreen() {
 	const isDark = colorScheme === "dark";
 	const user = useAuthStore((state) => state.user);
 	const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
+	const logout = useAuthStore((state) => state.logout);
+
+	function handleResetProfile() {
+		Alert.alert(
+			"Reset profile?",
+			"This signs you out on this device and clears your local data. Events you created stay live for guests.",
+			[
+				{ text: "Cancel", style: "cancel" },
+				{ text: "Reset", style: "destructive", onPress: () => logout() },
+			]
+		);
+	}
 	const isPro = useIsPro();
 	const planId = useSubscriptionPlanId();
 	const plans = useSubscriptionPlans();
@@ -286,7 +299,7 @@ export default function SettingsScreen() {
 
 	const allPermissionsGranted = permissions.every((p) => p.status === "granted");
 	const currentPlan = plans[planId];
-	const proHighlights = getPlanMarketingHighlights("pro", plans);
+	const currentPlanHighlights = getPlanMarketingHighlights(planId, plans);
 
 	return (
 		<ScrollView
@@ -298,10 +311,6 @@ export default function SettingsScreen() {
 				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
 					Control your profile, access, and plan
 				</Text>
-				<Text style={[styles.heroText, isDark && styles.textMuted]}>
-					Everything here uses the same simple utility layout as the feed: clear sections, direct
-					actions, no extra chrome.
-				</Text>
 			</View>
 
 			{user && (
@@ -309,8 +318,13 @@ export default function SettingsScreen() {
 					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
 					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your identity</Text>
 					<View style={styles.profileRow}>
-						<View style={[styles.avatar, isDark && styles.avatarDark]}>
-							<Text style={[styles.avatarText, isDark && styles.textDark]}>
+						<View
+							style={[
+								styles.avatar,
+								{ backgroundColor: getAvatarColor(user.display_name || "?") },
+							]}
+						>
+							<Text style={styles.avatarText}>
 								{(isEditingName ? editedName : user.display_name)?.charAt(0).toUpperCase() || "?"}
 							</Text>
 						</View>
@@ -372,6 +386,7 @@ export default function SettingsScreen() {
 								}}
 								accessibilityRole="button"
 								accessibilityLabel="Edit display name"
+								hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 							>
 								<FontAwesome name="pencil" size={14} color={isDark ? "#fff" : "#000"} />
 							</TouchableOpacity>
@@ -401,7 +416,7 @@ export default function SettingsScreen() {
 									? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
 									: "Active subscription"
 								: SUBSCRIPTIONS_ENABLED
-									? proHighlights
+									? currentPlanHighlights
 									: "Subscription controls are unavailable in this build"}
 						</Text>
 					</View>
@@ -434,14 +449,20 @@ export default function SettingsScreen() {
 				) : (
 					<>
 						<TouchableOpacity
-							style={[styles.upgradeButton, !SUBSCRIPTIONS_ENABLED && styles.buttonDisabled]}
+							style={[
+								styles.upgradeButton,
+								isDark && styles.upgradeButtonDark,
+								!SUBSCRIPTIONS_ENABLED && styles.buttonDisabled,
+							]}
 							onPress={showPaywall}
 							disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
 							accessibilityRole="button"
 							accessibilityLabel="Upgrade to Pro"
 						>
-							<FontAwesome name="star" size={16} color="#fff" />
-							<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+							<FontAwesome name="star" size={16} color={isDark ? "#0a0d12" : "#fff"} />
+							<Text style={[styles.upgradeButtonText, isDark && styles.upgradeButtonTextDark]}>
+								Upgrade to Pro
+							</Text>
 						</TouchableOpacity>
 						<TouchableOpacity
 							style={styles.restoreButton}
@@ -588,6 +609,15 @@ export default function SettingsScreen() {
 					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
 				</TouchableOpacity>
 			</View>
+
+			<TouchableOpacity
+				style={styles.resetButton}
+				onPress={handleResetProfile}
+				accessibilityRole="button"
+				accessibilityLabel="Reset profile"
+			>
+				<Text style={styles.resetButtonText}>Reset profile</Text>
+			</TouchableOpacity>
 		</ScrollView>
 	);
 }
@@ -599,6 +629,17 @@ const styles = StyleSheet.create({
 	},
 	containerDark: {
 		backgroundColor: "#05070b",
+	},
+	resetButton: {
+		alignItems: "center",
+		marginTop: 8,
+		marginHorizontal: 16,
+		paddingVertical: 14,
+	},
+	resetButtonText: {
+		color: "#ef4444",
+		fontSize: 14,
+		fontWeight: "500",
 	},
 	content: {
 		padding: 16,
@@ -679,20 +720,13 @@ const styles = StyleSheet.create({
 		width: 56,
 		height: 56,
 		borderRadius: 28,
-		backgroundColor: "#f9fafb",
 		justifyContent: "center",
 		alignItems: "center",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	avatarDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
 	},
 	avatarText: {
 		fontSize: 24,
 		fontWeight: "600",
-		color: "#000",
+		color: "#fff",
 	},
 	profileInfo: {
 		flex: 1,
@@ -927,10 +961,16 @@ const styles = StyleSheet.create({
 		paddingVertical: 14,
 		borderRadius: 999,
 	},
+	upgradeButtonDark: {
+		backgroundColor: "#ffffff",
+	},
 	upgradeButtonText: {
 		fontSize: 16,
 		fontWeight: "600",
 		color: "#fff",
+	},
+	upgradeButtonTextDark: {
+		color: "#0a0d12",
 	},
 	buttonDisabled: {
 		opacity: 0.45,
