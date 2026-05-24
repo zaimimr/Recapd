@@ -116,7 +116,7 @@ export default function NotificationPromptModal({
 						<Text style={[styles.title, isDark && styles.textDark]}>Never miss a memory</Text>
 
 						<Text style={[styles.message, isDark && styles.textMuted]}>
-							We'll send you a gentle nudge to upload your photos after events end — so everyone can
+							We'll send you a gentle nudge to upload your photos after events end, so everyone can
 							relive the night together. No spam, ever. Promise.
 						</Text>
 

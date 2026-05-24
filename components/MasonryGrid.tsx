@@ -195,12 +195,17 @@ function GridTile({
 								<TouchableOpacity
 									style={[styles.actionChip, styles.actionChipPrimary]}
 									onPress={() => onRetry(photo.id)}
+									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
 									<FontAwesome name="refresh" size={11} color="#fff" />
 								</TouchableOpacity>
 							)}
 							{(isFailed || isQueued || isSyncing) && onSkip && (
-								<TouchableOpacity style={styles.actionChip} onPress={() => onSkip(photo.id)}>
+								<TouchableOpacity
+									style={styles.actionChip}
+									onPress={() => onSkip(photo.id)}
+									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+								>
 									<FontAwesome name="forward" size={10} color="#fff" />
 								</TouchableOpacity>
 							)}
@@ -208,6 +213,7 @@ function GridTile({
 								<TouchableOpacity
 									style={[styles.actionChip, styles.actionChipDanger]}
 									onPress={() => onRemove(photo.id)}
+									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
 									<FontAwesome name="trash" size={10} color="#fff" />
 								</TouchableOpacity>

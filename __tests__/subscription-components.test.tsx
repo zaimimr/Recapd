@@ -207,7 +207,7 @@ describe("Settings - Subscription Status Text", () => {
 		mockIsPro = false;
 		mockedUseIsPro.mockReturnValue(false);
 		const { getByText } = render(<SettingsScreen />);
-		expect(getByText("Unlimited participants · 5 min videos")).toBeTruthy();
+		expect(getByText("Up to 12 participants · 30s videos")).toBeTruthy();
 	});
 });
 

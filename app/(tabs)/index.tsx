@@ -136,14 +136,16 @@ export default function HomeScreen() {
 				</Text>
 				<View style={styles.actionRow}>
 					<TouchableOpacity
-						style={[styles.button, styles.primaryButton]}
+						style={[styles.button, styles.primaryButton, isDark && styles.primaryButtonDark]}
 						onPress={() => router.push("/event/join")}
 						accessibilityRole="button"
 						accessibilityLabel="Join Event"
 						accessibilityHint="Enter a code to join an existing event"
 					>
-						<FontAwesome name="sign-in" size={14} color="#fff" />
-						<Text style={styles.primaryButtonText}>Join Event</Text>
+						<FontAwesome name="sign-in" size={14} color={isDark ? "#0a0d12" : "#fff"} />
+						<Text style={[styles.primaryButtonText, isDark && styles.primaryButtonTextDark]}>
+							Join Event
+						</Text>
 					</TouchableOpacity>
 
 					<TouchableOpacity
@@ -161,11 +163,13 @@ export default function HomeScreen() {
 				</View>
 			</View>
 
-			<View style={styles.footer}>
-				<Text style={[styles.footerText, isDark && styles.textMuted]}>
-					Create an event to share photos with your group
-				</Text>
-			</View>
+			{!hasActiveEvents && (
+				<View style={styles.footer}>
+					<Text style={[styles.footerText, isDark && styles.textMuted]}>
+						Create an event to share photos with your group
+					</Text>
+				</View>
+			)}
 		</ScrollView>
 	);
 }
@@ -329,10 +333,16 @@ const styles = StyleSheet.create({
 	primaryButton: {
 		backgroundColor: "#111827",
 	},
+	primaryButtonDark: {
+		backgroundColor: "#ffffff",
+	},
 	primaryButtonText: {
 		color: "#fff",
 		fontSize: 16,
 		fontWeight: "600",
+	},
+	primaryButtonTextDark: {
+		color: "#0a0d12",
 	},
 	secondaryButton: {
 		backgroundColor: "#fff",

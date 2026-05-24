@@ -332,7 +332,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		if (!(await ensureRevenueCatConfigured(userId))) {
 			const errorMessage = getLastRevenueCatError() || "RevenueCat not configured";
 			set({ error: errorMessage });
-			Alert.alert("Unable to Load", errorMessage);
+			Alert.alert(
+				"Pro is unavailable",
+				"We can't load the upgrade screen right now. Try again in a moment."
+			);
 			return false;
 		}
 
@@ -344,7 +347,10 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 			const errorMessage =
 				result.error || getLastRevenueCatError() || "Unable to load the upgrade screen";
 			set({ error: errorMessage });
-			Alert.alert("Unable to Load", errorMessage);
+			Alert.alert(
+				"Pro is unavailable",
+				"We can't load the upgrade screen right now. Try again in a moment."
+			);
 			return false;
 		}
 
