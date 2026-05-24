@@ -607,6 +607,7 @@ export default function EventScreen() {
 					isDark={isDark}
 					isHost={isHost || false}
 					currentUserId={user?.id || ""}
+					eventId={id}
 					onRemoveParticipant={handleRemoveParticipant}
 					onLeaveEvent={handleLeaveEvent}
 				/>
