@@ -468,7 +468,6 @@ function emit(
 	};
 
 	if (isDev) {
-		// Avoid React Native's blocking LogBox overlay for handled app errors in development.
 		console.log(payload);
 	} else if (level !== "log") {
 		console[level](payload);
@@ -487,6 +486,30 @@ function emit(
 				...(errorDetails ? { error: errorDetails } : {}),
 			},
 		});
+
+		forwardToSentry(level, message, error, sanitizeContext(context));
+	}
+}
+
+function forwardToSentry(
+	level: "warn" | "error",
+	message: string,
+	error: unknown,
+	context: TelemetryMetadata | undefined
+): void {
+	try {
+		const sentryMod = require("@/lib/sentry") as typeof import("@/lib/sentry");
+		const extra: Record<string, unknown> = {
+			...(context ?? {}),
+			route: telemetryContext.route ?? null,
+		};
+		if (error) {
+			sentryMod.captureSentryException(error, { message, ...extra });
+		} else {
+			sentryMod.captureSentryMessage(message, level === "warn" ? "warning" : "error", extra);
+		}
+	} catch {
+		return;
 	}
 }
 

@@ -27,9 +27,12 @@ import {
 	savePushToken,
 	setupNotificationHandler,
 } from "@/lib/notifications";
+import { initSentry, Sentry, setSentryUser } from "@/lib/sentry";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
+
+initSentry();
 
 export const unstable_settings = {
 	initialRouteName: "(tabs)",
@@ -47,7 +50,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 	return <ExpoRouterErrorBoundary error={error} retry={retry} />;
 }
 
-export default function RootLayout() {
+function RootLayout() {
 	const [loaded, error] = useFonts({
 		SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
 		...FontAwesome.font,
@@ -105,6 +108,7 @@ function RootLayoutNav() {
 
 	useEffect(() => {
 		setTelemetryContext({ userId: user?.id ?? null });
+		setSentryUser(user?.id ?? null);
 		if (user?.id) {
 			traceEvent("app.user_context.ready", { userId: user.id });
 		}
@@ -191,3 +195,5 @@ function RootLayoutNav() {
 		</ThemeProvider>
 	);
 }
+
+export default Sentry.wrap(RootLayout);
