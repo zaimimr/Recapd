@@ -59,7 +59,21 @@ export function setSentryUser(userId: string | null, email?: string | null): voi
 
 export function captureSentryException(error: unknown, context?: Record<string, unknown>): void {
 	if (!initialized) return;
-	Sentry.captureException(error, context ? { extra: context } : undefined);
+	Sentry.captureException(normalizeError(error), context ? { extra: context } : undefined);
+}
+
+function normalizeError(value: unknown): Error {
+	if (value instanceof Error) return value;
+	if (typeof value === "string") return new Error(value);
+	if (value && typeof value === "object") {
+		const record = value as { message?: unknown; name?: unknown };
+		const message =
+			typeof record.message === "string" ? record.message : JSON.stringify(value);
+		const error = new Error(message);
+		if (typeof record.name === "string") error.name = record.name;
+		return error;
+	}
+	return new Error(String(value));
 }
 
 export function captureSentryMessage(

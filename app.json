@@ -2,7 +2,7 @@
 	"expo": {
 		"name": "Recapd",
 		"slug": "recapd",
-		"version": "1.4.0",
+		"version": "1.4.1",
 		"orientation": "portrait",
 		"icon": "./assets/images/icon.png",
 		"scheme": "recapd",
@@ -30,6 +30,7 @@
 			},
 			"edgeToEdgeEnabled": true,
 			"package": "com.zaimimran.recapd",
+			"googleServicesFile": "./google-services.json",
 			"permissions": [
 				"READ_EXTERNAL_STORAGE",
 				"WRITE_EXTERNAL_STORAGE",
