@@ -55,9 +55,7 @@ export default function OnboardingScreen() {
 			<View style={styles.content}>
 				<View style={[styles.hero, isDark && styles.panelDark]}>
 					<Text style={[styles.kicker, isDark && styles.textMuted]}>Recapd</Text>
-					<Text style={[styles.logo, isDark && styles.textDark]}>
-						Tell us what to call you.
-					</Text>
+					<Text style={[styles.logo, isDark && styles.textDark]}>Tell us what to call you.</Text>
 					<Text style={[styles.tagline, isDark && styles.textMuted]}>
 						Your name shows up on events, uploads, and the shared feed.
 					</Text>

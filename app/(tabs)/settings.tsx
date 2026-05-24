@@ -319,10 +319,7 @@ export default function SettingsScreen() {
 					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your identity</Text>
 					<View style={styles.profileRow}>
 						<View
-							style={[
-								styles.avatar,
-								{ backgroundColor: getAvatarColor(user.display_name || "?") },
-							]}
+							style={[styles.avatar, { backgroundColor: getAvatarColor(user.display_name || "?") }]}
 						>
 							<Text style={styles.avatarText}>
 								{(isEditingName ? editedName : user.display_name)?.charAt(0).toUpperCase() || "?"}

@@ -236,9 +236,7 @@ export default function GuestSheet({
 											{isCurrentUser && <Text style={styles.youLabel}>(You)</Text>}
 											{item.role === "host" && (
 												<View style={[styles.hostBadge, isDark && styles.hostBadgeDark]}>
-													<Text
-														style={[styles.hostBadgeText, isDark && styles.hostBadgeTextDark]}
-													>
+													<Text style={[styles.hostBadgeText, isDark && styles.hostBadgeTextDark]}>
 														Host
 													</Text>
 												</View>
