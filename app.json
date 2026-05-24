@@ -30,7 +30,7 @@
 			},
 			"edgeToEdgeEnabled": true,
 			"package": "com.zaimimran.recapd",
-			"googleServicesFile": "./google-services.json",
+			"googleServicesFile": "$GOOGLE_SERVICES_JSON",
 			"permissions": [
 				"READ_EXTERNAL_STORAGE",
 				"WRITE_EXTERNAL_STORAGE",
