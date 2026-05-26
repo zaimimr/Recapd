@@ -2,6 +2,7 @@ jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
 
 import { uploadMedia } from "@/lib/storage";
 import {
+	computeRetryDelayMs,
 	generateUploadId,
 	type PendingUpload,
 	processUpload,
@@ -102,6 +103,64 @@ describe("uploadQueue", () => {
 			const result = await processUpload(makePendingUpload());
 
 			expect(result).toEqual({ success: false, retryable: false });
+		});
+
+		it("marks network failures as retryable", async () => {
+			mockedUploadMedia.mockResolvedValue({
+				success: false,
+				error: "Network hiccup during upload. We'll retry automatically.",
+				failureReason: "network",
+			});
+
+			const result = await processUpload(makePendingUpload());
+
+			expect(result).toEqual({ success: false, retryable: true });
+		});
+
+		it("classifies thrown network errors as network failureReason", async () => {
+			mockedUploadMedia.mockRejectedValue(new Error("Network request failed"));
+
+			const result = await processUpload(makePendingUpload({ retryCount: 3 }));
+
+			expect(result).toEqual({ success: false, retryable: true });
+			expect(onFailed).toHaveBeenCalledWith(
+				expect.objectContaining({ id: "upload_123" }),
+				"Network request failed",
+				"network"
+			);
+		});
+	});
+
+	describe("computeRetryDelayMs", () => {
+		const originalRandom = Math.random;
+
+		afterEach(() => {
+			Math.random = originalRandom;
+		});
+
+		it("grows exponentially with attempt number", () => {
+			Math.random = () => 0;
+			expect(computeRetryDelayMs(0)).toBe(1000);
+			expect(computeRetryDelayMs(1)).toBe(2000);
+			expect(computeRetryDelayMs(2)).toBe(4000);
+			expect(computeRetryDelayMs(3)).toBe(8000);
+		});
+
+		it("caps delay at 60 seconds", () => {
+			Math.random = () => 0.999999;
+			expect(computeRetryDelayMs(100)).toBe(60_000);
+		});
+
+		it("adds jitter up to base delay", () => {
+			Math.random = () => 0.5;
+			const delay = computeRetryDelayMs(0);
+			expect(delay).toBeGreaterThanOrEqual(1000);
+			expect(delay).toBeLessThan(2000);
+		});
+
+		it("handles negative attempts safely", () => {
+			Math.random = () => 0;
+			expect(computeRetryDelayMs(-1)).toBe(1000);
 		});
 	});
 
