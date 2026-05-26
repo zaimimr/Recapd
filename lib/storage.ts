@@ -91,7 +91,39 @@ export interface UploadProgress {
 }
 
 export type MediaType = "photo" | "video";
-export type UploadFailureReason = "timeout" | "storage" | "database" | "thumbnail" | "unknown";
+export type UploadFailureReason =
+	| "timeout"
+	| "network"
+	| "storage"
+	| "database"
+	| "thumbnail"
+	| "unknown";
+
+function isNetworkErrorMessage(message: string): boolean {
+	const lower = message.toLowerCase();
+	return (
+		lower.includes("network request failed") ||
+		lower.includes("network error") ||
+		lower.includes("econnreset") ||
+		lower.includes("econnaborted") ||
+		lower.includes("etimedout") ||
+		lower.includes("enotfound") ||
+		lower.includes("socket hang up") ||
+		lower.includes("fetch failed")
+	);
+}
+
+function isRetryableHttpStatus(status: number): boolean {
+	return status === 408 || status === 429 || (status >= 500 && status < 600);
+}
+
+export function classifyUploadError(error: unknown): UploadFailureReason {
+	if (error instanceof Error) {
+		if (error.message === "timeout") return "timeout";
+		if (isNetworkErrorMessage(error.message)) return "network";
+	}
+	return "storage";
+}
 type UploadBody = Blob;
 
 export interface UploadMediaOptions {
@@ -293,7 +325,11 @@ async function uploadLocalFileToStorage(
 
 	if (response.status < 200 || response.status >= 300) {
 		const parsedBody = parseStorageUploadResponseBody(response.body);
-		throw new Error(parsedBody?.message || `Storage upload failed with status ${response.status}`);
+		const message =
+			parsedBody?.message || `Storage upload failed with status ${response.status}`;
+		const err = new Error(message) as Error & { httpStatus?: number };
+		err.httpStatus = response.status;
+		throw err;
 	}
 
 	return { path: storagePath };
@@ -522,15 +558,27 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			);
 		} catch (uploadError) {
 			logger.error("Storage upload error", uploadError, { eventId, userId });
-			const isTimeout = uploadError instanceof Error && uploadError.message === "timeout";
+			const httpStatus =
+				uploadError && typeof uploadError === "object" && "httpStatus" in uploadError
+					? (uploadError as { httpStatus?: number }).httpStatus
+					: undefined;
+			let failureReason: UploadFailureReason = classifyUploadError(uploadError);
+			if (failureReason === "storage" && httpStatus && isRetryableHttpStatus(httpStatus)) {
+				failureReason = "network";
+			}
+			const baseMessage =
+				uploadError instanceof Error ? uploadError.message : "Storage upload failed";
+			let userMessage = baseMessage;
+			if (failureReason === "timeout") {
+				userMessage =
+					"Upload took too long. Reconnect to a stable network and we'll retry automatically.";
+			} else if (failureReason === "network") {
+				userMessage = "Network hiccup during upload. We'll retry automatically.";
+			}
 			return {
 				success: false,
-				error: isTimeout
-					? "Upload took too long. Reconnect to a stable network and we'll retry automatically."
-					: uploadError instanceof Error
-						? uploadError.message
-						: "Storage upload failed",
-				failureReason: isTimeout ? "timeout" : "storage",
+				error: userMessage,
+				failureReason,
 			};
 		}
 
@@ -595,8 +643,14 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		};
 	} catch (error) {
 		logger.error("Upload error", error, { eventId, userId });
-		const failureReason =
-			error instanceof Error && error.message === "timeout" ? "timeout" : "unknown";
+		let failureReason: UploadFailureReason = "unknown";
+		if (error instanceof Error) {
+			if (error.message === "timeout") {
+				failureReason = "timeout";
+			} else if (isNetworkErrorMessage(error.message)) {
+				failureReason = "network";
+			}
+		}
 		return {
 			success: false,
 			error: `Failed to upload ${mediaType}`,

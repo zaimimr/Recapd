@@ -28,10 +28,18 @@ export interface PendingUpload {
 }
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000;
+const RETRY_BASE_DELAY_MS = 1000;
+const RETRY_MAX_DELAY_MS = 60 * 1000;
 const PHOTO_CONCURRENT_UPLOADS = 3;
 const VIDEO_CONCURRENT_UPLOADS = 1;
 const UPLOAD_TIMEOUT_MS = 20 * 60 * 1000;
+
+export function computeRetryDelayMs(attempt: number): number {
+	const exponent = Math.max(0, attempt);
+	const exponential = Math.min(RETRY_BASE_DELAY_MS * 2 ** exponent, RETRY_MAX_DELAY_MS);
+	const jitter = Math.random() * RETRY_BASE_DELAY_MS;
+	return Math.min(exponential + jitter, RETRY_MAX_DELAY_MS);
+}
 
 let isProcessing = false;
 let onUploadComplete:
@@ -51,7 +59,11 @@ let onStatusChange: ((id: string, updates: Partial<PendingUpload>) => void | Pro
 	null;
 
 function isRetryableFailureReason(failureReason?: UploadFailureReason): boolean {
-	return failureReason === "timeout" || failureReason === "unknown";
+	return (
+		failureReason === "timeout" ||
+		failureReason === "network" ||
+		failureReason === "unknown"
+	);
 }
 
 export function setUploadCallbacks(callbacks: {
@@ -108,8 +120,14 @@ export async function processUpload(
 			UPLOAD_TIMEOUT_MS
 		);
 	} catch (error) {
-		const failureReason: UploadFailureReason =
-			error instanceof Error && error.message === "timeout" ? "timeout" : "unknown";
+		let failureReason: UploadFailureReason = "unknown";
+		if (error instanceof Error) {
+			if (error.message === "timeout") {
+				failureReason = "timeout";
+			} else if (/network request failed|network error|fetch failed|econnreset|econnaborted|etimedout|enotfound|socket hang up/i.test(error.message)) {
+				failureReason = "network";
+			}
+		}
 		if (upload.retryCount >= MAX_RETRIES) {
 			await onUploadFailed?.(
 				upload,
@@ -217,7 +235,7 @@ async function processUploadWithRetry(
 			finishedAt: new Date().toISOString(),
 		});
 
-		await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+		await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs(attempt)));
 		const latestAfterDelay = getLatestUploads().find((u) => u.id === upload.id);
 		if (!latestAfterDelay || latestAfterDelay.status === "skipped") {
 			return;

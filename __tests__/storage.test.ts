@@ -365,6 +365,50 @@ describe("storage", () => {
 			expect(mockInsert).not.toHaveBeenCalled();
 		});
 
+		it("classifies HTTP 503 as network (retryable) failure", async () => {
+			const { mockInsert } = setupDbMock();
+			mockedUploadAsync.mockResolvedValueOnce({
+				status: 503,
+				headers: {},
+				mimeType: "application/json",
+				body: JSON.stringify({ message: "Service Unavailable" }),
+			} as any);
+
+			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
+
+			expect(result).toEqual(
+				expect.objectContaining({
+					success: false,
+					failureReason: "network",
+				})
+			);
+			expect(result.error).toBe("Network hiccup during upload. We'll retry automatically.");
+			expect(mockInsert).not.toHaveBeenCalled();
+		});
+
+		it("classifies HTTP 429 as network (retryable) failure", async () => {
+			setupDbMock();
+			mockedUploadAsync.mockResolvedValueOnce({
+				status: 429,
+				headers: {},
+				mimeType: "application/json",
+				body: JSON.stringify({ message: "Too Many Requests" }),
+			} as any);
+
+			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
+
+			expect(result.failureReason).toBe("network");
+		});
+
+		it("classifies fetch 'Network request failed' as network failure", async () => {
+			setupDbMock();
+			mockedUploadAsync.mockRejectedValueOnce(new Error("Network request failed"));
+
+			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
+
+			expect(result.failureReason).toBe("network");
+		});
+
 		it("surfaces native upload timeouts as timeout failures", async () => {
 			jest.useFakeTimers();
 			const { mockInsert } = setupDbMock();
