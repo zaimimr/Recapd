@@ -219,6 +219,14 @@ export async function scanMediaInTimeRange(
 
 	const photosWithLocalUri = resolvedAssets.filter((item): item is LocalPhoto => item !== null);
 
+	if (iCloudUnavailable > 0) {
+		logger.info("Media scan skipped iCloud-only assets", {
+			iCloudUnavailable,
+			scannedAssets,
+			matched: photosWithLocalUri.length,
+		});
+	}
+
 	return {
 		media: photosWithLocalUri,
 		timedOut: Date.now() > deadline,

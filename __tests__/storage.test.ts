@@ -338,11 +338,16 @@ describe("storage", () => {
 			mockedUploadAsync.mockImplementation(() => new Promise(() => {}));
 
 			const uploadPromise = uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
-			await jest.advanceTimersByTimeAsync(2 * 60 * 1000);
+			await jest.advanceTimersByTimeAsync(30 * 60 * 1000);
 			const result = await uploadPromise;
 
 			expect(result).toEqual(
-				expect.objectContaining({ success: false, error: "timeout", failureReason: "timeout" })
+				expect.objectContaining({
+					success: false,
+					error:
+						"Upload took too long. Reconnect to a stable network and we'll retry automatically.",
+					failureReason: "timeout",
+				})
 			);
 			expect(mockInsert).not.toHaveBeenCalled();
 		});

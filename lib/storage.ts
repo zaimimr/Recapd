@@ -18,8 +18,8 @@ import { supabase } from "./supabase";
 const DOWNLOADED_PHOTOS_KEY = "recapd_downloaded_photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const SIGNED_URL_REFRESH_BUFFER_MS = 60 * 1000;
-const PHOTO_NATIVE_UPLOAD_TIMEOUT_MS = 2 * 60 * 1000;
-const VIDEO_NATIVE_UPLOAD_TIMEOUT_MS = 12 * 60 * 1000;
+const PHOTO_NATIVE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+const VIDEO_NATIVE_UPLOAD_TIMEOUT_MS = 60 * 60 * 1000;
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const PHOTO_THUMBNAIL_TRANSFORM = {
 	width: 720,
@@ -36,11 +36,16 @@ export class IcloudAssetUnavailableError extends Error {
 }
 
 async function resolveIcloudAsset(uri: string): Promise<string> {
+	const startedAt = Date.now();
 	const assetId = uri.replace("ph://", "").replace("assets-library://", "").split("/")[0];
 	const firstAttempt = await MediaLibrary.getAssetInfoAsync(assetId, {
 		shouldDownloadFromNetwork: true,
 	});
 	if (firstAttempt?.localUri) {
+		const elapsedMs = Date.now() - startedAt;
+		if (elapsedMs > 1500) {
+			logger.info("iCloud asset downloaded (first attempt)", { assetId, elapsedMs });
+		}
 		return firstAttempt.localUri;
 	}
 
@@ -49,9 +54,17 @@ async function resolveIcloudAsset(uri: string): Promise<string> {
 		shouldDownloadFromNetwork: true,
 	});
 	if (retry?.localUri) {
+		logger.info("iCloud asset downloaded (retry)", {
+			assetId,
+			elapsedMs: Date.now() - startedAt,
+		});
 		return retry.localUri;
 	}
 
+	logger.warn("iCloud asset unavailable after retry", {
+		assetId,
+		elapsedMs: Date.now() - startedAt,
+	});
 	throw new IcloudAssetUnavailableError(uri);
 }
 
@@ -508,11 +521,15 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			);
 		} catch (uploadError) {
 			logger.error("Storage upload error", uploadError, { eventId, userId });
+			const isTimeout = uploadError instanceof Error && uploadError.message === "timeout";
 			return {
 				success: false,
-				error: uploadError instanceof Error ? uploadError.message : "Storage upload failed",
-				failureReason:
-					uploadError instanceof Error && uploadError.message === "timeout" ? "timeout" : "storage",
+				error: isTimeout
+					? "Upload took too long. Reconnect to a stable network and we'll retry automatically."
+					: uploadError instanceof Error
+						? uploadError.message
+						: "Storage upload failed",
+				failureReason: isTimeout ? "timeout" : "storage",
 			};
 		}
 
