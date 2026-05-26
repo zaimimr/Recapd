@@ -248,6 +248,37 @@ describe("storage", () => {
 			expect(insertCall.thumbnail_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/);
 		});
 
+		it("prefers the stripped URI when both decorated and stripped forms exist", async () => {
+			const { mockInsert } = setupDbMock();
+			mockedGetInfoAsync.mockResolvedValue({
+				exists: true,
+				isDirectory: false,
+				uri: "file:///tmp/clip.mov",
+				size: 8,
+				modificationTime: Date.now(),
+			} as any);
+			mockedGetThumbnailAsync.mockResolvedValue({
+				uri: "file:///thumb.jpg",
+				width: 320,
+				height: 240,
+			});
+
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				uri: "file:///var/mobile/Media/DCIM/IMG_0280.MOV#YnBsaXN0MDDRAQJfEBtSZWNvbW1lbmRlZEZvckltbWVyc2l2ZU1vZGUQAA",
+				mediaType: "video",
+				duration: 3000,
+			});
+
+			expect(result.success).toBe(true);
+			expect(mockedUploadAsync.mock.calls[0][1]).toBe("file:///var/mobile/Media/DCIM/IMG_0280.MOV");
+			expect(mockedGetThumbnailAsync.mock.calls[0][0]).toBe(
+				"file:///var/mobile/Media/DCIM/IMG_0280.MOV"
+			);
+			const insertCall = mockInsert.mock.calls[0][0];
+			expect(insertCall.storage_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mov$/);
+		});
+
 		it("sanitizes decorated picker URIs before deriving the upload extension", async () => {
 			const { mockInsert } = setupDbMock();
 			mockedGetInfoAsync.mockImplementation(async (uri: string) => {

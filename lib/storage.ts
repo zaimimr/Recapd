@@ -184,7 +184,8 @@ async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
 		return { uri: sourceUri };
 	}
 
-	const candidateUris = Array.from(new Set([sourceUri, stripUriDecorations(sourceUri)]));
+	const stripped = stripUriDecorations(sourceUri);
+	const candidateUris = stripped === sourceUri ? [sourceUri] : [stripped, sourceUri];
 	let lastError: unknown;
 
 	for (const candidateUri of candidateUris) {
