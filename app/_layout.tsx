@@ -22,6 +22,7 @@ import {
 	traceEvent,
 	traceScreen,
 } from "@/lib/logger";
+import { installUploadQueueKicker } from "@/lib/networkKick";
 import {
 	registerForPushNotifications,
 	savePushToken,
@@ -142,6 +143,13 @@ function RootLayoutNav() {
 
 		return () => subscription.remove();
 	}, []);
+
+	useEffect(() => {
+		if (!user?.id) return;
+		const processPendingUploads = useEventStore.getState().processPendingUploads;
+		const teardown = installUploadQueueKicker(() => processPendingUploads());
+		return teardown;
+	}, [user?.id]);
 
 	return (
 		<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
