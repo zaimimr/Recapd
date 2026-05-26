@@ -22,6 +22,7 @@ import {
 	traceEvent,
 	traceScreen,
 } from "@/lib/logger";
+import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import { installUploadQueueKicker } from "@/lib/networkKick";
 import {
 	registerForPushNotifications,
@@ -149,6 +150,19 @@ function RootLayoutNav() {
 		const processPendingUploads = useEventStore.getState().processPendingUploads;
 		const teardown = installUploadQueueKicker(() => processPendingUploads());
 		return teardown;
+	}, [user?.id]);
+
+	useEffect(() => {
+		if (!user?.id) return;
+		let uninstall: (() => Promise<void>) | null = null;
+		void installBackgroundUploadTask(async () => {
+			await useEventStore.getState().processPendingUploads();
+		}).then((fn) => {
+			uninstall = fn;
+		});
+		return () => {
+			void uninstall?.();
+		};
 	}, [user?.id]);
 
 	return (
