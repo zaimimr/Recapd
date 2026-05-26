@@ -4,7 +4,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { useStorageUrl } from "@/lib/storage";
+import { useVideoPlaybackUri } from "@/lib/storage";
 import type { MergedMediaItem } from "./MomentCluster";
 
 interface VideoPlayerProps {
@@ -27,8 +27,7 @@ export default function VideoPlayer({
 	const [showPoster, setShowPoster] = useState(Boolean(thumbnailUri));
 	const [showPlayOverlay, setShowPlayOverlay] = useState(!autoPlay);
 	const [isPlaying, setIsPlaying] = useState(autoPlay);
-	const remoteVideoUri = useStorageUrl(media.isPending ? null : media.storage_path);
-	const videoUri = media.isPending && media.localUri ? media.localUri : remoteVideoUri;
+	const videoUri = useVideoPlaybackUri(media);
 
 	if (!videoUri) {
 		return <View style={styles.container} />;

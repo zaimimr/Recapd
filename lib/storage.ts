@@ -726,6 +726,139 @@ export function usePhotoThumbnailUrl(storagePath?: string | null): string | null
 	);
 }
 
+interface HlsSegment {
+	offset: number;
+	length: number;
+	duration: number;
+}
+
+interface HlsByteRangeManifest {
+	version: number;
+	totalSize: number;
+	duration: number;
+	segments: HlsSegment[];
+}
+
+function base64EncodeAscii(input: string): string {
+	if (typeof btoa === "function") {
+		return btoa(input);
+	}
+	const bytes = new TextEncoder().encode(input);
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+	return (globalThis as { btoa?: (s: string) => string }).btoa?.(binary) ?? "";
+}
+
+export function buildByteRangeM3u8(manifest: HlsByteRangeManifest, mp4SignedUrl: string): string {
+	const targetDuration = Math.max(
+		1,
+		Math.ceil(manifest.segments.reduce((max, s) => Math.max(max, s.duration), 0))
+	);
+	const lines: string[] = [
+		"#EXTM3U",
+		"#EXT-X-VERSION:7",
+		`#EXT-X-TARGETDURATION:${targetDuration}`,
+		"#EXT-X-PLAYLIST-TYPE:VOD",
+		"#EXT-X-INDEPENDENT-SEGMENTS",
+	];
+	let previousOffsetEnd = -1;
+	for (const segment of manifest.segments) {
+		lines.push(`#EXTINF:${segment.duration.toFixed(3)},`);
+		if (segment.offset === previousOffsetEnd) {
+			lines.push(`#EXT-X-BYTERANGE:${segment.length}`);
+		} else {
+			lines.push(`#EXT-X-BYTERANGE:${segment.length}@${segment.offset}`);
+		}
+		lines.push(mp4SignedUrl);
+		previousOffsetEnd = segment.offset + segment.length;
+	}
+	lines.push("#EXT-X-ENDLIST");
+	return lines.join("\n");
+}
+
+async function fetchHlsManifest(hlsPath: string): Promise<HlsByteRangeManifest | null> {
+	try {
+		const manifestUrl = await resolveStorageUrl(hlsPath);
+		const response = await withTimeout(fetch(manifestUrl), 10000);
+		if (!response.ok) return null;
+		const data = (await response.json()) as HlsByteRangeManifest;
+		if (!data?.segments || data.segments.length === 0) return null;
+		return data;
+	} catch (error) {
+		logger.warn("HLS manifest fetch failed", error, { hlsPath });
+		return null;
+	}
+}
+
+export interface VideoPlaybackSource {
+	storage_path: string;
+	hls_path?: string | null;
+	isPending?: boolean;
+	localUri?: string;
+}
+
+export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefined): string | null {
+	const storagePath = media?.storage_path ?? null;
+	const hlsPath = media?.hls_path ?? null;
+	const isPending = media?.isPending ?? false;
+	const pendingLocalUri = isPending ? (media?.localUri ?? null) : null;
+
+	const [uri, setUri] = useState<string | null>(pendingLocalUri);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		if (pendingLocalUri) {
+			setUri(pendingLocalUri);
+			return () => {
+				cancelled = true;
+			};
+		}
+		if (!storagePath) {
+			setUri(null);
+			return () => {
+				cancelled = true;
+			};
+		}
+
+		(async () => {
+			try {
+				const mp4SignedUrl = await resolveStorageUrl(storagePath);
+				if (cancelled) return;
+
+				if (!hlsPath) {
+					setUri(mp4SignedUrl);
+					return;
+				}
+
+				const manifest = await fetchHlsManifest(hlsPath);
+				if (cancelled) return;
+				if (!manifest) {
+					setUri(mp4SignedUrl);
+					return;
+				}
+
+				const m3u8 = buildByteRangeM3u8(manifest, mp4SignedUrl);
+				const dataUri = `data:application/vnd.apple.mpegurl;base64,${base64EncodeAscii(m3u8)}`;
+				setUri(dataUri);
+			} catch (error) {
+				logger.warn("Video playback URI resolution failed", error, { storagePath });
+				if (!cancelled) {
+					setUri(null);
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [storagePath, hlsPath, pendingLocalUri]);
+
+	return uri;
+}
+
 export async function downloadPhoto(storagePath: string, fileName: string): Promise<string | null> {
 	try {
 		const url = await resolveStorageUrl(storagePath);
