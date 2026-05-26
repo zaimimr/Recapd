@@ -92,6 +92,7 @@ export interface MediaScanResult {
 	timedOut: boolean;
 	scannedPages: number;
 	scannedAssets: number;
+	iCloudUnavailable: number;
 }
 
 export async function scanMediaInTimeRange(
@@ -101,7 +102,13 @@ export async function scanMediaInTimeRange(
 ): Promise<MediaScanResult> {
 	const hasPermission = await requestMediaPermissions();
 	if (!hasPermission) {
-		return { media: [], timedOut: false, scannedPages: 0, scannedAssets: 0 };
+		return {
+			media: [],
+			timedOut: false,
+			scannedPages: 0,
+			scannedAssets: 0,
+			iCloudUnavailable: 0,
+		};
 	}
 
 	const {
@@ -178,17 +185,25 @@ export async function scanMediaInTimeRange(
 	// Trim to limit
 	const assetsToProcess = allFilteredAssets.slice(0, limit);
 
-	// Process asset info in batches to prevent memory issues
-	const photosWithLocalUri = await batchProcess(
+	let iCloudUnavailable = 0;
+
+	const resolvedAssets = await batchProcess(
 		assetsToProcess,
 		ASSET_INFO_BATCH_SIZE,
-		async (asset) => {
-			const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id);
+		async (asset): Promise<LocalPhoto | null> => {
+			const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id, {
+				shouldDownloadFromNetwork: true,
+			});
+			const localUri = assetInfo?.localUri;
+			if (!localUri) {
+				iCloudUnavailable += 1;
+				return null;
+			}
 			const assetFileSize =
 				(assetInfo as { fileSize?: number } | null | undefined)?.fileSize ?? undefined;
 			return {
 				id: asset.id,
-				uri: assetInfo?.localUri || asset.uri,
+				uri: localUri,
 				filename: asset.filename,
 				creationTime: asset.creationTime,
 				width: asset.width,
@@ -202,11 +217,14 @@ export async function scanMediaInTimeRange(
 		}
 	);
 
+	const photosWithLocalUri = resolvedAssets.filter((item): item is LocalPhoto => item !== null);
+
 	return {
 		media: photosWithLocalUri,
 		timedOut: Date.now() > deadline,
 		scannedPages,
 		scannedAssets,
+		iCloudUnavailable,
 	};
 }
 
@@ -255,6 +273,7 @@ export interface PickMediaResult {
 	videosFiltered: boolean;
 	videosTooLong: number;
 	filesTooLarge: number;
+	iCloudUnavailable: number;
 	error?: string;
 }
 
@@ -281,7 +300,13 @@ export async function pickMediaFromLibrary(
 		});
 
 		if (result.canceled || !result.assets) {
-			return { media: [], videosFiltered: false, videosTooLong: 0, filesTooLarge: 0 };
+			return {
+				media: [],
+				videosFiltered: false,
+				videosTooLong: 0,
+				filesTooLarge: 0,
+				iCloudUnavailable: 0,
+			};
 		}
 
 		let videosTooLong = 0;
@@ -355,7 +380,7 @@ export async function pickMediaFromLibrary(
 			};
 		});
 
-		return { media, videosFiltered, videosTooLong, filesTooLarge };
+		return { media, videosFiltered, videosTooLong, filesTooLarge, iCloudUnavailable: 0 };
 	} catch (error) {
 		logger.error("Manual media picking failed", error, {
 			includeVideos,
@@ -370,6 +395,7 @@ export async function pickMediaFromLibrary(
 			videosFiltered: false,
 			videosTooLong: 0,
 			filesTooLarge: 0,
+			iCloudUnavailable: 0,
 			error: message,
 		};
 	}

@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
+import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import { logger } from "@/lib/logger";
 import {
 	type LocalPhoto,
@@ -110,7 +111,7 @@ export default function ContributeScreen() {
 	const canUpgradeForMoreLimits = !isPro && !hostIsPro;
 
 	const notifySkippedMedia = useCallback(
-		(videosTooLong: number, filesTooLarge: number) => {
+		(videosTooLong: number, filesTooLarge: number, iCloudUnavailable: number = 0) => {
 			if (videosTooLong > 0) {
 				const base = `${videosTooLong} video${videosTooLong > 1 ? "s were" : " was"} skipped (over ${formatDuration(maxVideoDurationMilliseconds)}).`;
 				Alert.alert(
@@ -127,6 +128,12 @@ export default function ContributeScreen() {
 					canUpgradeForMoreLimits
 						? `${base} Upgrade to Pro for files up to ${formatFileSizeLabel(PRO_MAX_FILE_SIZE_BYTES)}.`
 						: base
+				);
+			}
+			if (iCloudUnavailable > 0) {
+				Alert.alert(
+					"iCloud Items Skipped",
+					`${iCloudUnavailable} item${iCloudUnavailable > 1 ? "s are" : " is"} stored in iCloud and could not be downloaded. Open them in the Photos app first to bring them to this device, then try again.`
 				);
 			}
 		},
@@ -283,6 +290,9 @@ export default function ContributeScreen() {
 				return;
 			}
 			applyScannedMedia(filteredMedia, alreadyUploaded);
+			if (scanResult.iCloudUnavailable > 0) {
+				notifySkippedMedia(0, 0, scanResult.iCloudUnavailable);
+			}
 		} catch (error) {
 			logger.error("Photo scanning failed", error, { eventId });
 			setScanError(true);
@@ -299,6 +309,7 @@ export default function ContributeScreen() {
 		currentEvent,
 		fetchEventById,
 		getUploadedPhotoIdsForEvent,
+		notifySkippedMedia,
 		user,
 		maxVideoDurationMilliseconds,
 		maxFileSizeBytes,
@@ -338,6 +349,7 @@ export default function ContributeScreen() {
 			media: picked,
 			videosTooLong,
 			filesTooLarge,
+			iCloudUnavailable,
 			error,
 		} = await pickMediaFromLibrary({
 			includeVideos: true,
@@ -350,7 +362,7 @@ export default function ContributeScreen() {
 			return;
 		}
 
-		notifySkippedMedia(videosTooLong, filesTooLarge);
+		notifySkippedMedia(videosTooLong, filesTooLarge, iCloudUnavailable);
 
 		if (picked.length > 0) {
 			await mergeManualMedia(picked);
@@ -363,6 +375,7 @@ export default function ContributeScreen() {
 			media: picked,
 			videosTooLong,
 			filesTooLarge,
+			iCloudUnavailable,
 			error,
 		} = await pickMediaFromLibrary({
 			includeVideos: true,
@@ -375,7 +388,7 @@ export default function ContributeScreen() {
 			return;
 		}
 
-		notifySkippedMedia(videosTooLong, filesTooLarge);
+		notifySkippedMedia(videosTooLong, filesTooLarge, iCloudUnavailable);
 
 		if (picked.length > 0) {
 			await mergeManualMedia(picked, { replaceExisting: true });
@@ -430,6 +443,21 @@ export default function ContributeScreen() {
 
 		setIsQueueingUploads(true);
 		try {
+			const knownBundleBytes = selectedPhotos.reduce(
+				(sum, item) => sum + (typeof item.fileSize === "number" ? item.fileSize : 0),
+				0
+			);
+			if (knownBundleBytes > 0) {
+				const budget = await checkDiskBudget(knownBundleBytes);
+				if (!budget.ok) {
+					Alert.alert(
+						"Not Enough Free Space",
+						`Your selection is ~${formatBytes(knownBundleBytes)} but only ${formatBytes(budget.freeBytes)} are free. Free up space or pick fewer items.`
+					);
+					setIsQueueingUploads(false);
+					return;
+				}
+			}
 			await addPendingUploads(selectedPhotos, eventId, user.id);
 			router.replace(`/event/${eventId}`);
 		} catch (error) {
