@@ -22,6 +22,30 @@ export const navigationIntegration = Sentry.expoRouterIntegration({
 	enableTimeToInitialDisplay: true,
 });
 
+const NOISE_MESSAGE_PATTERNS: RegExp[] = [
+	/the device or user is not allowed to make the purchase/i,
+	/there was an unknown backend error/i,
+	/^error performing request\.?$/i,
+	/^purchase was cancelled/i,
+];
+
+const EMPTY_MESSAGE_VALUES = new Set(["", "[Filtered]", "No error message"]);
+
+export function shouldDropSentryEvent(event: Sentry.Event): boolean {
+	const candidates = [
+		event.exception?.values?.[0]?.value,
+		event.message,
+		(event.extra?.message as string | undefined) ?? undefined,
+	];
+	const message = candidates.find((value): value is string => typeof value === "string") ?? "";
+
+	if (EMPTY_MESSAGE_VALUES.has(message.trim())) {
+		return true;
+	}
+
+	return NOISE_MESSAGE_PATTERNS.some((pattern) => pattern.test(message));
+}
+
 export function initSentry(): void {
 	if (initialized) return;
 	if (!dsn) {
@@ -38,6 +62,9 @@ export function initSentry(): void {
 		tracesSampleRate: isDev ? 1.0 : 0.2,
 		integrations: [navigationIntegration],
 		beforeSend(event, hint) {
+			if (shouldDropSentryEvent(event)) {
+				return null;
+			}
 			if (!isDev) {
 				void postErrorToSlack(event, hint).catch(() => undefined);
 			}
@@ -67,8 +94,7 @@ function normalizeError(value: unknown): Error {
 	if (typeof value === "string") return new Error(value);
 	if (value && typeof value === "object") {
 		const record = value as { message?: unknown; name?: unknown };
-		const message =
-			typeof record.message === "string" ? record.message : JSON.stringify(value);
+		const message = typeof record.message === "string" ? record.message : JSON.stringify(value);
 		const error = new Error(message);
 		if (typeof record.name === "string") error.name = record.name;
 		return error;
@@ -114,8 +140,7 @@ async function postErrorToSlack(
 		})
 		.join("\n");
 
-	const route =
-		typeof event.tags?.["route"] === "string" ? (event.tags["route"] as string) : undefined;
+	const route = typeof event.tags?.route === "string" ? (event.tags.route as string) : undefined;
 	const user = event.user?.id ? `user:${event.user.id}` : "anon";
 	const level = event.level ?? "error";
 
