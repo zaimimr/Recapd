@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	cacheDirectory,
-	copyAsync,
 	downloadAsync,
 	FileSystemUploadType,
+	getFreeDiskStorageAsync,
 	getInfoAsync,
 	uploadAsync,
 } from "expo-file-system/legacy";
@@ -28,14 +28,36 @@ const PHOTO_THUMBNAIL_TRANSFORM = {
 	resize: "cover" as const,
 };
 
+export class IcloudAssetUnavailableError extends Error {
+	constructor(uri: string) {
+		super(`iCloud asset not yet downloaded to this device: ${uri}`);
+		this.name = "IcloudAssetUnavailableError";
+	}
+}
+
+async function resolveIcloudAsset(uri: string): Promise<string> {
+	const assetId = uri.replace("ph://", "").replace("assets-library://", "").split("/")[0];
+	const firstAttempt = await MediaLibrary.getAssetInfoAsync(assetId, {
+		shouldDownloadFromNetwork: true,
+	});
+	if (firstAttempt?.localUri) {
+		return firstAttempt.localUri;
+	}
+
+	await new Promise((resolve) => setTimeout(resolve, 750));
+	const retry = await MediaLibrary.getAssetInfoAsync(assetId, {
+		shouldDownloadFromNetwork: true,
+	});
+	if (retry?.localUri) {
+		return retry.localUri;
+	}
+
+	throw new IcloudAssetUnavailableError(uri);
+}
+
 async function getReadableUri(uri: string): Promise<string> {
 	if (uri.startsWith("ph://") || uri.startsWith("assets-library://") || !uri.includes("/")) {
-		const assetId = uri.replace("ph://", "").split("/")[0];
-		const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId);
-		if (assetInfo?.localUri) {
-			return assetInfo.localUri;
-		}
-		throw new Error(`Unable to get local URI for asset: ${uri}`);
+		return resolveIcloudAsset(uri);
 	}
 	return uri;
 }
@@ -139,17 +161,17 @@ function getPathExtension(uri: string, mediaType: MediaType): string {
 	}
 }
 
-async function stageLocalFileForAccess(
-	sourceUri: string,
-	extension: string,
-	cacheKey: string
-): Promise<string> {
-	if (!sourceUri.startsWith("file://") || !cacheDirectory) {
-		return sourceUri;
+interface ResolvedLocalFile {
+	uri: string;
+	size?: number;
+}
+
+async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
+	if (!sourceUri.startsWith("file://")) {
+		return { uri: sourceUri };
 	}
 
 	const candidateUris = Array.from(new Set([sourceUri, stripUriDecorations(sourceUri)]));
-	const stagedUri = `${cacheDirectory}recapd-upload-${cacheKey}.${extension}`;
 	let lastError: unknown;
 
 	for (const candidateUri of candidateUris) {
@@ -158,16 +180,10 @@ async function stageLocalFileForAccess(
 			if (!info.exists || info.isDirectory) {
 				continue;
 			}
-
-			if (candidateUri === stagedUri) {
-				return candidateUri;
-			}
-
-			await copyAsync({
-				from: candidateUri,
-				to: stagedUri,
-			});
-			return stagedUri;
+			return {
+				uri: candidateUri,
+				size: typeof info.size === "number" ? info.size : undefined,
+			};
 		} catch (error) {
 			lastError = error;
 		}
@@ -177,7 +193,28 @@ async function stageLocalFileForAccess(
 		throw lastError;
 	}
 
-	return sourceUri;
+	return { uri: sourceUri };
+}
+
+const MIN_FREE_DISK_SAFETY_BYTES = 50 * 1024 * 1024;
+
+async function ensureFreeDiskFor(fileSize: number | undefined): Promise<void> {
+	try {
+		const free = await getFreeDiskStorageAsync();
+		const required = (fileSize ?? 0) + MIN_FREE_DISK_SAFETY_BYTES;
+		if (free < required) {
+			throw new Error(
+				`Not enough free space on device. Need ${Math.ceil(required / (1024 * 1024))}MB, have ${Math.floor(
+					free / (1024 * 1024)
+				)}MB free.`
+			);
+		}
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith("Not enough free space")) {
+			throw error;
+		}
+		logger.warn("Free disk storage probe failed", error);
+	}
 }
 
 function encodeStoragePath(storagePath: string): string {
@@ -314,14 +351,9 @@ export async function createVideoThumbnailUri(
 ): Promise<string | null> {
 	try {
 		const readableVideoUri = await getReadableUri(videoUri);
-		const extension = getPathExtension(readableVideoUri, "video");
-		const stagedVideoUri = await stageLocalFileForAccess(
-			readableVideoUri,
-			extension,
-			`thumb-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-		);
+		const resolved = await resolveLocalFile(readableVideoUri);
 		const { uri } = await withTimeout(
-			VideoThumbnails.getThumbnailAsync(stagedVideoUri, {
+			VideoThumbnails.getThumbnailAsync(resolved.uri, {
 				time: timeMs,
 				quality: 0.7,
 			}),
@@ -409,15 +441,42 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		}
 
 		const validCapturedAt = safeDate(capturedAt);
-		const readableUri = await getReadableUri(uri);
+		let readableUri: string;
+		try {
+			readableUri = await getReadableUri(uri);
+		} catch (resolveError) {
+			if (resolveError instanceof IcloudAssetUnavailableError) {
+				return {
+					success: false,
+					error:
+						"This item is in iCloud and could not be downloaded. Open it in Photos first, then retry.",
+					failureReason: "storage",
+				};
+			}
+			throw resolveError;
+		}
 		const timestamp = Date.now();
 		const uniqueSuffix = Math.random().toString(36).substring(2, 10);
 		const extension = getPathExtension(readableUri, mediaType);
-		const uploadSourceUri = await stageLocalFileForAccess(
-			readableUri,
-			extension,
-			`${timestamp}_${uniqueSuffix}`
-		);
+		const resolvedSource = await resolveLocalFile(readableUri);
+		const uploadSourceUri = resolvedSource.uri;
+		const detectedFileSize = fileSize ?? resolvedSource.size;
+		if (uploadSourceUri.startsWith("file://")) {
+			try {
+				await ensureFreeDiskFor(detectedFileSize);
+			} catch (diskError) {
+				logger.warn("Insufficient disk space for upload", diskError, {
+					eventId,
+					userId,
+					fileSize: detectedFileSize,
+				});
+				return {
+					success: false,
+					error: diskError instanceof Error ? diskError.message : "Not enough free space",
+					failureReason: "storage",
+				};
+			}
+		}
 		const fileName = `${eventId}/${userId}/${timestamp}_${uniqueSuffix}.${extension}`;
 
 		const contentType = getContentType(extension, mediaType);
@@ -428,7 +487,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 					contentType,
 					`${timestamp}_${uniqueSuffix}.${extension}`
 				);
-		const mediaSize = fileSize ?? (mediaBody ? getUploadBodySize(mediaBody) : 1);
+		const mediaSize = detectedFileSize ?? (mediaBody ? getUploadBodySize(mediaBody) : 1);
 		if (mediaSize === 0) {
 			logger.error("Resolved media file is empty", undefined, { eventId, userId, readableUri });
 			return {

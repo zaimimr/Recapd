@@ -326,6 +326,7 @@ describe("pickMediaFromLibrary", () => {
 			videosFiltered: false,
 			videosTooLong: 0,
 			filesTooLarge: 0,
+			iCloudUnavailable: 0,
 		});
 	});
 
@@ -551,6 +552,7 @@ describe("pickMediaFromLibrary", () => {
 			videosFiltered: false,
 			videosTooLong: 0,
 			filesTooLarge: 0,
+			iCloudUnavailable: 0,
 			error:
 				"iCloud photos could not be loaded. Open them in Photos first so they download to this device, then try again.",
 		});

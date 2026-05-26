@@ -7,11 +7,11 @@ jest.mock("@/lib/supabase", () => ({
 }));
 jest.mock("expo-file-system/legacy", () => ({
 	downloadAsync: jest.fn(),
-	copyAsync: jest.fn(),
 	uploadAsync: jest.fn(),
 	cacheDirectory: "file:///cache/",
 	FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
 	getInfoAsync: jest.fn(),
+	getFreeDiskStorageAsync: jest.fn(),
 }));
 jest.mock("expo-media-library", () => ({
 	getAssetInfoAsync: jest.fn(),
@@ -33,7 +33,12 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, waitFor } from "@testing-library/react-native";
-import { copyAsync, downloadAsync, getInfoAsync, uploadAsync } from "expo-file-system/legacy";
+import {
+	downloadAsync,
+	getFreeDiskStorageAsync,
+	getInfoAsync,
+	uploadAsync,
+} from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import {
@@ -50,8 +55,10 @@ import { supabase } from "@/lib/supabase";
 
 const mockedSupabase = supabase as any;
 const mockedDownloadAsync = downloadAsync as jest.MockedFunction<typeof downloadAsync>;
-const mockedCopyAsync = copyAsync as jest.MockedFunction<typeof copyAsync>;
 const mockedGetInfoAsync = getInfoAsync as jest.MockedFunction<typeof getInfoAsync>;
+const mockedGetFreeDiskStorageAsync = getFreeDiskStorageAsync as jest.MockedFunction<
+	typeof getFreeDiskStorageAsync
+>;
 const mockedUploadAsync = uploadAsync as jest.MockedFunction<typeof uploadAsync>;
 const mockedGetAssetInfoAsync = MediaLibrary.getAssetInfoAsync as jest.MockedFunction<
 	typeof MediaLibrary.getAssetInfoAsync
@@ -155,7 +162,7 @@ describe("storage", () => {
 			size: 8,
 			modificationTime: Date.now(),
 		} as any);
-		mockedCopyAsync.mockResolvedValue();
+		mockedGetFreeDiskStorageAsync.mockResolvedValue(100 * 1024 * 1024 * 1024);
 		mockedSupabase.auth.getSession.mockResolvedValue({
 			data: { session: { access_token: "user-token", user: { id: "auth-user-1" } } },
 		});
@@ -175,7 +182,7 @@ describe("storage", () => {
 			expect(uploadCallArgs[0]).toMatch(
 				/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.jpg$/
 			);
-			expect(uploadCallArgs[1]).toMatch(/^file:\/\/\/cache\/recapd-upload-\d+_[a-z0-9]+\.jpg$/);
+			expect(uploadCallArgs[1]).toBe("file:///photos/photo.jpg");
 			expect(uploadCallArgs[2]).toEqual(
 				expect.objectContaining({
 					httpMethod: "POST",
@@ -241,6 +248,18 @@ describe("storage", () => {
 
 		it("sanitizes decorated picker URIs before deriving the upload extension", async () => {
 			const { mockInsert } = setupDbMock();
+			mockedGetInfoAsync.mockImplementation(async (uri: string) => {
+				if (uri.includes("#")) {
+					return { exists: false, isDirectory: false } as any;
+				}
+				return {
+					exists: true,
+					isDirectory: false,
+					uri,
+					size: 8,
+					modificationTime: Date.now(),
+				} as any;
+			});
 			mockedGetThumbnailAsync.mockResolvedValue({
 				uri: "file:///thumb.jpg",
 				width: 320,
@@ -255,7 +274,7 @@ describe("storage", () => {
 			});
 
 			expect(result.success).toBe(true);
-			expect(mockedCopyAsync).toHaveBeenCalled();
+			expect(mockedUploadAsync.mock.calls[0][1]).toBe("file:///tmp/clip.mov");
 			const insertCall = mockInsert.mock.calls[0][0];
 			expect(insertCall.storage_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mov$/);
 		});
@@ -437,7 +456,7 @@ describe("storage", () => {
 				expect.stringMatching(
 					/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.heic$/
 				),
-				expect.stringMatching(/^file:\/\/\/cache\/recapd-upload-\d+_[a-z0-9]+\.heic$/),
+				"file:///photos/photo.heic",
 				expect.objectContaining({
 					headers: expect.objectContaining({ "content-type": "image/heic" }),
 				})
@@ -492,9 +511,11 @@ describe("storage", () => {
 			const result = await createVideoThumbnailUri("ph://ABC123/L0/001", 0);
 
 			expect(result).toBe("file:///thumb.jpg");
-			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("ABC123");
+			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("ABC123", {
+				shouldDownloadFromNetwork: true,
+			});
 			expect(mockedGetThumbnailAsync).toHaveBeenCalledWith(
-				expect.stringMatching(/^file:\/\/\/cache\/recapd-upload-thumb-\d+-[a-z0-9]+\.mov$/),
+				"file:///resolved-video.mov",
 				expect.objectContaining({ time: 0 })
 			);
 		});
