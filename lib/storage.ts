@@ -371,13 +371,47 @@ async function getCurrentProfileId(): Promise<string | null> {
 	return data?.id ?? null;
 }
 
+const TUS_MIN_VIDEO_BYTES = 10 * 1024 * 1024;
+const TUS_FOR_VIDEOS_ENABLED =
+	(process.env.EXPO_PUBLIC_ENABLE_TUS_UPLOADS ?? "false").toLowerCase() === "true";
+
+export function shouldUseTusForUpload(args: {
+	mediaType: MediaType;
+	sourceUri: string;
+	size?: number;
+}): boolean {
+	if (!TUS_FOR_VIDEOS_ENABLED) return false;
+	if (args.mediaType !== "video") return false;
+	if (!args.sourceUri.startsWith("file://")) return false;
+	if (args.size === undefined) return false;
+	return args.size >= TUS_MIN_VIDEO_BYTES;
+}
+
 async function uploadToStorage(
 	bucket: string,
 	storagePath: string,
 	sourceUri: string,
 	contentType: string,
-	mediaType: MediaType
+	mediaType: MediaType,
+	fileSize?: number,
+	fileFingerprint?: string
 ): Promise<{ path: string }> {
+	if (
+		fileSize !== undefined &&
+		fileFingerprint &&
+		shouldUseTusForUpload({ mediaType, sourceUri, size: fileSize })
+	) {
+		const { uploadVideoResumable } = await import("./tusUpload");
+		return uploadVideoResumable({
+			fileUri: sourceUri,
+			fileSize,
+			bucket,
+			objectName: storagePath,
+			contentType,
+			fileFingerprint,
+		});
+	}
+
 	if (sourceUri.startsWith("file://")) {
 		return uploadLocalFileToStorage(bucket, storagePath, sourceUri, contentType, mediaType);
 	}
@@ -547,6 +581,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			};
 		}
 
+		const tusFingerprint = `${eventId}:${userId}:${timestamp}:${uniqueSuffix}:${mediaSize}`;
 		let uploadData: { path: string };
 		try {
 			uploadData = await uploadToStorage(
@@ -554,7 +589,9 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 				fileName,
 				uploadSourceUri,
 				contentType,
-				mediaType
+				mediaType,
+				mediaSize,
+				tusFingerprint
 			);
 		} catch (uploadError) {
 			logger.error("Storage upload error", uploadError, { eventId, userId });
