@@ -116,6 +116,7 @@ export async function processUpload(
 				duration: upload.duration,
 				latitude: upload.latitude,
 				longitude: upload.longitude,
+				assetId: upload.assetId,
 			}),
 			UPLOAD_TIMEOUT_MS
 		);

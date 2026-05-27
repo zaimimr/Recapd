@@ -6,7 +6,11 @@ import { safeDate } from "@/lib/dateUtils";
 import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import type { UploadFailureReason } from "@/lib/storage";
-import { createVideoThumbnailUri } from "@/lib/storage";
+import {
+	cleanupStagedUpload,
+	createVideoThumbnailUri,
+	stageUploadFileIfPurgeable,
+} from "@/lib/storage";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
 import { supabase } from "@/lib/supabase";
 import {
@@ -316,6 +320,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			const remainingUploads = get().pendingUploads.filter((u) => u.id !== upload.id);
 			set({ pendingUploads: remainingUploads });
 			await persistPendingUploads(remainingUploads);
+			void cleanupStagedUpload(upload.localUri);
 
 			if (!currentUpload) {
 				return;
@@ -353,6 +358,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			);
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
+			void cleanupStagedUpload(upload.localUri);
 		},
 		onStatusChange: async (id, updates) => {
 			const newUploads = get().pendingUploads.map((u) => (u.id === id ? { ...u, ...updates } : u));
@@ -969,10 +975,16 @@ export const useEventStore = create<EventState>((set, get) => {
 				async (photo) => {
 					const thumbnailUri =
 						photo.mediaType === "video" ? await createVideoThumbnailUri(photo.uri, 0) : null;
+					const uploadId = generateUploadId();
+					const stagedUri = await stageUploadFileIfPurgeable(
+						photo.uri,
+						uploadId,
+						photo.fileSize
+					);
 
 					return {
-						id: generateUploadId(),
-						localUri: photo.uri,
+						id: uploadId,
+						localUri: stagedUri ?? photo.uri,
 						eventId,
 						userId,
 						capturedAt: safeDate(photo.creationTime),
@@ -1048,9 +1060,13 @@ export const useEventStore = create<EventState>((set, get) => {
 		},
 
 		removePendingUpload: async (id: string) => {
+			const target = get().pendingUploads.find((u) => u.id === id);
 			const newUploads = get().pendingUploads.filter((u) => u.id !== id);
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
+			if (target) {
+				void cleanupStagedUpload(target.localUri);
+			}
 		},
 
 		deletePhoto: async (mediaItemId: string, _eventId: string) => {

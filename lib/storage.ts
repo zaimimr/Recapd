@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	cacheDirectory,
+	copyAsync,
+	deleteAsync,
+	documentDirectory,
 	downloadAsync,
 	FileSystemUploadType,
 	getFreeDiskStorageAsync,
 	getInfoAsync,
+	makeDirectoryAsync,
 	uploadAsync,
 } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
@@ -138,6 +142,7 @@ export interface UploadMediaOptions {
 	duration?: number;
 	latitude?: number;
 	longitude?: number;
+	assetId?: string;
 }
 
 function getContentType(extension: string, mediaType: MediaType): string {
@@ -209,11 +214,12 @@ function getPathExtension(uri: string, mediaType: MediaType): string {
 interface ResolvedLocalFile {
 	uri: string;
 	size?: number;
+	exists: boolean;
 }
 
 async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
 	if (!sourceUri.startsWith("file://")) {
-		return { uri: sourceUri };
+		return { uri: sourceUri, exists: true };
 	}
 
 	const stripped = stripUriDecorations(sourceUri);
@@ -229,6 +235,7 @@ async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
 			return {
 				uri: candidateUri,
 				size: typeof info.size === "number" ? info.size : undefined,
+				exists: true,
 			};
 		} catch (error) {
 			lastError = error;
@@ -239,10 +246,109 @@ async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
 		throw lastError;
 	}
 
-	return { uri: sourceUri };
+	return { uri: sourceUri, exists: false };
+}
+
+async function resolveLocalFileWithAssetFallback(
+	sourceUri: string,
+	assetId: string | undefined
+): Promise<ResolvedLocalFile> {
+	const resolved = await resolveLocalFile(sourceUri);
+	if (resolved.exists) {
+		return resolved;
+	}
+
+	if (!assetId) {
+		throw new Error(`File '${sourceUri}' does not exist`);
+	}
+
+	try {
+		const info = await MediaLibrary.getAssetInfoAsync(assetId, {
+			shouldDownloadFromNetwork: true,
+		});
+		const recoveredUri = info?.localUri;
+		if (!recoveredUri) {
+			throw new Error(
+				`File '${sourceUri}' missing and asset ${assetId} could not be re-resolved`
+			);
+		}
+		logger.info("Recovered missing upload file via PHAsset", {
+			assetId,
+			originalUri: sourceUri,
+		});
+		const recovered = await resolveLocalFile(recoveredUri);
+		if (!recovered.exists) {
+			throw new Error(`Recovered asset ${assetId} still not readable at ${recoveredUri}`);
+		}
+		return recovered;
+	} catch (error) {
+		if (error instanceof Error && error.message.startsWith("File ")) {
+			throw error;
+		}
+		throw new Error(
+			`File '${sourceUri}' does not exist; PHAsset recovery failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`
+		);
+	}
 }
 
 const MIN_FREE_DISK_SAFETY_BYTES = 50 * 1024 * 1024;
+const UPLOAD_STAGING_DIR_NAME = "upload-staging";
+const UPLOAD_STAGING_MAX_FILE_BYTES = 200 * 1024 * 1024;
+const UPLOAD_STAGING_MIN_FREE_DISK_HEADROOM = 2;
+
+function uploadStagingDir(): string | null {
+	if (!documentDirectory) return null;
+	return `${documentDirectory}${UPLOAD_STAGING_DIR_NAME}/`;
+}
+
+function isInPurgeableCache(uri: string): boolean {
+	return uri.startsWith("file://") && uri.includes("/Library/Caches/");
+}
+
+export async function stageUploadFileIfPurgeable(
+	sourceUri: string,
+	uploadId: string,
+	fileSize: number | undefined
+): Promise<string | null> {
+	if (!isInPurgeableCache(sourceUri)) return null;
+	const dir = uploadStagingDir();
+	if (!dir) return null;
+	if (typeof fileSize === "number" && fileSize > UPLOAD_STAGING_MAX_FILE_BYTES) return null;
+
+	try {
+		const free = await getFreeDiskStorageAsync();
+		const sizeForBudget = fileSize ?? 0;
+		const required =
+			sizeForBudget * UPLOAD_STAGING_MIN_FREE_DISK_HEADROOM + MIN_FREE_DISK_SAFETY_BYTES;
+		if (free < required) {
+			return null;
+		}
+
+		await makeDirectoryAsync(dir, { intermediates: true });
+		const stripped = stripUriDecorations(sourceUri);
+		const extMatch = stripped.match(/\.([a-z0-9]+)$/i);
+		const ext = extMatch ? `.${extMatch[1].toLowerCase()}` : "";
+		const target = `${dir}${uploadId}${ext}`;
+		await copyAsync({ from: stripped, to: target });
+		return target;
+	} catch (error) {
+		logger.warn("Upload staging copy failed", error, { sourceUri, uploadId });
+		return null;
+	}
+}
+
+export async function cleanupStagedUpload(uri: string | null | undefined): Promise<void> {
+	if (!uri) return;
+	const dir = uploadStagingDir();
+	if (!dir || !uri.startsWith(dir)) return;
+	try {
+		await deleteAsync(uri, { idempotent: true });
+	} catch (error) {
+		logger.warn("Upload staging cleanup failed", error, { uri });
+	}
+}
 
 async function ensureFreeDiskFor(fileSize: number | undefined): Promise<void> {
 	try {
@@ -498,6 +604,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		duration,
 		latitude,
 		longitude,
+		assetId,
 	} = options;
 
 	try {
@@ -542,7 +649,7 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		const timestamp = Date.now();
 		const uniqueSuffix = Math.random().toString(36).substring(2, 10);
 		const extension = getPathExtension(readableUri, mediaType);
-		const resolvedSource = await resolveLocalFile(readableUri);
+		const resolvedSource = await resolveLocalFileWithAssetFallback(readableUri, assetId);
 		const uploadSourceUri = resolvedSource.uri;
 		const detectedFileSize = fileSize ?? resolvedSource.size;
 		if (uploadSourceUri.startsWith("file://")) {
