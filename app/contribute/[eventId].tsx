@@ -40,6 +40,7 @@ const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
 const SCAN_ACTION_DELAY_MS = 4000;
+const GRID_PAGE_SIZE = 50;
 
 function formatDurationHms(milliseconds: number): string {
 	if (!Number.isFinite(milliseconds) || milliseconds < 0) return "00:00:00";
@@ -82,7 +83,7 @@ const VideoThumbnail = memo(function VideoThumbnail({
 			source={{ uri: thumbnailUri }}
 			style={style}
 			contentFit="cover"
-			cachePolicy="memory-disk"
+			cachePolicy="disk"
 			transition={150}
 		/>
 	);
@@ -150,9 +151,18 @@ export default function ContributeScreen() {
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const [showSlowScanActions, setShowSlowScanActions] = useState(false);
 	const [isQueueingUploads, setIsQueueingUploads] = useState(false);
+	const [visibleCount, setVisibleCount] = useState(GRID_PAGE_SIZE);
 	const scanRequestIdRef = useRef(0);
 
 	const allPhotos = useMemo(() => [...photos, ...manualPhotos], [photos, manualPhotos]);
+	const visiblePhotos = useMemo(
+		() => allPhotos.slice(0, visibleCount),
+		[allPhotos, visibleCount]
+	);
+
+	useEffect(() => {
+		setVisibleCount(GRID_PAGE_SIZE);
+	}, [photos]);
 
 	const cancelActiveScan = useCallback(() => {
 		scanRequestIdRef.current += 1;
@@ -652,13 +662,28 @@ export default function ContributeScreen() {
 				</View>
 
 				<FlatList
-					data={allPhotos}
+					data={visiblePhotos}
 					keyExtractor={(item) => item.id}
 					numColumns={NUM_COLUMNS}
 					initialNumToRender={15}
 					maxToRenderPerBatch={9}
-					windowSize={5}
+					windowSize={2}
 					removeClippedSubviews
+					ListFooterComponent={
+						visibleCount < allPhotos.length ? (
+							<TouchableOpacity
+								style={[styles.loadMoreButton, isDark && styles.loadMoreButtonDark]}
+								onPress={() =>
+									setVisibleCount((count) => Math.min(count + GRID_PAGE_SIZE, allPhotos.length))
+								}
+							>
+								<Text style={[styles.loadMoreText, isDark && styles.textDark]}>
+									Load {Math.min(GRID_PAGE_SIZE, allPhotos.length - visibleCount)} more
+									{" "}({allPhotos.length - visibleCount} remaining)
+								</Text>
+							</TouchableOpacity>
+						) : null
+					}
 					renderItem={({ item, index }) => {
 						const isSelected = selectedIds.has(item.id);
 						const isUploaded = uploadedIds.has(item.id);
@@ -678,7 +703,8 @@ export default function ContributeScreen() {
 										source={{ uri: item.uri }}
 										style={styles.selectPhotoImage}
 										contentFit="cover"
-										cachePolicy="memory-disk"
+										cachePolicy="disk"
+										recyclingKey={item.id}
 									/>
 								)}
 								{isVideo && (
@@ -974,6 +1000,22 @@ const styles = StyleSheet.create({
 	},
 	selectGrid: {
 		padding: GRID_PADDING,
+	},
+	loadMoreButton: {
+		marginHorizontal: GRID_PADDING,
+		marginVertical: 12,
+		paddingVertical: 14,
+		borderRadius: 8,
+		alignItems: "center",
+		backgroundColor: "#f3f4f6",
+	},
+	loadMoreButtonDark: {
+		backgroundColor: "#1f2937",
+	},
+	loadMoreText: {
+		fontSize: 14,
+		fontWeight: "600",
+		color: "#111827",
 	},
 	selectPhotoItem: {
 		margin: GRID_GAP / 2,
