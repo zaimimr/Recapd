@@ -9,9 +9,13 @@ jest.mock("expo-file-system/legacy", () => ({
 	downloadAsync: jest.fn(),
 	uploadAsync: jest.fn(),
 	cacheDirectory: "file:///cache/",
+	documentDirectory: "file:///documents/",
 	FileSystemUploadType: { BINARY_CONTENT: 0, MULTIPART: 1 },
 	getInfoAsync: jest.fn(),
 	getFreeDiskStorageAsync: jest.fn(),
+	copyAsync: jest.fn(),
+	deleteAsync: jest.fn(),
+	makeDirectoryAsync: jest.fn(),
 }));
 jest.mock("expo-media-library", () => ({
 	getAssetInfoAsync: jest.fn(),
@@ -34,21 +38,26 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, waitFor } from "@testing-library/react-native";
 import {
+	copyAsync,
+	deleteAsync,
 	downloadAsync,
 	getFreeDiskStorageAsync,
 	getInfoAsync,
+	makeDirectoryAsync,
 	uploadAsync,
 } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import {
 	buildByteRangeM3u8,
+	cleanupStagedUpload,
 	createVideoThumbnailUri,
 	downloadPhoto,
 	getDownloadedPhotoIds,
 	isPhotoDownloaded,
 	markPhotoDownloaded,
 	resolveStorageUrl,
+	stageUploadFileIfPurgeable,
 	uploadMedia,
 	usePhotoThumbnailUrl,
 	useVideoPlaybackUri,
@@ -62,6 +71,11 @@ const mockedGetFreeDiskStorageAsync = getFreeDiskStorageAsync as jest.MockedFunc
 	typeof getFreeDiskStorageAsync
 >;
 const mockedUploadAsync = uploadAsync as jest.MockedFunction<typeof uploadAsync>;
+const mockedCopyAsync = copyAsync as jest.MockedFunction<typeof copyAsync>;
+const mockedDeleteAsync = deleteAsync as jest.MockedFunction<typeof deleteAsync>;
+const mockedMakeDirectoryAsync = makeDirectoryAsync as jest.MockedFunction<
+	typeof makeDirectoryAsync
+>;
 const mockedGetAssetInfoAsync = MediaLibrary.getAssetInfoAsync as jest.MockedFunction<
 	typeof MediaLibrary.getAssetInfoAsync
 >;
@@ -927,6 +941,169 @@ describe("storage", () => {
 			expect(decoded).toContain(
 				"https://cdn.example.com/signed/event-fresh/user-fresh/clip-hls.mp4"
 			);
+		});
+	});
+
+	describe("stageUploadFileIfPurgeable", () => {
+		beforeEach(() => {
+			mockedCopyAsync.mockResolvedValue(undefined as any);
+			mockedDeleteAsync.mockResolvedValue(undefined as any);
+			mockedMakeDirectoryAsync.mockResolvedValue(undefined as any);
+			mockedGetFreeDiskStorageAsync.mockResolvedValue(20 * 1024 * 1024 * 1024);
+		});
+
+		it("returns null for non-cache URIs", async () => {
+			const result = await stageUploadFileIfPurgeable(
+				"file:///var/mobile/Media/DCIM/100APPLE/IMG_0001.JPG",
+				"upl_1",
+				500_000
+			);
+			expect(result).toBeNull();
+			expect(mockedCopyAsync).not.toHaveBeenCalled();
+		});
+
+		it("returns null for non-file URIs", async () => {
+			const result = await stageUploadFileIfPurgeable("ph://abc", "upl_1", 500_000);
+			expect(result).toBeNull();
+		});
+
+		it("copies files inside Library/Caches to document directory", async () => {
+			const sourceUri =
+				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/abc.mp4";
+			const result = await stageUploadFileIfPurgeable(sourceUri, "upl_42", 1_000_000);
+			expect(result).toBe("file:///documents/upload-staging/upl_42.mp4");
+			expect(mockedMakeDirectoryAsync).toHaveBeenCalledWith(
+				"file:///documents/upload-staging/",
+				{ intermediates: true }
+			);
+			expect(mockedCopyAsync).toHaveBeenCalledWith({
+				from: sourceUri,
+				to: "file:///documents/upload-staging/upl_42.mp4",
+			});
+		});
+
+		it("skips staging when free disk is insufficient", async () => {
+			mockedGetFreeDiskStorageAsync.mockResolvedValue(10 * 1024 * 1024);
+			const result = await stageUploadFileIfPurgeable(
+				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/big.mp4",
+				"upl_big",
+				100 * 1024 * 1024
+			);
+			expect(result).toBeNull();
+			expect(mockedCopyAsync).not.toHaveBeenCalled();
+		});
+
+		it("skips staging for files larger than the cap", async () => {
+			const result = await stageUploadFileIfPurgeable(
+				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/huge.mp4",
+				"upl_huge",
+				500 * 1024 * 1024
+			);
+			expect(result).toBeNull();
+			expect(mockedCopyAsync).not.toHaveBeenCalled();
+		});
+
+		it("returns null when copy fails", async () => {
+			mockedCopyAsync.mockRejectedValue(new Error("copy failed"));
+			const result = await stageUploadFileIfPurgeable(
+				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/x.jpg",
+				"upl_x",
+				100
+			);
+			expect(result).toBeNull();
+		});
+	});
+
+	describe("cleanupStagedUpload", () => {
+		beforeEach(() => {
+			mockedDeleteAsync.mockResolvedValue(undefined as any);
+		});
+
+		it("deletes files inside the staging dir", async () => {
+			await cleanupStagedUpload("file:///documents/upload-staging/upl_1.mp4");
+			expect(mockedDeleteAsync).toHaveBeenCalledWith(
+				"file:///documents/upload-staging/upl_1.mp4",
+				{ idempotent: true }
+			);
+		});
+
+		it("skips files outside the staging dir", async () => {
+			await cleanupStagedUpload("file:///var/mobile/Media/DCIM/IMG.jpg");
+			expect(mockedDeleteAsync).not.toHaveBeenCalled();
+		});
+
+		it("is a no-op for nullish input", async () => {
+			await cleanupStagedUpload(null);
+			await cleanupStagedUpload(undefined);
+			expect(mockedDeleteAsync).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("uploadMedia PHAsset fallback", () => {
+		beforeEach(() => {
+			mockedGetFreeDiskStorageAsync.mockResolvedValue(20 * 1024 * 1024 * 1024);
+			mockedAsyncStorage.getItem.mockResolvedValue(null);
+			mockedUploadAsync.mockResolvedValue(mockNativeUploadResponse() as any);
+			mockedSupabase.auth.getSession.mockResolvedValue({
+				data: { session: { access_token: "tok", user: { id: "auth-1" } } },
+			});
+			const chain = {
+				select: jest.fn().mockReturnThis(),
+				eq: jest.fn().mockReturnThis(),
+				maybeSingle: jest.fn().mockResolvedValue({ data: { id: "user-1" }, error: null }),
+				insert: jest.fn().mockReturnThis(),
+				single: jest.fn().mockResolvedValue({
+					data: { id: "media-1", storage_path: "uploaded/path" },
+					error: null,
+				}),
+			};
+			mockedSupabase.from.mockReturnValue(chain);
+		});
+
+		it("recovers via MediaLibrary when the source file is gone", async () => {
+			const missingUri = "file:///cache/Library/Caches/ImagePicker/missing.jpg";
+			const recoveredUri = "file:///cache/recovered.jpg";
+			mockedGetInfoAsync.mockImplementation(async (uri: string) => {
+				if (uri === recoveredUri) {
+					return { exists: true, isDirectory: false, size: 1024, uri } as any;
+				}
+				return { exists: false, isDirectory: false, uri } as any;
+			});
+			mockedGetAssetInfoAsync.mockResolvedValue({ localUri: recoveredUri } as any);
+
+			const result = await uploadMedia({
+				uri: missingUri,
+				eventId: "evt-1",
+				userId: "user-1",
+				capturedAt: new Date(),
+				assetId: "phasset-123",
+				mediaType: "photo",
+				fileSize: 1024,
+			});
+
+			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("phasset-123", {
+				shouldDownloadFromNetwork: true,
+			});
+			expect(mockedUploadAsync).toHaveBeenCalled();
+			const calledUri = mockedUploadAsync.mock.calls[0][1];
+			expect(calledUri).toBe(recoveredUri);
+			expect(result.success).toBe(true);
+		});
+
+		it("fails clearly when the file is missing and no assetId is available", async () => {
+			mockedGetInfoAsync.mockResolvedValue({ exists: false, isDirectory: false } as any);
+
+			const result = await uploadMedia({
+				uri: "file:///cache/Library/Caches/ImagePicker/missing.jpg",
+				eventId: "evt-1",
+				userId: "user-1",
+				capturedAt: new Date(),
+				mediaType: "photo",
+			});
+
+			expect(mockedGetAssetInfoAsync).not.toHaveBeenCalled();
+			expect(result.success).toBe(false);
+			expect(mockedUploadAsync).not.toHaveBeenCalled();
 		});
 	});
 });

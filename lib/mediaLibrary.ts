@@ -374,7 +374,7 @@ export async function pickMediaFromLibrary(
 			const defaultExt = isVideo ? "mp4" : "jpg";
 
 			return {
-				id: `manual-${Date.now()}-${index}`,
+				id: asset.assetId ?? `manual-${Date.now()}-${index}`,
 				uri: asset.uri,
 				filename: asset.fileName || `${isVideo ? "video" : "photo"}-${index}.${defaultExt}`,
 				creationTime,
