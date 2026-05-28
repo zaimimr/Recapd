@@ -260,7 +260,7 @@ export async function uploadTusChunk(args: {
 	return nextOffset;
 }
 
-export async function uploadVideoResumable(
+export async function uploadMediaResumable(
 	options: TusUploadOptions
 ): Promise<TusUploadResult> {
 	const {

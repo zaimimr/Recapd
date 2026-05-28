@@ -1,29 +1,31 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	cacheDirectory,
-	copyAsync,
 	deleteAsync,
-	documentDirectory,
 	downloadAsync,
-	FileSystemUploadType,
-	getFreeDiskStorageAsync,
 	getInfoAsync,
-	makeDirectoryAsync,
-	uploadAsync,
 } from "expo-file-system/legacy";
-import * as MediaLibrary from "expo-media-library";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useEffect, useState } from "react";
 import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
 import { safeDate } from "./dateUtils";
 import { logger } from "./logger";
 import { supabase } from "./supabase";
+import { uploadMediaResumable } from "./tusUpload";
+import {
+	cleanupOrphanedUploadSources,
+	type MaterializedSource,
+	materializeUploadSource,
+	UploadSourceUnavailableError,
+} from "./uploadSource";
+
+export { cleanupOrphanedUploadSources, UploadSourceUnavailableError };
 
 const DOWNLOADED_PHOTOS_KEY = "recapd_downloaded_photos";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const SIGNED_URL_REFRESH_BUFFER_MS = 60 * 1000;
-const PHOTO_NATIVE_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
-const VIDEO_NATIVE_UPLOAD_TIMEOUT_MS = 60 * 60 * 1000;
+const TUS_PHOTO_TIMEOUT_MS = 30 * 60 * 1000;
+const TUS_VIDEO_TIMEOUT_MS = 60 * 60 * 1000;
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 const PHOTO_THUMBNAIL_TRANSFORM = {
 	width: 720,
@@ -31,53 +33,6 @@ const PHOTO_THUMBNAIL_TRANSFORM = {
 	quality: 60,
 	resize: "cover" as const,
 };
-
-export class IcloudAssetUnavailableError extends Error {
-	constructor(uri: string) {
-		super(`iCloud asset not yet downloaded to this device: ${uri}`);
-		this.name = "IcloudAssetUnavailableError";
-	}
-}
-
-async function resolveIcloudAsset(uri: string): Promise<string> {
-	const startedAt = Date.now();
-	const assetId = uri.replace("ph://", "").replace("assets-library://", "").split("/")[0];
-	const firstAttempt = await MediaLibrary.getAssetInfoAsync(assetId, {
-		shouldDownloadFromNetwork: true,
-	});
-	if (firstAttempt?.localUri) {
-		const elapsedMs = Date.now() - startedAt;
-		if (elapsedMs > 1500) {
-			logger.info("iCloud asset downloaded (first attempt)", { assetId, elapsedMs });
-		}
-		return firstAttempt.localUri;
-	}
-
-	await new Promise((resolve) => setTimeout(resolve, 750));
-	const retry = await MediaLibrary.getAssetInfoAsync(assetId, {
-		shouldDownloadFromNetwork: true,
-	});
-	if (retry?.localUri) {
-		logger.info("iCloud asset downloaded (retry)", {
-			assetId,
-			elapsedMs: Date.now() - startedAt,
-		});
-		return retry.localUri;
-	}
-
-	logger.warn("iCloud asset unavailable after retry", {
-		assetId,
-		elapsedMs: Date.now() - startedAt,
-	});
-	throw new IcloudAssetUnavailableError(uri);
-}
-
-async function getReadableUri(uri: string): Promise<string> {
-	if (uri.startsWith("ph://") || uri.startsWith("assets-library://") || !uri.includes("/")) {
-		return resolveIcloudAsset(uri);
-	}
-	return uri;
-}
 
 export interface UploadResult {
 	success: boolean;
@@ -98,6 +53,7 @@ export type MediaType = "photo" | "video";
 export type UploadFailureReason =
 	| "timeout"
 	| "network"
+	| "permission"
 	| "storage"
 	| "database"
 	| "thumbnail"
@@ -122,13 +78,19 @@ function isRetryableHttpStatus(status: number): boolean {
 }
 
 export function classifyUploadError(error: unknown): UploadFailureReason {
+	if (error instanceof UploadSourceUnavailableError) {
+		return error.reason === "disk" ? "storage" : "permission";
+	}
 	if (error instanceof Error) {
 		if (error.message === "timeout") return "timeout";
 		if (isNetworkErrorMessage(error.message)) return "network";
+		const httpStatus = (error as Error & { httpStatus?: number }).httpStatus;
+		if (typeof httpStatus === "number" && isRetryableHttpStatus(httpStatus)) {
+			return "network";
+		}
 	}
 	return "storage";
 }
-type UploadBody = Blob;
 
 export interface UploadMediaOptions {
 	uri: string;
@@ -143,6 +105,7 @@ export interface UploadMediaOptions {
 	latitude?: number;
 	longitude?: number;
 	assetId?: string;
+	uploadId?: string;
 }
 
 function getContentType(extension: string, mediaType: MediaType): string {
@@ -187,267 +150,11 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 	});
 }
 
-function getUploadBodySize(body: UploadBody): number {
-	return body.size;
-}
-
-function stripUriDecorations(uri: string): string {
-	return uri.replace(/[?#].*$/, "");
-}
-
-function getPathExtension(uri: string, mediaType: MediaType): string {
-	const sanitizedUri = stripUriDecorations(uri);
+function getPathExtension(filePath: string, mediaType: MediaType): string {
 	const fallbackExtension = mediaType === "video" ? "mp4" : "jpg";
-
-	try {
-		const pathname = new URL(sanitizedUri).pathname;
-		const lastSegment = pathname.split("/").pop() || "";
-		const match = lastSegment.match(/\.([a-z0-9]+)$/i);
-		return match?.[1]?.toLowerCase() || fallbackExtension;
-	} catch {
-		const lastSegment = sanitizedUri.split("/").pop() || "";
-		const match = lastSegment.match(/\.([a-z0-9]+)$/i);
-		return match?.[1]?.toLowerCase() || fallbackExtension;
-	}
-}
-
-interface ResolvedLocalFile {
-	uri: string;
-	size?: number;
-	exists: boolean;
-}
-
-async function resolveLocalFile(sourceUri: string): Promise<ResolvedLocalFile> {
-	if (!sourceUri.startsWith("file://")) {
-		return { uri: sourceUri, exists: true };
-	}
-
-	const stripped = stripUriDecorations(sourceUri);
-	const candidateUris = stripped === sourceUri ? [sourceUri] : [stripped, sourceUri];
-	let lastError: unknown;
-
-	for (const candidateUri of candidateUris) {
-		try {
-			const info = await getInfoAsync(candidateUri);
-			if (!info.exists || info.isDirectory) {
-				continue;
-			}
-			return {
-				uri: candidateUri,
-				size: typeof info.size === "number" ? info.size : undefined,
-				exists: true,
-			};
-		} catch (error) {
-			lastError = error;
-		}
-	}
-
-	if (lastError) {
-		throw lastError;
-	}
-
-	return { uri: sourceUri, exists: false };
-}
-
-async function resolveLocalFileWithAssetFallback(
-	sourceUri: string,
-	assetId: string | undefined
-): Promise<ResolvedLocalFile> {
-	const resolved = await resolveLocalFile(sourceUri);
-	if (resolved.exists) {
-		return resolved;
-	}
-
-	if (!assetId) {
-		throw new Error(`File '${sourceUri}' does not exist`);
-	}
-
-	try {
-		const info = await MediaLibrary.getAssetInfoAsync(assetId, {
-			shouldDownloadFromNetwork: true,
-		});
-		const recoveredUri = info?.localUri;
-		if (!recoveredUri) {
-			throw new Error(
-				`File '${sourceUri}' missing and asset ${assetId} could not be re-resolved`
-			);
-		}
-		logger.info("Recovered missing upload file via PHAsset", {
-			assetId,
-			originalUri: sourceUri,
-		});
-		const recovered = await resolveLocalFile(recoveredUri);
-		if (!recovered.exists) {
-			throw new Error(`Recovered asset ${assetId} still not readable at ${recoveredUri}`);
-		}
-		return recovered;
-	} catch (error) {
-		if (error instanceof Error && error.message.startsWith("File ")) {
-			throw error;
-		}
-		throw new Error(
-			`File '${sourceUri}' does not exist; PHAsset recovery failed: ${
-				error instanceof Error ? error.message : String(error)
-			}`
-		);
-	}
-}
-
-const MIN_FREE_DISK_SAFETY_BYTES = 50 * 1024 * 1024;
-const UPLOAD_STAGING_DIR_NAME = "upload-staging";
-const UPLOAD_STAGING_MAX_FILE_BYTES = 200 * 1024 * 1024;
-const UPLOAD_STAGING_MIN_FREE_DISK_HEADROOM = 2;
-
-function uploadStagingDir(): string | null {
-	if (!documentDirectory) return null;
-	return `${documentDirectory}${UPLOAD_STAGING_DIR_NAME}/`;
-}
-
-function isInPurgeableCache(uri: string): boolean {
-	return uri.startsWith("file://") && uri.includes("/Library/Caches/");
-}
-
-export async function stageUploadFileIfPurgeable(
-	sourceUri: string,
-	uploadId: string,
-	fileSize: number | undefined
-): Promise<string | null> {
-	if (!isInPurgeableCache(sourceUri)) return null;
-	const dir = uploadStagingDir();
-	if (!dir) return null;
-	if (typeof fileSize === "number" && fileSize > UPLOAD_STAGING_MAX_FILE_BYTES) return null;
-
-	try {
-		const free = await getFreeDiskStorageAsync();
-		const sizeForBudget = fileSize ?? 0;
-		const required =
-			sizeForBudget * UPLOAD_STAGING_MIN_FREE_DISK_HEADROOM + MIN_FREE_DISK_SAFETY_BYTES;
-		if (free < required) {
-			return null;
-		}
-
-		await makeDirectoryAsync(dir, { intermediates: true });
-		const stripped = stripUriDecorations(sourceUri);
-		const extMatch = stripped.match(/\.([a-z0-9]+)$/i);
-		const ext = extMatch ? `.${extMatch[1].toLowerCase()}` : "";
-		const target = `${dir}${uploadId}${ext}`;
-		await copyAsync({ from: stripped, to: target });
-		return target;
-	} catch (error) {
-		logger.warn("Upload staging copy failed", error, { sourceUri, uploadId });
-		return null;
-	}
-}
-
-export async function cleanupStagedUpload(uri: string | null | undefined): Promise<void> {
-	if (!uri) return;
-	const dir = uploadStagingDir();
-	if (!dir || !uri.startsWith(dir)) return;
-	try {
-		await deleteAsync(uri, { idempotent: true });
-	} catch (error) {
-		logger.warn("Upload staging cleanup failed", error, { uri });
-	}
-}
-
-async function ensureFreeDiskFor(fileSize: number | undefined): Promise<void> {
-	try {
-		const free = await getFreeDiskStorageAsync();
-		const required = (fileSize ?? 0) + MIN_FREE_DISK_SAFETY_BYTES;
-		if (free < required) {
-			throw new Error(
-				`Not enough free space on device. Need ${Math.ceil(required / (1024 * 1024))}MB, have ${Math.floor(
-					free / (1024 * 1024)
-				)}MB free.`
-			);
-		}
-	} catch (error) {
-		if (error instanceof Error && error.message.startsWith("Not enough free space")) {
-			throw error;
-		}
-		logger.warn("Free disk storage probe failed", error);
-	}
-}
-
-function encodeStoragePath(storagePath: string): string {
-	return storagePath
-		.split("/")
-		.map((segment) => encodeURIComponent(segment))
-		.join("/");
-}
-
-function getStorageUploadUrl(bucket: string, storagePath: string): string {
-	const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-	return `${supabaseUrl}/storage/v1/object/${bucket}/${encodeStoragePath(storagePath)}`;
-}
-
-async function getStorageUploadHeaders(contentType: string): Promise<Record<string, string>> {
-	const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
-	const {
-		data: { session },
-	} = await supabase.auth.getSession();
-	const accessToken = session?.access_token ?? anonKey;
-
-	return {
-		Authorization: `Bearer ${accessToken}`,
-		apikey: anonKey,
-		"cache-control": "max-age=3600",
-		"content-type": contentType,
-		"x-upsert": "false",
-	};
-}
-
-function parseStorageUploadResponseBody(body: string): { message?: string } | null {
-	if (!body) {
-		return null;
-	}
-
-	try {
-		return JSON.parse(body) as { message?: string };
-	} catch {
-		return { message: body };
-	}
-}
-
-async function uploadLocalFileToStorage(
-	bucket: string,
-	storagePath: string,
-	fileUri: string,
-	contentType: string,
-	mediaType: MediaType
-): Promise<{ path: string }> {
-	const uploadUrl = getStorageUploadUrl(bucket, storagePath);
-	const headers = await getStorageUploadHeaders(contentType);
-	const timeoutMs =
-		mediaType === "video" ? VIDEO_NATIVE_UPLOAD_TIMEOUT_MS : PHOTO_NATIVE_UPLOAD_TIMEOUT_MS;
-	const response = await withTimeout(
-		uploadAsync(uploadUrl, fileUri, {
-			headers,
-			httpMethod: "POST",
-			uploadType: FileSystemUploadType.BINARY_CONTENT,
-		}),
-		timeoutMs
-	);
-
-	if (response.status < 200 || response.status >= 300) {
-		const parsedBody = parseStorageUploadResponseBody(response.body);
-		const message =
-			parsedBody?.message || `Storage upload failed with status ${response.status}`;
-		const err = new Error(message) as Error & { httpStatus?: number };
-		err.httpStatus = response.status;
-		throw err;
-	}
-
-	return { path: storagePath };
-}
-
-async function readUriAsUploadBody(
-	uri: string,
-	_contentType: string,
-	_fallbackName: string
-): Promise<UploadBody> {
-	const response = await withTimeout(fetch(uri), 30000);
-	return withTimeout(response.blob(), 30000);
+	const lastSegment = filePath.split("/").pop() || "";
+	const match = lastSegment.match(/\.([a-z0-9]+)$/i);
+	return match?.[1]?.toLowerCase() || fallbackExtension;
 }
 
 async function getCurrentProfileId(): Promise<string | null> {
@@ -477,62 +184,41 @@ async function getCurrentProfileId(): Promise<string | null> {
 	return data?.id ?? null;
 }
 
-const TUS_MIN_VIDEO_BYTES = 10 * 1024 * 1024;
-const TUS_FOR_VIDEOS_ENABLED =
-	(process.env.EXPO_PUBLIC_ENABLE_TUS_UPLOADS ?? "false").toLowerCase() === "true";
-
-export function shouldUseTusForUpload(args: {
+async function uploadFileViaTus(args: {
+	bucket: string;
+	storagePath: string;
+	filePath: string;
+	fileSize: number;
+	contentType: string;
 	mediaType: MediaType;
-	sourceUri: string;
-	size?: number;
-}): boolean {
-	if (!TUS_FOR_VIDEOS_ENABLED) return false;
-	if (args.mediaType !== "video") return false;
-	if (!args.sourceUri.startsWith("file://")) return false;
-	if (args.size === undefined) return false;
-	return args.size >= TUS_MIN_VIDEO_BYTES;
-}
-
-async function uploadToStorage(
-	bucket: string,
-	storagePath: string,
-	sourceUri: string,
-	contentType: string,
-	mediaType: MediaType,
-	fileSize?: number,
-	fileFingerprint?: string
-): Promise<{ path: string }> {
-	if (
-		fileSize !== undefined &&
-		fileFingerprint &&
-		shouldUseTusForUpload({ mediaType, sourceUri, size: fileSize })
-	) {
-		const { uploadVideoResumable } = await import("./tusUpload");
-		return uploadVideoResumable({
-			fileUri: sourceUri,
+	fileFingerprint: string;
+}): Promise<{ path: string }> {
+	const { bucket, storagePath, filePath, fileSize, contentType, mediaType, fileFingerprint } =
+		args;
+	const timeoutMs = mediaType === "video" ? TUS_VIDEO_TIMEOUT_MS : TUS_PHOTO_TIMEOUT_MS;
+	return withTimeout(
+		uploadMediaResumable({
+			fileUri: filePath.startsWith("file://") ? filePath : `file://${filePath}`,
 			fileSize,
 			bucket,
 			objectName: storagePath,
 			contentType,
 			fileFingerprint,
-		});
+		}),
+		timeoutMs
+	);
+}
+
+async function withTempFileCleanup<T>(uri: string, work: () => Promise<T>): Promise<T> {
+	try {
+		return await work();
+	} finally {
+		try {
+			await deleteAsync(uri, { idempotent: true });
+		} catch (error) {
+			logger.warn("Temp file cleanup failed", error, { uri });
+		}
 	}
-
-	if (sourceUri.startsWith("file://")) {
-		return uploadLocalFileToStorage(bucket, storagePath, sourceUri, contentType, mediaType);
-	}
-
-	const body = await readUriAsUploadBody(sourceUri, contentType, storagePath);
-	const { data, error } = await supabase.storage.from(bucket).upload(storagePath, body, {
-		contentType,
-		upsert: false,
-	});
-
-	if (error || !data) {
-		throw new Error(error?.message || "Storage upload failed");
-	}
-
-	return { path: data.path };
 }
 
 export async function createVideoThumbnailUri(
@@ -540,10 +226,10 @@ export async function createVideoThumbnailUri(
 	timeMs: number = 1000
 ): Promise<string | null> {
 	try {
-		const readableVideoUri = await getReadableUri(videoUri);
-		const resolved = await resolveLocalFile(readableVideoUri);
+		const info = await getInfoAsync(videoUri.replace(/[?#].*$/, ""));
+		const usableUri = info.exists && !info.isDirectory ? videoUri.replace(/[?#].*$/, "") : videoUri;
 		const { uri } = await withTimeout(
-			VideoThumbnails.getThumbnailAsync(resolved.uri, {
+			VideoThumbnails.getThumbnailAsync(usableUri, {
 				time: timeMs,
 				quality: 0.7,
 			}),
@@ -557,34 +243,50 @@ export async function createVideoThumbnailUri(
 	}
 }
 
-async function generateAndUploadThumbnail(
-	sourceUri: string,
-	eventId: string,
-	userId: string,
-	timestamp: number,
-	uniqueSuffix: string,
-	mediaType: MediaType
-): Promise<string | null> {
+async function generateAndUploadThumbnail(args: {
+	sourcePath: string;
+	eventId: string;
+	userId: string;
+	timestamp: number;
+	uniqueSuffix: string;
+	mediaType: MediaType;
+	uploadId: string;
+}): Promise<string | null> {
+	const { sourcePath, eventId, userId, timestamp, uniqueSuffix, mediaType, uploadId } = args;
 	if (mediaType === "photo") {
 		return null;
 	}
 
 	try {
-		const thumbnailUri = await createVideoThumbnailUri(sourceUri);
+		const thumbnailUri = await createVideoThumbnailUri(sourcePath);
 		if (!thumbnailUri) {
 			return null;
 		}
 
 		const thumbnailPath = `${eventId}/${userId}/${timestamp}_${uniqueSuffix}_thumb.jpg`;
-		const thumbUploadData = await uploadToStorage(
-			"thumbnails",
-			thumbnailPath,
-			thumbnailUri,
-			"image/jpeg",
-			"photo"
+		const thumbInfo = await getInfoAsync(thumbnailUri);
+		const thumbSize =
+			thumbInfo.exists && !thumbInfo.isDirectory && typeof thumbInfo.size === "number"
+				? thumbInfo.size
+				: 0;
+		if (thumbSize === 0) {
+			logger.warn("Generated thumbnail is empty", undefined, { thumbnailUri });
+			return null;
+		}
+
+		const result = await withTempFileCleanup(thumbnailUri, () =>
+			uploadFileViaTus({
+				bucket: "thumbnails",
+				storagePath: thumbnailPath,
+				filePath: thumbnailUri,
+				fileSize: thumbSize,
+				contentType: "image/jpeg",
+				mediaType: "photo",
+				fileFingerprint: `${uploadId}:thumb:${thumbSize}`,
+			})
 		);
 
-		return thumbUploadData.path;
+		return result.path;
 	} catch (error) {
 		logger.warn("Thumbnail generation error", error, { eventId, userId });
 		return null;
@@ -605,111 +307,92 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		latitude,
 		longitude,
 		assetId,
+		uploadId,
 	} = options;
 
-	try {
-		const currentProfileId = await getCurrentProfileId();
-		if (!currentProfileId) {
-			logger.warn("Skipping upload without an active profile", undefined, { eventId, userId });
-			return {
-				success: false,
-				error: "Your session expired. Re-open the event and try again.",
-				failureReason: "storage",
-			};
-		}
+	const effectiveUploadId =
+		uploadId ?? `upl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
-		if (currentProfileId !== userId) {
-			logger.warn("Skipping upload for stale profile", undefined, {
-				eventId,
-				queuedUserId: userId,
-				currentProfileId,
+	const currentProfileId = await getCurrentProfileId();
+	if (!currentProfileId) {
+		logger.warn("Skipping upload without an active profile", undefined, { eventId, userId });
+		return {
+			success: false,
+			error: "Your session expired. Re-open the event and try again.",
+			failureReason: "permission",
+		};
+	}
+
+	if (currentProfileId !== userId) {
+		logger.warn("Skipping upload for stale profile", undefined, {
+			eventId,
+			queuedUserId: userId,
+			currentProfileId,
+		});
+		return {
+			success: false,
+			error: "Your session changed. Re-select the media and try again.",
+			failureReason: "permission",
+		};
+	}
+
+	let materialized: MaterializedSource | null = null;
+	try {
+		try {
+			materialized = await materializeUploadSource({
+				uri,
+				assetId,
+				uploadId: effectiveUploadId,
+				mediaType,
+				knownSize: fileSize,
 			});
-			return {
-				success: false,
-				error: "Your session changed. Re-select the media and try again.",
-				failureReason: "storage",
-			};
+		} catch (sourceError) {
+			if (sourceError instanceof UploadSourceUnavailableError) {
+				logger.warn("Upload source unavailable", sourceError, {
+					eventId,
+					userId,
+					uri,
+					assetId,
+					reason: sourceError.reason,
+				});
+				const userMessage =
+					sourceError.reason === "icloud"
+						? "This item is in iCloud and could not be downloaded. Open it in Photos first, then retry."
+						: sourceError.reason === "disk"
+							? sourceError.message
+							: "We couldn't read this item. It may have been deleted from your library.";
+				return {
+					success: false,
+					error: userMessage,
+					failureReason: sourceError.reason === "disk" ? "storage" : "permission",
+				};
+			}
+			throw sourceError;
 		}
 
 		const validCapturedAt = safeDate(capturedAt);
-		let readableUri: string;
-		try {
-			readableUri = await getReadableUri(uri);
-		} catch (resolveError) {
-			if (resolveError instanceof IcloudAssetUnavailableError) {
-				return {
-					success: false,
-					error:
-						"This item is in iCloud and could not be downloaded. Open it in Photos first, then retry.",
-					failureReason: "storage",
-				};
-			}
-			throw resolveError;
-		}
 		const timestamp = Date.now();
 		const uniqueSuffix = Math.random().toString(36).substring(2, 10);
-		const extension = getPathExtension(readableUri, mediaType);
-		const resolvedSource = await resolveLocalFileWithAssetFallback(readableUri, assetId);
-		const uploadSourceUri = resolvedSource.uri;
-		const detectedFileSize = fileSize ?? resolvedSource.size;
-		if (uploadSourceUri.startsWith("file://")) {
-			try {
-				await ensureFreeDiskFor(detectedFileSize);
-			} catch (diskError) {
-				logger.warn("Insufficient disk space for upload", diskError, {
-					eventId,
-					userId,
-					fileSize: detectedFileSize,
-				});
-				return {
-					success: false,
-					error: diskError instanceof Error ? diskError.message : "Not enough free space",
-					failureReason: "storage",
-				};
-			}
-		}
+		const extension = getPathExtension(materialized.path, mediaType);
 		const fileName = `${eventId}/${userId}/${timestamp}_${uniqueSuffix}.${extension}`;
-
 		const contentType = getContentType(extension, mediaType);
-		const mediaBody = uploadSourceUri.startsWith("file://")
-			? null
-			: await readUriAsUploadBody(
-					uploadSourceUri,
-					contentType,
-					`${timestamp}_${uniqueSuffix}.${extension}`
-				);
-		const mediaSize = detectedFileSize ?? (mediaBody ? getUploadBodySize(mediaBody) : 1);
-		if (mediaSize === 0) {
-			logger.error("Resolved media file is empty", undefined, { eventId, userId, readableUri });
-			return {
-				success: false,
-				error: "Selected file is empty",
-				failureReason: "storage",
-			};
-		}
+		const mediaSize = materialized.size;
+		const tusFingerprint = `${effectiveUploadId}:${mediaSize}`;
 
-		const tusFingerprint = `${eventId}:${userId}:${timestamp}:${uniqueSuffix}:${mediaSize}`;
 		let uploadData: { path: string };
 		try {
-			uploadData = await uploadToStorage(
-				"event-photos",
-				fileName,
-				uploadSourceUri,
+			uploadData = await uploadFileViaTus({
+				bucket: "event-photos",
+				storagePath: fileName,
+				filePath: materialized.path,
+				fileSize: mediaSize,
 				contentType,
 				mediaType,
-				mediaSize,
-				tusFingerprint
-			);
+				fileFingerprint: tusFingerprint,
+			});
 		} catch (uploadError) {
 			logger.error("Storage upload error", uploadError, { eventId, userId });
-			const httpStatus =
-				uploadError && typeof uploadError === "object" && "httpStatus" in uploadError
-					? (uploadError as { httpStatus?: number }).httpStatus
-					: undefined;
-			let failureReason: UploadFailureReason = classifyUploadError(uploadError);
-			if (failureReason === "storage" && httpStatus && isRetryableHttpStatus(httpStatus)) {
-				failureReason = "network";
-			}
+			const failureReason: UploadFailureReason = classifyUploadError(uploadError);
 			const baseMessage =
 				uploadError instanceof Error ? uploadError.message : "Storage upload failed";
 			let userMessage = baseMessage;
@@ -726,16 +409,15 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			};
 		}
 
-		// Generate and upload thumbnail for videos
-		let thumbnailPath: string | null = null;
-		thumbnailPath = await generateAndUploadThumbnail(
-			uploadSourceUri,
+		const thumbnailPath = await generateAndUploadThumbnail({
+			sourcePath: materialized.path,
 			eventId,
 			userId,
 			timestamp,
 			uniqueSuffix,
-			mediaType
-		);
+			mediaType,
+			uploadId: effectiveUploadId,
+		});
 
 		const insertData: MediaItemInsert = {
 			event_id: eventId,
@@ -761,7 +443,6 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 
 		if (dbError) {
 			logger.error("Database insert error", dbError, { eventId, userId });
-			// Clean up both video and thumbnail on failure
 			await supabase.storage.from("event-photos").remove([uploadData.path]);
 			if (thumbnailPath) {
 				await supabase.storage.from("thumbnails").remove([thumbnailPath]);
@@ -787,19 +468,22 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 		};
 	} catch (error) {
 		logger.error("Upload error", error, { eventId, userId });
-		let failureReason: UploadFailureReason = "unknown";
-		if (error instanceof Error) {
-			if (error.message === "timeout") {
-				failureReason = "timeout";
-			} else if (isNetworkErrorMessage(error.message)) {
-				failureReason = "network";
-			}
-		}
+		const failureReason: UploadFailureReason = classifyUploadError(error);
 		return {
 			success: false,
 			error: `Failed to upload ${mediaType}`,
 			failureReason,
 		};
+	} finally {
+		if (materialized) {
+			try {
+				await materialized.cleanup();
+			} catch (cleanupError) {
+				logger.warn("Materialized source cleanup failed", cleanupError, {
+					path: materialized.path,
+				});
+			}
+		}
 	}
 }
 

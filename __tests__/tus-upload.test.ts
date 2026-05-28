@@ -55,7 +55,7 @@ import {
 	getTusOffset,
 	readFileChunk,
 	uploadTusChunk,
-	uploadVideoResumable,
+	uploadMediaResumable,
 } from "@/lib/tusUpload";
 
 const mockedReadAsStringAsync = readAsStringAsync as jest.MockedFunction<typeof readAsStringAsync>;
@@ -248,7 +248,7 @@ describe("tusUpload protocol", () => {
 		});
 	});
 
-	describe("uploadVideoResumable", () => {
+	describe("uploadMediaResumable", () => {
 		const fileSize = 15_000_000;
 
 		it("creates, uploads all chunks, clears persisted state on success", async () => {
@@ -276,7 +276,7 @@ describe("tusUpload protocol", () => {
 				return makeResponse(204);
 			});
 
-			const result = await uploadVideoResumable({
+			const result = await uploadMediaResumable({
 				fileUri: "file:///big.mp4",
 				fileSize,
 				bucket: "event-photos",
@@ -325,7 +325,7 @@ describe("tusUpload protocol", () => {
 				return makeResponse(204);
 			});
 
-			const result = await uploadVideoResumable({
+			const result = await uploadMediaResumable({
 				fileUri: "file:///big.mp4",
 				fileSize,
 				bucket: "event-photos",
@@ -375,7 +375,7 @@ describe("tusUpload protocol", () => {
 				return makeResponse(204);
 			});
 
-			const result = await uploadVideoResumable({
+			const result = await uploadMediaResumable({
 				fileUri: "file:///big.mp4",
 				fileSize,
 				bucket: "event-photos",

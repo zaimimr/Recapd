@@ -34,30 +34,46 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 		removeItem: jest.fn(),
 	},
 }));
+jest.mock("@/lib/uploadSource", () => ({
+	__esModule: true,
+	UploadSourceUnavailableError: class UploadSourceUnavailableError extends Error {
+		readonly reason: "missing" | "icloud" | "permission" | "disk";
+		constructor(reason: any, message: string) {
+			super(message);
+			this.name = "UploadSourceUnavailableError";
+			this.reason = reason;
+		}
+	},
+	materializeUploadSource: jest.fn(),
+	cleanupOrphanedUploadSources: jest.fn(),
+}));
+jest.mock("@/lib/tusUpload", () => ({
+	__esModule: true,
+	uploadMediaResumable: jest.fn(),
+}));
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, waitFor } from "@testing-library/react-native";
 import {
-	copyAsync,
 	deleteAsync,
 	downloadAsync,
-	getFreeDiskStorageAsync,
 	getInfoAsync,
-	makeDirectoryAsync,
-	uploadAsync,
 } from "expo-file-system/legacy";
-import * as MediaLibrary from "expo-media-library";
 import * as VideoThumbnails from "expo-video-thumbnails";
+
+import {
+	materializeUploadSource,
+	UploadSourceUnavailableError,
+} from "@/lib/uploadSource";
+import { uploadMediaResumable } from "@/lib/tusUpload";
 import {
 	buildByteRangeM3u8,
-	cleanupStagedUpload,
 	createVideoThumbnailUri,
 	downloadPhoto,
 	getDownloadedPhotoIds,
 	isPhotoDownloaded,
 	markPhotoDownloaded,
 	resolveStorageUrl,
-	stageUploadFileIfPurgeable,
 	uploadMedia,
 	usePhotoThumbnailUrl,
 	useVideoPlaybackUri,
@@ -67,23 +83,17 @@ import { supabase } from "@/lib/supabase";
 const mockedSupabase = supabase as any;
 const mockedDownloadAsync = downloadAsync as jest.MockedFunction<typeof downloadAsync>;
 const mockedGetInfoAsync = getInfoAsync as jest.MockedFunction<typeof getInfoAsync>;
-const mockedGetFreeDiskStorageAsync = getFreeDiskStorageAsync as jest.MockedFunction<
-	typeof getFreeDiskStorageAsync
->;
-const mockedUploadAsync = uploadAsync as jest.MockedFunction<typeof uploadAsync>;
-const mockedCopyAsync = copyAsync as jest.MockedFunction<typeof copyAsync>;
 const mockedDeleteAsync = deleteAsync as jest.MockedFunction<typeof deleteAsync>;
-const mockedMakeDirectoryAsync = makeDirectoryAsync as jest.MockedFunction<
-	typeof makeDirectoryAsync
->;
-const mockedGetAssetInfoAsync = MediaLibrary.getAssetInfoAsync as jest.MockedFunction<
-	typeof MediaLibrary.getAssetInfoAsync
->;
 const mockedGetThumbnailAsync = VideoThumbnails.getThumbnailAsync as jest.MockedFunction<
 	typeof VideoThumbnails.getThumbnailAsync
 >;
+const mockedMaterialize = materializeUploadSource as jest.MockedFunction<
+	typeof materializeUploadSource
+>;
+const mockedUploadMediaResumable = uploadMediaResumable as jest.MockedFunction<
+	typeof uploadMediaResumable
+>;
 const mockedAsyncStorage = AsyncStorage as jest.Mocked<typeof AsyncStorage>;
-const mockedFetch = jest.fn();
 
 function mockBlobResponse(size: number = 8) {
 	return {
@@ -168,9 +178,6 @@ describe("storage", () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		jest.useRealTimers();
-		mockedFetch.mockResolvedValue(mockBlobResponse());
-		(global as typeof globalThis & { fetch: typeof fetch }).fetch = mockedFetch as typeof fetch;
-		mockedUploadAsync.mockResolvedValue(mockNativeUploadResponse() as any);
 		mockedGetInfoAsync.mockResolvedValue({
 			exists: true,
 			isDirectory: false,
@@ -178,444 +185,173 @@ describe("storage", () => {
 			size: 8,
 			modificationTime: Date.now(),
 		} as any);
-		mockedGetFreeDiskStorageAsync.mockResolvedValue(100 * 1024 * 1024 * 1024);
+		mockedMaterialize.mockResolvedValue({
+			path: "file:///documents/upload-sources/upl_default.jpg",
+			size: 8,
+			cleanup: jest.fn().mockResolvedValue(undefined),
+		});
+		mockedUploadMediaResumable.mockResolvedValue({ path: "stored/path" });
+		mockedDeleteAsync.mockResolvedValue(undefined as any);
 		mockedSupabase.auth.getSession.mockResolvedValue({
 			data: { session: { access_token: "user-token", user: { id: "auth-user-1" } } },
 		});
 	});
 
 	describe("uploadMedia", () => {
-		it("uploads a photo successfully without generating a local thumbnail", async () => {
-			const { mockInsert } = setupDbMock();
-
-			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
-
-			expect(result.success).toBe(true);
-			expect(result.path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.jpg$/);
-			expect(mockedUploadAsync).toHaveBeenCalledTimes(1);
-
-			const uploadCallArgs = mockedUploadAsync.mock.calls[0];
-			expect(uploadCallArgs[0]).toMatch(
-				/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.jpg$/
-			);
-			expect(uploadCallArgs[1]).toBe("file:///photos/photo.jpg");
-			expect(uploadCallArgs[2]).toEqual(
-				expect.objectContaining({
-					httpMethod: "POST",
-					uploadType: 0,
-					headers: expect.objectContaining({
-						Authorization: "Bearer user-token",
-						apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-						"content-type": "image/jpeg",
-						"x-upsert": "false",
-					}),
-				})
-			);
-
-			expect(mockInsert).toHaveBeenCalledWith(
-				expect.objectContaining({
-					event_id: "event1",
-					uploaded_by_user_id: "user1",
-					media_type: "photo",
-					duration_milliseconds: null,
-					thumbnail_path: null,
-				})
-			);
+		beforeEach(() => {
+			setupDbMock();
 		});
 
-		it("uploads a video with thumbnail", async () => {
-			mockedUploadAsync
-				.mockResolvedValueOnce(mockNativeUploadResponse({ Key: "event1/user1/123.mp4" }) as any)
-				.mockResolvedValueOnce(
-					mockNativeUploadResponse({ Key: "event1/user1/123_thumb.jpg" }) as any
-				);
-			const { mockInsert } = setupDbMock();
+		it("materializes source then uploads photo via TUS", async () => {
+			const cleanup = jest.fn().mockResolvedValue(undefined);
+			mockedMaterialize.mockResolvedValue({
+				path: "file:///documents/upload-sources/upl_42.jpg",
+				size: 12345,
+				cleanup,
+			});
 
+			const result = await uploadMedia({
+				...baseUploadOptions,
+				mediaType: "photo",
+				uploadId: "upl_42",
+			});
+
+			expect(result.success).toBe(true);
+			expect(mockedMaterialize).toHaveBeenCalledWith(
+				expect.objectContaining({
+					uri: "file:///photos/photo.jpg",
+					uploadId: "upl_42",
+					mediaType: "photo",
+				})
+			);
+			expect(mockedUploadMediaResumable).toHaveBeenCalledWith(
+				expect.objectContaining({
+					fileUri: "file:///documents/upload-sources/upl_42.jpg",
+					fileSize: 12345,
+					bucket: "event-photos",
+					contentType: "image/jpeg",
+				})
+			);
+			expect(cleanup).toHaveBeenCalled();
+		});
+
+		it("uploads video and generates TUS thumbnail upload", async () => {
+			mockedMaterialize.mockResolvedValue({
+				path: "file:///documents/upload-sources/upl_v.mp4",
+				size: 100_000,
+				cleanup: jest.fn().mockResolvedValue(undefined),
+			});
 			mockedGetThumbnailAsync.mockResolvedValue({
 				uri: "file:///thumb.jpg",
 				width: 320,
 				height: 240,
 			});
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///video.mp4",
-				mediaType: "video",
-				duration: 5500.7,
-			});
-
-			expect(result.success).toBe(true);
-			expect(mockedGetThumbnailAsync).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.objectContaining({ time: 1000 })
-			);
-			expect(mockedUploadAsync).toHaveBeenCalledTimes(2);
-
-			const thumbUploadArgs = mockedUploadAsync.mock.calls[1];
-			expect(thumbUploadArgs[0]).toMatch(
-				/\/storage\/v1\/object\/thumbnails\/event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/
-			);
-			expect(thumbUploadArgs[1]).toBe("file:///thumb.jpg");
-
-			const insertCall = mockInsert.mock.calls[0][0];
-			expect(insertCall.media_type).toBe("video");
-			expect(insertCall.duration_milliseconds).toBe(Math.round(5500.7));
-			expect(insertCall.thumbnail_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/);
-		});
-
-		it("prefers the stripped URI when both decorated and stripped forms exist", async () => {
-			const { mockInsert } = setupDbMock();
-			mockedGetInfoAsync.mockResolvedValue({
+			mockedGetInfoAsync.mockImplementation(async (uri: any) => ({
 				exists: true,
 				isDirectory: false,
-				uri: "file:///tmp/clip.mov",
-				size: 8,
+				uri,
+				size: 4096,
 				modificationTime: Date.now(),
-			} as any);
-			mockedGetThumbnailAsync.mockResolvedValue({
-				uri: "file:///thumb.jpg",
-				width: 320,
-				height: 240,
-			});
+			} as any));
 
 			const result = await uploadMedia({
 				...baseUploadOptions,
-				uri: "file:///var/mobile/Media/DCIM/IMG_0280.MOV#YnBsaXN0MDDRAQJfEBtSZWNvbW1lbmRlZEZvckltbWVyc2l2ZU1vZGUQAA",
+				uri: "file:///photos/clip.mp4",
 				mediaType: "video",
-				duration: 3000,
+				duration: 5000,
+				uploadId: "upl_v",
 			});
 
 			expect(result.success).toBe(true);
-			expect(mockedUploadAsync.mock.calls[0][1]).toBe("file:///var/mobile/Media/DCIM/IMG_0280.MOV");
-			expect(mockedGetThumbnailAsync.mock.calls[0][0]).toBe(
-				"file:///var/mobile/Media/DCIM/IMG_0280.MOV"
+			expect(mockedUploadMediaResumable).toHaveBeenCalledTimes(2);
+			const mediaCall = mockedUploadMediaResumable.mock.calls[0][0];
+			const thumbCall = mockedUploadMediaResumable.mock.calls[1][0];
+			expect(mediaCall.bucket).toBe("event-photos");
+			expect(mediaCall.contentType).toBe("video/mp4");
+			expect(thumbCall.bucket).toBe("thumbnails");
+			expect(thumbCall.contentType).toBe("image/jpeg");
+			expect(thumbCall.fileFingerprint).toContain(":thumb:");
+		});
+
+		it("classifies UploadSourceUnavailableError(icloud) as permission failure", async () => {
+			mockedMaterialize.mockRejectedValue(
+				new UploadSourceUnavailableError("icloud", "asset not downloaded")
 			);
-			const insertCall = mockInsert.mock.calls[0][0];
-			expect(insertCall.storage_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mov$/);
-		});
-
-		it("sanitizes decorated picker URIs before deriving the upload extension", async () => {
-			const { mockInsert } = setupDbMock();
-			mockedGetInfoAsync.mockImplementation(async (uri: string) => {
-				if (uri.includes("#")) {
-					return { exists: false, isDirectory: false } as any;
-				}
-				return {
-					exists: true,
-					isDirectory: false,
-					uri,
-					size: 8,
-					modificationTime: Date.now(),
-				} as any;
-			});
-			mockedGetThumbnailAsync.mockResolvedValue({
-				uri: "file:///thumb.jpg",
-				width: 320,
-				height: 240,
-			});
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///tmp/clip.mov#security-scoped-token",
-				mediaType: "video",
-				duration: 3000,
-			});
-
-			expect(result.success).toBe(true);
-			expect(mockedUploadAsync.mock.calls[0][1]).toBe("file:///tmp/clip.mov");
-			const insertCall = mockInsert.mock.calls[0][0];
-			expect(insertCall.storage_path).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mov$/);
-		});
-
-		it("allows video uploads to stay in flight longer than the photo timeout", async () => {
-			jest.useFakeTimers();
-			setupDbMock();
-			mockedGetThumbnailAsync.mockResolvedValue({
-				uri: "file:///thumb.jpg",
-				width: 320,
-				height: 240,
-			});
-
-			mockedUploadAsync
-				.mockImplementationOnce(
-					() =>
-						new Promise((resolve) => {
-							setTimeout(
-								() => resolve(mockNativeUploadResponse({ Key: "event1/user1/123.mp4" }) as any),
-								3 * 60 * 1000
-							);
-						})
-				)
-				.mockResolvedValueOnce(
-					mockNativeUploadResponse({ Key: "event1/user1/123_thumb.jpg" }) as any
-				);
-
-			const uploadPromise = uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///video.mp4",
-				mediaType: "video",
-				duration: 5500,
-			});
-
-			await jest.advanceTimersByTimeAsync(3 * 60 * 1000);
-			const result = await uploadPromise;
-
-			expect(result.success).toBe(true);
-		});
-
-		it("returns error when storage upload fails", async () => {
-			const { mockInsert } = setupDbMock();
-			mockedUploadAsync.mockResolvedValueOnce({
-				status: 400,
-				headers: {},
-				mimeType: "application/json",
-				body: JSON.stringify({ message: "Storage full" }),
-			} as any);
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result).toEqual(
-				expect.objectContaining({ success: false, error: "Storage full", failureReason: "storage" })
-			);
-			expect(mockInsert).not.toHaveBeenCalled();
+			expect(result.success).toBe(false);
+			expect(result.failureReason).toBe("permission");
+			expect(mockedUploadMediaResumable).not.toHaveBeenCalled();
 		});
 
-		it("classifies HTTP 503 as network (retryable) failure", async () => {
-			const { mockInsert } = setupDbMock();
-			mockedUploadAsync.mockResolvedValueOnce({
-				status: 503,
-				headers: {},
-				mimeType: "application/json",
-				body: JSON.stringify({ message: "Service Unavailable" }),
-			} as any);
+		it("classifies UploadSourceUnavailableError(disk) as storage failure", async () => {
+			mockedMaterialize.mockRejectedValue(
+				new UploadSourceUnavailableError("disk", "not enough space")
+			);
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result).toEqual(
-				expect.objectContaining({
-					success: false,
-					failureReason: "network",
-				})
-			);
-			expect(result.error).toBe("Network hiccup during upload. We'll retry automatically.");
-			expect(mockInsert).not.toHaveBeenCalled();
+			expect(result.success).toBe(false);
+			expect(result.failureReason).toBe("storage");
 		});
 
-		it("classifies HTTP 429 as network (retryable) failure", async () => {
-			setupDbMock();
-			mockedUploadAsync.mockResolvedValueOnce({
-				status: 429,
-				headers: {},
-				mimeType: "application/json",
-				body: JSON.stringify({ message: "Too Many Requests" }),
-			} as any);
+		it("classifies HTTP 503 from TUS as network failure", async () => {
+			const err = new Error("TUS patch failed (503)") as Error & { httpStatus?: number };
+			err.httpStatus = 503;
+			mockedUploadMediaResumable.mockRejectedValueOnce(err);
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
+			expect(result.success).toBe(false);
 			expect(result.failureReason).toBe("network");
 		});
 
-		it("classifies fetch 'Network request failed' as network failure", async () => {
-			setupDbMock();
-			mockedUploadAsync.mockRejectedValueOnce(new Error("Network request failed"));
+		it("classifies timeout from TUS as timeout failure", async () => {
+			mockedUploadMediaResumable.mockRejectedValueOnce(new Error("timeout"));
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result.failureReason).toBe("network");
+			expect(result.success).toBe(false);
+			expect(result.failureReason).toBe("timeout");
 		});
 
-		it("surfaces native upload timeouts as timeout failures", async () => {
-			jest.useFakeTimers();
-			const { mockInsert } = setupDbMock();
-			mockedUploadAsync.mockImplementation(() => new Promise(() => {}));
-
-			const uploadPromise = uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
-			await jest.advanceTimersByTimeAsync(30 * 60 * 1000);
-			const result = await uploadPromise;
-
-			expect(result).toEqual(
-				expect.objectContaining({
-					success: false,
-					error:
-						"Upload took too long. Reconnect to a stable network and we'll retry automatically.",
-					failureReason: "timeout",
-				})
-			);
-			expect(mockInsert).not.toHaveBeenCalled();
-		});
-
-		it("cleans up storage files when DB insert fails for photo", async () => {
-			const mockRemove = jest.fn().mockResolvedValue({ error: null });
-			mockedSupabase.storage.from.mockReturnValue({
-				remove: mockRemove,
-			});
-			setupDbMock({ insertError: { message: "DB error" } });
+		it("returns permission failure when session is missing", async () => {
+			mockedSupabase.auth.getSession.mockResolvedValueOnce({ data: { session: null } });
 
 			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			expect(result).toEqual(
-				expect.objectContaining({ success: false, error: "DB error", failureReason: "database" })
-			);
-			expect(mockRemove).toHaveBeenCalledWith([
-				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+\.jpg$/),
-			]);
-			expect(mockedSupabase.storage.from).not.toHaveBeenCalledWith("thumbnails");
+			expect(result.success).toBe(false);
+			expect(result.failureReason).toBe("permission");
+			expect(mockedMaterialize).not.toHaveBeenCalled();
 		});
 
-		it("cleans up both video and thumbnail when DB insert fails for video", async () => {
-			const mockRemove = jest.fn().mockResolvedValue({ error: null });
+		it("cleans up storage when DB insert fails", async () => {
+			const { mockRemove } = setupStorageMock();
+			setupDbMock({ insertError: { code: "23505", message: "duplicate" } });
 
-			mockedSupabase.storage.from.mockReturnValue({
-				remove: mockRemove,
-			});
+			const result = await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			setupDbMock({ insertError: { message: "DB error" } });
-
-			mockedGetThumbnailAsync.mockResolvedValue({
-				uri: "file:///thumb.jpg",
-				width: 320,
-				height: 240,
-			});
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///video.mp4",
-				mediaType: "video",
-				duration: 3000,
-			});
-
-			expect(result).toEqual(
-				expect.objectContaining({ success: false, error: "DB error", failureReason: "database" })
-			);
-			expect(mockRemove).toHaveBeenCalledWith([
-				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+\.mp4$/),
-			]);
-			expect(mockRemove).toHaveBeenCalledWith([
-				expect.stringMatching(/^event1\/user1\/\d+_[a-z0-9]+_thumb\.jpg$/),
-			]);
-			expect(mockedSupabase.storage.from).toHaveBeenCalledWith("thumbnails");
+			expect(result.success).toBe(false);
+			expect(result.failureReason).toBe("database");
+			expect(mockRemove).toHaveBeenCalled();
 		});
 
-		it("continues with null thumbnail when getThumbnailAsync throws", async () => {
-			const mockUpload = jest
-				.fn()
-				.mockResolvedValueOnce({ data: { path: "event1/user1/123.mp4" }, error: null });
-
-			mockedSupabase.storage.from.mockReturnValue({
-				upload: mockUpload,
-				remove: jest.fn(),
+		it("runs materialized cleanup even when upload throws", async () => {
+			const cleanup = jest.fn().mockResolvedValue(undefined);
+			mockedMaterialize.mockResolvedValue({
+				path: "file:///documents/upload-sources/upl_x.jpg",
+				size: 8,
+				cleanup,
 			});
+			mockedUploadMediaResumable.mockRejectedValueOnce(new Error("boom"));
 
-			const { mockInsert } = setupDbMock();
+			await uploadMedia({ ...baseUploadOptions, mediaType: "photo" });
 
-			mockedGetThumbnailAsync.mockRejectedValue(new Error("Thumbnail generation failed"));
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///video.mp4",
-				mediaType: "video",
-				duration: 3000,
-			});
-
-			expect(result.success).toBe(true);
-			const insertData = mockInsert.mock.calls[0][0];
-			expect(insertData.thumbnail_path).toBeNull();
-		});
-
-		it("resolves ph:// URIs via getAssetInfoAsync", async () => {
-			setupStorageMock();
-			setupDbMock();
-
-			mockedGetAssetInfoAsync.mockResolvedValue({
-				localUri: "file:///resolved/photo.jpg",
-			} as any);
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "ph://ABC-DEF-123/L0/001",
-			});
-
-			expect(result.success).toBe(true);
-			expect(mockedGetAssetInfoAsync).toHaveBeenCalled();
-		});
-
-		it("uploads HEIC photos with the correct content type", async () => {
-			setupDbMock();
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				uri: "file:///photos/photo.heic",
-				mediaType: "photo",
-			});
-
-			expect(result.success).toBe(true);
-			expect(mockedUploadAsync).toHaveBeenCalledWith(
-				expect.stringMatching(
-					/\/storage\/v1\/object\/event-photos\/event1\/user1\/\d+_[a-z0-9]+\.heic$/
-				),
-				"file:///photos/photo.heic",
-				expect.objectContaining({
-					headers: expect.objectContaining({ "content-type": "image/heic" }),
-				})
-			);
-		});
-
-		it("rejects empty local files instead of creating broken uploads", async () => {
-			const { mockInsert } = setupDbMock();
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				mediaType: "photo",
-				fileSize: 0,
-			});
-
-			expect(result).toEqual(
-				expect.objectContaining({
-					success: false,
-					error: "Selected file is empty",
-					failureReason: "storage",
-				})
-			);
-			expect(mockedUploadAsync).not.toHaveBeenCalled();
-			expect(mockInsert).not.toHaveBeenCalled();
-		});
-
-		it("stores photos without a thumbnail path", async () => {
-			const { mockInsert } = setupDbMock();
-
-			const result = await uploadMedia({
-				...baseUploadOptions,
-				mediaType: "photo",
-			});
-
-			expect(result.success).toBe(true);
-			const insertData = mockInsert.mock.calls[0][0];
-			expect(insertData.thumbnail_path).toBeNull();
+			expect(cleanup).toHaveBeenCalled();
 		});
 	});
 
-	describe("createVideoThumbnailUri", () => {
-		it("resolves iOS asset URIs before generating thumbnails", async () => {
-			mockedGetAssetInfoAsync.mockResolvedValue({
-				localUri: "file:///resolved-video.mov",
-			} as any);
-			mockedGetThumbnailAsync.mockResolvedValue({
-				uri: "file:///thumb.jpg",
-				width: 320,
-				height: 240,
-			});
-
-			const result = await createVideoThumbnailUri("ph://ABC123/L0/001", 0);
-
-			expect(result).toBe("file:///thumb.jpg");
-			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("ABC123", {
-				shouldDownloadFromNetwork: true,
-			});
-			expect(mockedGetThumbnailAsync).toHaveBeenCalledWith(
-				"file:///resolved-video.mov",
-				expect.objectContaining({ time: 0 })
-			);
-		});
-	});
 
 	describe("resolveStorageUrl", () => {
 		it("returns a signed URL for event photos", async () => {
@@ -944,166 +680,4 @@ describe("storage", () => {
 		});
 	});
 
-	describe("stageUploadFileIfPurgeable", () => {
-		beforeEach(() => {
-			mockedCopyAsync.mockResolvedValue(undefined as any);
-			mockedDeleteAsync.mockResolvedValue(undefined as any);
-			mockedMakeDirectoryAsync.mockResolvedValue(undefined as any);
-			mockedGetFreeDiskStorageAsync.mockResolvedValue(20 * 1024 * 1024 * 1024);
-		});
-
-		it("returns null for non-cache URIs", async () => {
-			const result = await stageUploadFileIfPurgeable(
-				"file:///var/mobile/Media/DCIM/100APPLE/IMG_0001.JPG",
-				"upl_1",
-				500_000
-			);
-			expect(result).toBeNull();
-			expect(mockedCopyAsync).not.toHaveBeenCalled();
-		});
-
-		it("returns null for non-file URIs", async () => {
-			const result = await stageUploadFileIfPurgeable("ph://abc", "upl_1", 500_000);
-			expect(result).toBeNull();
-		});
-
-		it("copies files inside Library/Caches to document directory", async () => {
-			const sourceUri =
-				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/abc.mp4";
-			const result = await stageUploadFileIfPurgeable(sourceUri, "upl_42", 1_000_000);
-			expect(result).toBe("file:///documents/upload-staging/upl_42.mp4");
-			expect(mockedMakeDirectoryAsync).toHaveBeenCalledWith(
-				"file:///documents/upload-staging/",
-				{ intermediates: true }
-			);
-			expect(mockedCopyAsync).toHaveBeenCalledWith({
-				from: sourceUri,
-				to: "file:///documents/upload-staging/upl_42.mp4",
-			});
-		});
-
-		it("skips staging when free disk is insufficient", async () => {
-			mockedGetFreeDiskStorageAsync.mockResolvedValue(10 * 1024 * 1024);
-			const result = await stageUploadFileIfPurgeable(
-				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/big.mp4",
-				"upl_big",
-				100 * 1024 * 1024
-			);
-			expect(result).toBeNull();
-			expect(mockedCopyAsync).not.toHaveBeenCalled();
-		});
-
-		it("skips staging for files larger than the cap", async () => {
-			const result = await stageUploadFileIfPurgeable(
-				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/huge.mp4",
-				"upl_huge",
-				500 * 1024 * 1024
-			);
-			expect(result).toBeNull();
-			expect(mockedCopyAsync).not.toHaveBeenCalled();
-		});
-
-		it("returns null when copy fails", async () => {
-			mockedCopyAsync.mockRejectedValue(new Error("copy failed"));
-			const result = await stageUploadFileIfPurgeable(
-				"file:///var/mobile/Containers/Data/Application/XYZ/Library/Caches/ImagePicker/x.jpg",
-				"upl_x",
-				100
-			);
-			expect(result).toBeNull();
-		});
-	});
-
-	describe("cleanupStagedUpload", () => {
-		beforeEach(() => {
-			mockedDeleteAsync.mockResolvedValue(undefined as any);
-		});
-
-		it("deletes files inside the staging dir", async () => {
-			await cleanupStagedUpload("file:///documents/upload-staging/upl_1.mp4");
-			expect(mockedDeleteAsync).toHaveBeenCalledWith(
-				"file:///documents/upload-staging/upl_1.mp4",
-				{ idempotent: true }
-			);
-		});
-
-		it("skips files outside the staging dir", async () => {
-			await cleanupStagedUpload("file:///var/mobile/Media/DCIM/IMG.jpg");
-			expect(mockedDeleteAsync).not.toHaveBeenCalled();
-		});
-
-		it("is a no-op for nullish input", async () => {
-			await cleanupStagedUpload(null);
-			await cleanupStagedUpload(undefined);
-			expect(mockedDeleteAsync).not.toHaveBeenCalled();
-		});
-	});
-
-	describe("uploadMedia PHAsset fallback", () => {
-		beforeEach(() => {
-			mockedGetFreeDiskStorageAsync.mockResolvedValue(20 * 1024 * 1024 * 1024);
-			mockedAsyncStorage.getItem.mockResolvedValue(null);
-			mockedUploadAsync.mockResolvedValue(mockNativeUploadResponse() as any);
-			mockedSupabase.auth.getSession.mockResolvedValue({
-				data: { session: { access_token: "tok", user: { id: "auth-1" } } },
-			});
-			const chain = {
-				select: jest.fn().mockReturnThis(),
-				eq: jest.fn().mockReturnThis(),
-				maybeSingle: jest.fn().mockResolvedValue({ data: { id: "user-1" }, error: null }),
-				insert: jest.fn().mockReturnThis(),
-				single: jest.fn().mockResolvedValue({
-					data: { id: "media-1", storage_path: "uploaded/path" },
-					error: null,
-				}),
-			};
-			mockedSupabase.from.mockReturnValue(chain);
-		});
-
-		it("recovers via MediaLibrary when the source file is gone", async () => {
-			const missingUri = "file:///cache/Library/Caches/ImagePicker/missing.jpg";
-			const recoveredUri = "file:///cache/recovered.jpg";
-			mockedGetInfoAsync.mockImplementation(async (uri: string) => {
-				if (uri === recoveredUri) {
-					return { exists: true, isDirectory: false, size: 1024, uri } as any;
-				}
-				return { exists: false, isDirectory: false, uri } as any;
-			});
-			mockedGetAssetInfoAsync.mockResolvedValue({ localUri: recoveredUri } as any);
-
-			const result = await uploadMedia({
-				uri: missingUri,
-				eventId: "evt-1",
-				userId: "user-1",
-				capturedAt: new Date(),
-				assetId: "phasset-123",
-				mediaType: "photo",
-				fileSize: 1024,
-			});
-
-			expect(mockedGetAssetInfoAsync).toHaveBeenCalledWith("phasset-123", {
-				shouldDownloadFromNetwork: true,
-			});
-			expect(mockedUploadAsync).toHaveBeenCalled();
-			const calledUri = mockedUploadAsync.mock.calls[0][1];
-			expect(calledUri).toBe(recoveredUri);
-			expect(result.success).toBe(true);
-		});
-
-		it("fails clearly when the file is missing and no assetId is available", async () => {
-			mockedGetInfoAsync.mockResolvedValue({ exists: false, isDirectory: false } as any);
-
-			const result = await uploadMedia({
-				uri: "file:///cache/Library/Caches/ImagePicker/missing.jpg",
-				eventId: "evt-1",
-				userId: "user-1",
-				capturedAt: new Date(),
-				mediaType: "photo",
-			});
-
-			expect(mockedGetAssetInfoAsync).not.toHaveBeenCalled();
-			expect(result.success).toBe(false);
-			expect(mockedUploadAsync).not.toHaveBeenCalled();
-		});
-	});
 });
