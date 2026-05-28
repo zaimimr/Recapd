@@ -30,9 +30,9 @@ export interface PendingUpload {
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 const RETRY_MAX_DELAY_MS = 60 * 1000;
-const PHOTO_CONCURRENT_UPLOADS = 3;
+const PHOTO_CONCURRENT_UPLOADS = 2;
 const VIDEO_CONCURRENT_UPLOADS = 1;
-const UPLOAD_TIMEOUT_MS = 20 * 60 * 1000;
+const UPLOAD_TIMEOUT_MS = 60 * 60 * 1000;
 
 export function computeRetryDelayMs(attempt: number): number {
 	const exponent = Math.max(0, attempt);
@@ -117,6 +117,7 @@ export async function processUpload(
 				latitude: upload.latitude,
 				longitude: upload.longitude,
 				assetId: upload.assetId,
+				uploadId: upload.id,
 			}),
 			UPLOAD_TIMEOUT_MS
 		);

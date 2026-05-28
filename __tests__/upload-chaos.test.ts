@@ -43,8 +43,7 @@ function makeStore(initial: PendingUpload[]): StoreState & {
 
 async function runPendingTimers() {
 	for (let i = 0; i < 100; i++) {
-		const ran = await jest.advanceTimersByTimeAsync(70 * 1000);
-		if (!ran) break;
+		await jest.advanceTimersByTimeAsync(70 * 1000);
 	}
 }
 
