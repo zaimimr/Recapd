@@ -239,7 +239,18 @@ export async function createVideoThumbnailUri(
 
 		return uri;
 	} catch (error) {
-		logger.warn("Video thumbnail generation failed", error);
+		addUploadBreadcrumb(
+			"thumbnail.generation.failed",
+			{
+				uriScheme: videoUri.startsWith("ph://")
+					? "ph"
+					: videoUri.startsWith("file://")
+						? "file"
+						: "other",
+				err: error instanceof Error ? error.message : String(error),
+			},
+			"warning"
+		);
 		return null;
 	}
 }

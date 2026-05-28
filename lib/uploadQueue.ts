@@ -28,19 +28,9 @@ export interface PendingUpload {
 	thumbnailPath?: string | null;
 }
 
-const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 1000;
-const RETRY_MAX_DELAY_MS = 60 * 1000;
 const PHOTO_CONCURRENT_UPLOADS = 2;
 const VIDEO_CONCURRENT_UPLOADS = 1;
 const UPLOAD_TIMEOUT_MS = 60 * 60 * 1000;
-
-export function computeRetryDelayMs(attempt: number): number {
-	const exponent = Math.max(0, attempt);
-	const exponential = Math.min(RETRY_BASE_DELAY_MS * 2 ** exponent, RETRY_MAX_DELAY_MS);
-	const jitter = Math.random() * RETRY_BASE_DELAY_MS;
-	return Math.min(exponential + jitter, RETRY_MAX_DELAY_MS);
-}
 
 let isProcessing = false;
 let onUploadComplete:
@@ -58,14 +48,6 @@ let onUploadFailed:
 	| null = null;
 let onStatusChange: ((id: string, updates: Partial<PendingUpload>) => void | Promise<void>) | null =
 	null;
-
-function isRetryableFailureReason(failureReason?: UploadFailureReason): boolean {
-	return (
-		failureReason === "timeout" ||
-		failureReason === "network" ||
-		failureReason === "unknown"
-	);
-}
 
 export function setUploadCallbacks(callbacks: {
 	onComplete: (upload: PendingUpload, result: Awaited<ReturnType<typeof uploadMedia>>) => void;
@@ -138,13 +120,11 @@ export async function processUpload(
 				failureReason = "network";
 			}
 		}
-		if (upload.retryCount >= MAX_RETRIES) {
-			await onUploadFailed?.(
-				upload,
-				error instanceof Error ? error.message : "Upload failed",
-				failureReason
-			);
-		}
+		await onUploadFailed?.(
+			upload,
+			error instanceof Error ? error.message : "Upload failed",
+			failureReason
+		);
 		await onStatusChange?.(upload.id, {
 			status: "failed",
 			error: error instanceof Error ? error.message : "Upload failed",
@@ -153,7 +133,7 @@ export async function processUpload(
 		});
 		return {
 			success: false,
-			retryable: isRetryableFailureReason(failureReason),
+			retryable: false,
 		};
 	}
 
@@ -169,50 +149,33 @@ export async function processUpload(
 			failureReason: undefined,
 		});
 		return { success: true, retryable: false };
-	} else {
-		const failureReason = result.failureReason || "unknown";
-		addUploadBreadcrumb(
-			"queue.processUpload.failed",
-			{
-				uploadId: upload.id,
-				attempt: upload.retryCount,
-				maxRetries: MAX_RETRIES,
-				failureReason,
-				err: result.error,
-				retryable: isRetryableFailureReason(failureReason),
-			},
-			"warning"
-		);
-		if (upload.retryCount >= MAX_RETRIES) {
-			await onUploadFailed?.(upload, result.error || "Upload failed", failureReason);
-			await onStatusChange?.(upload.id, {
-				status: "failed",
-				error: result.error || "Upload failed",
-				failureReason,
-				finishedAt: new Date().toISOString(),
-			});
-			return {
-				success: false,
-				retryable: isRetryableFailureReason(failureReason),
-			};
-		}
-		await onStatusChange?.(upload.id, {
-			status: "failed",
-			error: result.error || "Upload failed",
-			failureReason,
-			finishedAt: new Date().toISOString(),
-		});
-		return {
-			success: false,
-			retryable: isRetryableFailureReason(failureReason),
-		};
 	}
+
+	const failureReason = result.failureReason || "unknown";
+	addUploadBreadcrumb(
+		"queue.processUpload.failed",
+		{
+			uploadId: upload.id,
+			attempt: upload.retryCount,
+			failureReason,
+			err: result.error,
+		},
+		"warning"
+	);
+	await onUploadFailed?.(upload, result.error || "Upload failed", failureReason);
+	await onStatusChange?.(upload.id, {
+		status: "failed",
+		error: result.error || "Upload failed",
+		failureReason,
+		finishedAt: new Date().toISOString(),
+	});
+	return {
+		success: false,
+		retryable: false,
+	};
 }
 
-/**
- * Process a single upload with retry handling
- */
-async function processUploadWithRetry(
+async function processUploadOnce(
 	upload: PendingUpload,
 	getLatestUploads: () => PendingUpload[],
 	updateUpload: (id: string, updates: Partial<PendingUpload>) => void
@@ -224,50 +187,19 @@ async function processUploadWithRetry(
 		return;
 	}
 
-	let attempt = currentUpload.retryCount;
-	let activeUpload = currentUpload;
+	const startedAt = new Date().toISOString();
+	updateUpload(upload.id, {
+		status: "syncing",
+		startedAt: currentUpload.startedAt ?? startedAt,
+		lastAttemptAt: startedAt,
+		error: undefined,
+		failureReason: undefined,
+	});
 
-	while (attempt <= MAX_RETRIES) {
-		const startedAt = new Date().toISOString();
-		updateUpload(upload.id, {
-			status: "syncing",
-			startedAt: activeUpload.startedAt ?? startedAt,
-			lastAttemptAt: startedAt,
-			error: undefined,
-			failureReason: undefined,
-		});
-
-		const result = await processUpload({
-			...activeUpload,
-			retryCount: attempt,
-		});
-
-		if (result.success) {
-			return;
-		}
-
-		if (!result.retryable) {
-			return;
-		}
-
-		if (attempt >= MAX_RETRIES) {
-			return;
-		}
-
-		attempt += 1;
-		updateUpload(upload.id, {
-			status: "failed",
-			retryCount: attempt,
-			finishedAt: new Date().toISOString(),
-		});
-
-		await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs(attempt)));
-		const latestAfterDelay = getLatestUploads().find((u) => u.id === upload.id);
-		if (!latestAfterDelay || latestAfterDelay.status === "skipped") {
-			return;
-		}
-		activeUpload = latestAfterDelay;
-	}
+	await processUpload({
+		...currentUpload,
+		retryCount: currentUpload.retryCount,
+	});
 }
 
 async function runPool(
@@ -280,7 +212,7 @@ async function runPool(
 	for (let i = 0; i < uploads.length; i += concurrency) {
 		const batch = uploads.slice(i, i + concurrency);
 		await Promise.all(
-			batch.map((upload) => processUploadWithRetry(upload, getLatestUploads, updateUpload))
+			batch.map((upload) => processUploadOnce(upload, getLatestUploads, updateUpload))
 		);
 	}
 }

@@ -389,5 +389,48 @@ describe("tusUpload protocol", () => {
 			expect(methods).toContain("POST");
 			expect(methods).toContain("HEAD");
 		});
+
+		it("throws when post-upload verify probe returns 404", async () => {
+			mockedReadAsStringAsync.mockImplementation(async (_uri, opts: any) => {
+				const len = opts.length as number;
+				return Buffer.from(new Uint8Array(len)).toString("base64");
+			});
+
+			const { handler } = installFetchMock();
+			handler.mockImplementation(async (url, init) => {
+				const method = (init.method ?? "GET").toUpperCase();
+				if (method === "POST") {
+					return makeResponse(201, {
+						Location: "https://example.supabase.co/storage/v1/upload/resumable/missing",
+					});
+				}
+				if (method === "PATCH") {
+					const offsetHeader = (init.headers as Record<string, string>)["Upload-Offset"];
+					const startOffset = Number.parseInt(offsetHeader, 10);
+					const chunkLen = (init.body as Uint8Array).byteLength;
+					return makeResponse(204, { "Upload-Offset": String(startOffset + chunkLen) });
+				}
+				if (method === "GET" && url.includes("/storage/v1/object/info/")) {
+					return makeResponse(404);
+				}
+				return makeResponse(204);
+			});
+
+			await expect(
+				uploadMediaResumable({
+					fileUri: "file:///big.mp4",
+					fileSize: 4 * 1024 * 1024,
+					bucket: "event-photos",
+					objectName: "ev/usr/missing.heic",
+					contentType: "image/heic",
+					fileFingerprint: "fp-missing",
+				})
+			).rejects.toMatchObject({
+				httpStatus: 404,
+				message: expect.stringContaining("storage object missing"),
+			});
+
+			expect(mockedAsyncStorage.__store.size).toBe(0);
+		});
 	});
 });
