@@ -331,7 +331,7 @@ describe("getMergedTimeline", () => {
 		expect(timeline[0].id).toBe("media-1");
 	});
 
-	test("only pending uploads returns items with isPending=true and localUri", () => {
+	test("only failed uploads returns items with isPending=true and localUri", () => {
 		useEventStore.setState({
 			mediaItems: [],
 			pendingUploads: [
@@ -343,7 +343,7 @@ describe("getMergedTimeline", () => {
 					capturedAt: new Date(2000),
 					width: 100,
 					height: 100,
-					status: "pending" as const,
+					status: "failed" as const,
 					retryCount: 0,
 					mediaType: "photo" as const,
 				},
@@ -357,7 +357,7 @@ describe("getMergedTimeline", () => {
 		expect(timeline[0].localUri).toBe("file://local.jpg");
 	});
 
-	test("pending video uploads preserve media type and duration in the merged timeline", () => {
+	test("failed video uploads preserve media type and duration in the merged timeline", () => {
 		useEventStore.setState({
 			mediaItems: [],
 			pendingUploads: [
@@ -369,7 +369,7 @@ describe("getMergedTimeline", () => {
 					capturedAt: new Date(3000),
 					width: 1920,
 					height: 1080,
-					status: "pending" as const,
+					status: "failed" as const,
 					retryCount: 0,
 					mediaType: "video" as const,
 					duration: 18000,
@@ -384,7 +384,7 @@ describe("getMergedTimeline", () => {
 		expect(timeline[0].duration_milliseconds).toBe(18000);
 	});
 
-	test("mixed items sorted by captured_at descending", () => {
+	test("uploaded items render above failed uploads regardless of capture time", () => {
 		const dbItem = makeMediaItem({ captured_at: new Date(100).toISOString() });
 		useEventStore.setState({
 			mediaItems: [dbItem],
@@ -397,7 +397,7 @@ describe("getMergedTimeline", () => {
 					capturedAt: new Date(50),
 					width: 100,
 					height: 100,
-					status: "pending" as const,
+					status: "failed" as const,
 					retryCount: 0,
 					mediaType: "photo" as const,
 				},
@@ -411,7 +411,7 @@ describe("getMergedTimeline", () => {
 		expect(timeline[1].isPending).toBe(true);
 	});
 
-	test("filters pending by eventId", () => {
+	test("filters failed uploads by eventId", () => {
 		useEventStore.setState({
 			mediaItems: [],
 			pendingUploads: [
@@ -423,7 +423,7 @@ describe("getMergedTimeline", () => {
 					capturedAt: new Date(1000),
 					width: 100,
 					height: 100,
-					status: "pending" as const,
+					status: "failed" as const,
 					retryCount: 0,
 					mediaType: "photo" as const,
 				},
@@ -435,7 +435,7 @@ describe("getMergedTimeline", () => {
 					capturedAt: new Date(2000),
 					width: 100,
 					height: 100,
-					status: "pending" as const,
+					status: "failed" as const,
 					retryCount: 0,
 					mediaType: "photo" as const,
 				},

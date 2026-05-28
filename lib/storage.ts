@@ -1,10 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
 	cacheDirectory,
+	copyAsync,
 	deleteAsync,
+	documentDirectory,
 	downloadAsync,
 	getInfoAsync,
+	makeDirectoryAsync,
 } from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useEffect, useState } from "react";
 import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
@@ -220,6 +224,111 @@ async function withTempFileCleanup<T>(uri: string, work: () => Promise<T>): Prom
 			logger.warn("Temp file cleanup failed", error, { uri });
 		}
 	}
+}
+
+const GRID_THUMB_DIR = `${documentDirectory}grid-thumbs/`;
+const GRID_THUMB_TARGET_WIDTH = 512;
+const GRID_THUMB_MAX_CONCURRENT = 2;
+
+let gridThumbActive = 0;
+const gridThumbWaiters: Array<() => void> = [];
+const gridThumbInflight = new Map<string, Promise<string | null>>();
+
+async function acquireGridThumbSlot(): Promise<void> {
+	if (gridThumbActive < GRID_THUMB_MAX_CONCURRENT) {
+		gridThumbActive++;
+		return;
+	}
+	await new Promise<void>((resolve) => gridThumbWaiters.push(resolve));
+	gridThumbActive++;
+}
+
+function releaseGridThumbSlot(): void {
+	gridThumbActive--;
+	const next = gridThumbWaiters.shift();
+	if (next) next();
+}
+
+async function ensureGridThumbDir(): Promise<void> {
+	const info = await getInfoAsync(GRID_THUMB_DIR);
+	if (!info.exists) {
+		await makeDirectoryAsync(GRID_THUMB_DIR, { intermediates: true });
+	}
+}
+
+async function generatePhotoGridThumbnail(
+	photoId: string,
+	sourceUri: string
+): Promise<string | null> {
+	try {
+		await ensureGridThumbDir();
+		const target = `${GRID_THUMB_DIR}${photoId}.jpg`;
+		const cached = await getInfoAsync(target);
+		if (cached.exists && !cached.isDirectory) {
+			return target;
+		}
+		await acquireGridThumbSlot();
+		try {
+			const recheck = await getInfoAsync(target);
+			if (recheck.exists && !recheck.isDirectory) {
+				return target;
+			}
+			const sourceInfo = await getInfoAsync(sourceUri.replace(/[?#].*$/, ""));
+			const usableUri =
+				sourceInfo.exists && !sourceInfo.isDirectory
+					? sourceUri.replace(/[?#].*$/, "")
+					: sourceUri;
+			const result = await ImageManipulator.manipulateAsync(
+				usableUri,
+				[{ resize: { width: GRID_THUMB_TARGET_WIDTH } }],
+				{ compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+			);
+			try {
+				await copyAsync({ from: result.uri, to: target });
+				await deleteAsync(result.uri, { idempotent: true });
+				return target;
+			} catch {
+				return result.uri;
+			}
+		} finally {
+			releaseGridThumbSlot();
+		}
+	} catch (error) {
+		addUploadBreadcrumb(
+			"grid-thumb.failed",
+			{
+				photoId,
+				uriScheme: sourceUri.startsWith("ph://")
+					? "ph"
+					: sourceUri.startsWith("file://")
+						? "file"
+						: "other",
+				err: error instanceof Error ? error.message : String(error),
+			},
+			"warning"
+		);
+		return null;
+	}
+}
+
+export function getOrCreatePhotoGridThumbnail(
+	photoId: string,
+	sourceUri: string
+): Promise<string | null> {
+	const existing = gridThumbInflight.get(photoId);
+	if (existing) return existing;
+	const work = generatePhotoGridThumbnail(photoId, sourceUri).finally(() => {
+		gridThumbInflight.delete(photoId);
+	});
+	gridThumbInflight.set(photoId, work);
+	return work;
+}
+
+export async function deletePhotoGridThumbnail(photoId: string): Promise<void> {
+	try {
+		const target = `${GRID_THUMB_DIR}${photoId}.jpg`;
+		await deleteAsync(target, { idempotent: true });
+	} catch {}
 }
 
 export async function createVideoThumbnailUri(

@@ -5,7 +5,7 @@ import { addUploadBreadcrumb } from "./sentry";
 import { supabase } from "./supabase";
 
 const TUS_VERSION = "1.0.0";
-const TUS_CHUNK_SIZE = 2 * 1024 * 1024;
+const TUS_CHUNK_SIZE = 1 * 1024 * 1024;
 const TUS_CHUNK_TIMEOUT_MS = 90 * 1000;
 const TUS_CREATE_TIMEOUT_MS = 30 * 1000;
 const TUS_STATE_PREFIX = "recapd_tus_v1_";

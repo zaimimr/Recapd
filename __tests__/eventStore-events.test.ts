@@ -883,7 +883,7 @@ describe("fetching participant stats", () => {
 });
 
 describe("fetching shared media items", () => {
-	test("loads only shared-visibility photos ordered by newest capture time first", async () => {
+	test("loads only shared-visibility photos ordered by oldest capture time first", async () => {
 		const mediaChain = buildChain({
 			data: [
 				{
@@ -902,7 +902,7 @@ describe("fetching shared media items", () => {
 
 		expect(useEventStore.getState().mediaItems).toHaveLength(1);
 		expect(mediaChain.eq).toHaveBeenCalledWith("visibility", "shared");
-		expect(mediaChain.order).toHaveBeenCalledWith("captured_at", { ascending: false });
+		expect(mediaChain.order).toHaveBeenCalledWith("captured_at", { ascending: true });
 	});
 });
 

@@ -11,7 +11,12 @@ import {
 	View,
 } from "react-native";
 import { getAvatarColor } from "@/lib/colors";
-import { createVideoThumbnailUri, usePhotoThumbnailUrl, useStorageUrl } from "@/lib/storage";
+import {
+	createVideoThumbnailUri,
+	getOrCreatePhotoGridThumbnail,
+	usePhotoThumbnailUrl,
+	useStorageUrl,
+} from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
 import type { MergedMediaItem } from "./MomentCluster";
 
@@ -55,6 +60,7 @@ function GridTile({
 }) {
 	const isVideo = photo.media_type === "video";
 	const [generatedThumbnailUri, setGeneratedThumbnailUri] = useState<string | null>(null);
+	const [pendingPhotoThumbnailUri, setPendingPhotoThumbnailUri] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -84,6 +90,28 @@ function GridTile({
 		};
 	}, [isVideo, photo.localThumbnailUri, photo.localUri, photo.thumbnail_path]);
 
+	useEffect(() => {
+		let cancelled = false;
+
+		async function resolvePendingPhotoThumbnail() {
+			if (isVideo || !photo.isPending || photo.localThumbnailUri || !photo.localUri) {
+				setPendingPhotoThumbnailUri(null);
+				return;
+			}
+
+			const uri = await getOrCreatePhotoGridThumbnail(photo.id, photo.localUri);
+			if (!cancelled) {
+				setPendingPhotoThumbnailUri(uri);
+			}
+		}
+
+		void resolvePendingPhotoThumbnail();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [isVideo, photo.isPending, photo.localThumbnailUri, photo.localUri, photo.id]);
+
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 	const signedPhotoUrl = usePhotoThumbnailUrl(photo.isPending ? null : photo.storage_path);
 
@@ -92,7 +120,7 @@ function GridTile({
 			if (isVideo) {
 				return photo.localThumbnailUri || generatedThumbnailUri || null;
 			}
-			return photo.localUri || null;
+			return photo.localThumbnailUri || pendingPhotoThumbnailUri || null;
 		}
 
 		if (isVideo) {
@@ -120,9 +148,10 @@ function GridTile({
 						source={{ uri: imageUri }}
 						style={[styles.media, photo.isPending && styles.pendingImage]}
 						contentFit="cover"
-						cachePolicy="memory-disk"
-						transition={120}
+						cachePolicy="disk"
+						priority="low"
 						recyclingKey={photo.id}
+						allowDownscaling
 					/>
 				) : (
 					<View style={[styles.media, styles.placeholder]}>
@@ -318,9 +347,9 @@ export default function MasonryGrid({
 				contentContainerStyle={styles.container}
 				showsVerticalScrollIndicator={false}
 				scrollEnabled={false}
-				initialNumToRender={18}
-				maxToRenderPerBatch={12}
-				windowSize={7}
+				initialNumToRender={9}
+				maxToRenderPerBatch={6}
+				windowSize={3}
 				removeClippedSubviews
 			/>
 		</View>
