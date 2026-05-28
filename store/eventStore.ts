@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { safeDate } from "@/lib/dateUtils";
 import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
+import { addUploadBreadcrumb } from "@/lib/sentry";
 import type { UploadFailureReason } from "@/lib/storage";
 import { createVideoThumbnailUri } from "@/lib/storage";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
@@ -996,6 +997,20 @@ export const useEventStore = create<EventState>((set, get) => {
 			const allUploads = [...get().pendingUploads, ...newUploads];
 			set({ pendingUploads: allUploads });
 			await persistPendingUploads(allUploads);
+
+			const totalBytes = newUploads.reduce((sum, u) => sum + (u.fileSize ?? 0), 0);
+			const photoCount = newUploads.filter((u) => u.mediaType === "photo").length;
+			const videoCount = newUploads.filter((u) => u.mediaType === "video").length;
+			addUploadBreadcrumb("eventStore.enqueue", {
+				eventId,
+				userId,
+				added: newUploads.length,
+				skipped: photos.length - newPhotos.length,
+				photoCount,
+				videoCount,
+				totalBytes,
+				queueDepth: allUploads.length,
+			});
 
 			get().processPendingUploads();
 			return {

@@ -1,16 +1,12 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
 
 type SentryExtra = {
 	sentryDsn?: string;
-	slackErrorWebhookUrl?: string;
 };
 
 const extra = (Constants.expoConfig?.extra ?? {}) as SentryExtra;
 const dsn = extra.sentryDsn ?? process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
-const slackWebhookUrl =
-	extra.slackErrorWebhookUrl ?? process.env.EXPO_PUBLIC_SLACK_ERROR_WEBHOOK_URL ?? "";
 
 const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV === "development";
 const environment = isDev ? "development" : "production";
@@ -60,13 +56,11 @@ export function initSentry(): void {
 		debug: false,
 		enableAutoSessionTracking: true,
 		tracesSampleRate: isDev ? 1.0 : 0.2,
+		maxBreadcrumbs: 100,
 		integrations: [navigationIntegration],
-		beforeSend(event, hint) {
+		beforeSend(event) {
 			if (shouldDropSentryEvent(event)) {
 				return null;
-			}
-			if (!isDev) {
-				void postErrorToSlack(event, hint).catch(() => undefined);
 			}
 			return event;
 		},
@@ -114,65 +108,35 @@ export function captureSentryMessage(
 	});
 }
 
-async function postErrorToSlack(
-	event: Sentry.Event,
-	hint: { originalException?: unknown } | undefined
-): Promise<void> {
-	if (!slackWebhookUrl) return;
-
-	const exception = event.exception?.values?.[0];
-	const fallbackFromHint =
-		hint?.originalException != null ? String(hint.originalException) : undefined;
-	const title =
-		exception?.type && exception?.value
-			? `${exception.type}: ${exception.value}`
-			: (event.message ?? fallbackFromHint ?? "Unknown error");
-
-	const frames = exception?.stacktrace?.frames ?? [];
-	const topFrames = frames
-		.slice(-5)
-		.reverse()
-		.map((frame) => {
-			const fn = frame.function ?? "?";
-			const file = frame.filename ?? "?";
-			const line = frame.lineno ?? "?";
-			return `${fn} (${file}:${line})`;
-		})
-		.join("\n");
-
-	const route = typeof event.tags?.route === "string" ? (event.tags.route as string) : undefined;
-	const user = event.user?.id ? `user:${event.user.id}` : "anon";
-	const level = event.level ?? "error";
-
-	const headerLines = [
-		`*[Recapd ${level}]* ${Platform.OS} v${release ?? "?"}`,
-		`route: \`${route ?? "n/a"}\` | ${user} | env: ${environment}`,
-		`event: ${event.event_id ?? "?"}`,
-	];
-
-	const text = [
-		headerLines.join("\n"),
-		"",
-		`*${truncate(title, 300)}*`,
-		topFrames ? `\n\`\`\`${truncate(topFrames, 1500)}\`\`\`` : "",
-	]
-		.filter(Boolean)
-		.join("\n");
-
-	try {
-		await fetch(slackWebhookUrl, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ text }),
-		});
-	} catch {
-		return;
-	}
+export function addUploadBreadcrumb(
+	message: string,
+	data?: Record<string, unknown>,
+	level: Sentry.SeverityLevel = "info"
+): void {
+	if (!initialized) return;
+	Sentry.addBreadcrumb({
+		category: "upload",
+		level,
+		message,
+		data,
+		timestamp: Date.now() / 1000,
+	});
 }
 
-function truncate(value: string, max: number): string {
-	if (value.length <= max) return value;
-	return `${value.slice(0, max - 1)}…`;
+export function withUploadScope<T>(
+	tags: { uploadId?: string; eventId?: string; userId?: string; mediaType?: string },
+	work: () => Promise<T> | T
+): Promise<T> {
+	if (!initialized) {
+		return Promise.resolve().then(() => work());
+	}
+	return Sentry.withScope((scope) => {
+		if (tags.uploadId) scope.setTag("uploadId", tags.uploadId);
+		if (tags.eventId) scope.setTag("eventId", tags.eventId);
+		if (tags.userId) scope.setTag("targetUserId", tags.userId);
+		if (tags.mediaType) scope.setTag("mediaType", tags.mediaType);
+		return Promise.resolve().then(() => work());
+	}) as Promise<T>;
 }
 
 export { Sentry };

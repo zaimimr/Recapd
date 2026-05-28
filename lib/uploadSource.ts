@@ -8,6 +8,21 @@ import {
 } from "expo-file-system/legacy";
 import * as MediaLibrary from "expo-media-library";
 import { logger } from "./logger";
+import { addUploadBreadcrumb } from "./sentry";
+
+function uriScheme(uri: string): string {
+	if (uri.startsWith("ph://")) return "ph";
+	if (uri.startsWith("assets-library://")) return "assets-library";
+	if (uri.startsWith("content://")) return "content";
+	if (uri.startsWith("file://")) {
+		if (uri.includes("/Library/Caches/")) return "file:cache";
+		if (uri.includes("/tmp/")) return "file:tmp";
+		if (documentDirectory && uri.startsWith(documentDirectory)) return "file:doc";
+		return "file:other";
+	}
+	if (uri.startsWith("/")) return "abs-path";
+	return "unknown";
+}
 
 const SOURCE_DIR_NAME = "upload-sources";
 const MIN_FREE_DISK_SAFETY_BYTES = 50 * 1024 * 1024;
@@ -91,16 +106,28 @@ async function ensureFreeDiskFor(size: number): Promise<void> {
 }
 
 async function resolvePhAssetToFileUri(assetId: string): Promise<string> {
+	const startedAt = Date.now();
+	addUploadBreadcrumb("phasset.resolve.start", { assetId });
 	const info = await MediaLibrary.getAssetInfoAsync(assetId, {
 		shouldDownloadFromNetwork: true,
 	});
 	const localUri = info?.localUri;
 	if (!localUri) {
+		addUploadBreadcrumb(
+			"phasset.resolve.icloud-unavailable",
+			{ assetId, elapsedMs: Date.now() - startedAt },
+			"warning"
+		);
 		throw new UploadSourceUnavailableError(
 			"icloud",
 			`Asset ${assetId} could not be downloaded from iCloud`
 		);
 	}
+	addUploadBreadcrumb("phasset.resolve.ok", {
+		assetId,
+		elapsedMs: Date.now() - startedAt,
+		uriScheme: uriScheme(localUri),
+	});
 	return localUri;
 }
 
@@ -112,9 +139,30 @@ async function copyToSources(
 ): Promise<MaterializedSource> {
 	const extension = getExtension(fromUri, fallbackExtension);
 	const target = joinSourcePath(uploadId, extension);
+	const startedAt = Date.now();
+	addUploadBreadcrumb("materialize.copy.stat", { fromScheme: uriScheme(fromUri), uploadId });
 
-	const sourceInfo = await getInfoAsync(stripUriDecorations(fromUri));
+	let sourceInfo: Awaited<ReturnType<typeof getInfoAsync>>;
+	try {
+		sourceInfo = await getInfoAsync(stripUriDecorations(fromUri));
+	} catch (statError) {
+		addUploadBreadcrumb(
+			"materialize.copy.stat-threw",
+			{
+				uploadId,
+				fromScheme: uriScheme(fromUri),
+				err: statError instanceof Error ? statError.message : String(statError),
+			},
+			"error"
+		);
+		throw statError;
+	}
 	if (!sourceInfo.exists || sourceInfo.isDirectory) {
+		addUploadBreadcrumb(
+			"materialize.copy.source-missing",
+			{ uploadId, fromScheme: uriScheme(fromUri) },
+			"warning"
+		);
 		throw new UploadSourceUnavailableError(
 			"missing",
 			`Source file vanished before copy: ${fromUri}`
@@ -127,7 +175,22 @@ async function copyToSources(
 	}
 
 	await ensureSourcesDir();
-	await copyAsync({ from: stripUriDecorations(fromUri), to: target });
+	try {
+		await copyAsync({ from: stripUriDecorations(fromUri), to: target });
+	} catch (copyError) {
+		addUploadBreadcrumb(
+			"materialize.copy.copy-threw",
+			{
+				uploadId,
+				fromScheme: uriScheme(fromUri),
+				sizeBytes: detectedSize,
+				elapsedMs: Date.now() - startedAt,
+				err: copyError instanceof Error ? copyError.message : String(copyError),
+			},
+			"error"
+		);
+		throw copyError;
+	}
 
 	const copied = await getInfoAsync(target);
 	if (!copied.exists || copied.isDirectory) {
@@ -149,13 +212,26 @@ async function copyToSources(
 		);
 	}
 
+	addUploadBreadcrumb("materialize.copy.ok", {
+		uploadId,
+		fromScheme: uriScheme(fromUri),
+		sizeBytes: finalSize,
+		elapsedMs: Date.now() - startedAt,
+	});
+
 	return {
 		path: target,
 		size: finalSize,
 		cleanup: async () => {
 			try {
 				await deleteAsync(target, { idempotent: true });
+				addUploadBreadcrumb("materialize.cleanup.ok", { uploadId });
 			} catch (error) {
+				addUploadBreadcrumb(
+					"materialize.cleanup.failed",
+					{ uploadId, err: error instanceof Error ? error.message : String(error) },
+					"warning"
+				);
 				logger.warn("Upload source cleanup failed", error, { target });
 			}
 		},
@@ -198,59 +274,86 @@ export async function materializeUploadSource(
 ): Promise<MaterializedSource> {
 	const { uri, assetId, uploadId, mediaType, knownSize } = options;
 	const fallbackExtension = mediaType === "video" ? "mp4" : "jpg";
+	const scheme = uriScheme(uri);
 
-	if (isUnderDocumentDirectory(uri)) {
-		try {
-			return await useInPlace(uri, knownSize);
-		} catch (error) {
-			if (
-				error instanceof UploadSourceUnavailableError &&
-				error.reason === "missing" &&
-				assetId
-			) {
-				logger.info("Doc-dir source vanished, recovering via PHAsset", { assetId });
-				const recovered = await resolvePhAssetToFileUri(assetId);
-				return copyToSources(recovered, uploadId, fallbackExtension, knownSize);
+	addUploadBreadcrumb("materialize.start", {
+		uploadId,
+		uriScheme: scheme,
+		assetId,
+		mediaType,
+		knownSize,
+	});
+
+	const result = await materializeImpl();
+	addUploadBreadcrumb("materialize.done", {
+		uploadId,
+		path: result.path,
+		sizeBytes: result.size,
+	});
+	return result;
+
+	async function materializeImpl(): Promise<MaterializedSource> {
+		if (isUnderDocumentDirectory(uri)) {
+			try {
+				return await useInPlace(uri, knownSize);
+			} catch (error) {
+				if (
+					error instanceof UploadSourceUnavailableError &&
+					error.reason === "missing" &&
+					assetId
+				) {
+					addUploadBreadcrumb(
+						"materialize.recover.phasset",
+						{ uploadId, assetId, reason: "doc-dir-vanished" },
+						"warning"
+					);
+					const recovered = await resolvePhAssetToFileUri(assetId);
+					return copyToSources(recovered, uploadId, fallbackExtension, knownSize);
+				}
+				throw error;
 			}
-			throw error;
 		}
-	}
 
-	if (isPhAssetUri(uri)) {
-		const inferredAssetId =
-			assetId ?? uri.replace("ph://", "").replace("assets-library://", "").split("/")[0];
-		if (!inferredAssetId) {
-			throw new UploadSourceUnavailableError(
-				"missing",
-				`Cannot resolve PHAsset URI without an asset id: ${uri}`
-			);
-		}
-		const resolved = await resolvePhAssetToFileUri(inferredAssetId);
-		return copyToSources(resolved, uploadId, fallbackExtension, knownSize);
-	}
-
-	if (isContentUri(uri)) {
-		return copyToSources(uri, uploadId, fallbackExtension, knownSize);
-	}
-
-	if (uri.startsWith("file://") || uri.startsWith("/")) {
-		try {
-			return await copyToSources(uri, uploadId, fallbackExtension, knownSize);
-		} catch (error) {
-			if (
-				error instanceof UploadSourceUnavailableError &&
-				error.reason === "missing" &&
-				assetId
-			) {
-				logger.info("Source file vanished, recovering via PHAsset", { assetId, uri });
-				const recovered = await resolvePhAssetToFileUri(assetId);
-				return copyToSources(recovered, uploadId, fallbackExtension, knownSize);
+		if (isPhAssetUri(uri)) {
+			const inferredAssetId =
+				assetId ?? uri.replace("ph://", "").replace("assets-library://", "").split("/")[0];
+			if (!inferredAssetId) {
+				throw new UploadSourceUnavailableError(
+					"missing",
+					`Cannot resolve PHAsset URI without an asset id: ${uri}`
+				);
 			}
-			throw error;
+			const resolved = await resolvePhAssetToFileUri(inferredAssetId);
+			return copyToSources(resolved, uploadId, fallbackExtension, knownSize);
 		}
-	}
 
-	throw new UploadSourceUnavailableError("missing", `Unsupported source URI scheme: ${uri}`);
+		if (isContentUri(uri)) {
+			return copyToSources(uri, uploadId, fallbackExtension, knownSize);
+		}
+
+		if (uri.startsWith("file://") || uri.startsWith("/")) {
+			try {
+				return await copyToSources(uri, uploadId, fallbackExtension, knownSize);
+			} catch (error) {
+				if (
+					error instanceof UploadSourceUnavailableError &&
+					error.reason === "missing" &&
+					assetId
+				) {
+					addUploadBreadcrumb(
+						"materialize.recover.phasset",
+						{ uploadId, assetId, reason: "file-vanished", uriScheme: scheme },
+						"warning"
+					);
+					const recovered = await resolvePhAssetToFileUri(assetId);
+					return copyToSources(recovered, uploadId, fallbackExtension, knownSize);
+				}
+				throw error;
+			}
+		}
+
+		throw new UploadSourceUnavailableError("missing", `Unsupported source URI scheme: ${uri}`);
+	}
 }
 
 export async function cleanupOrphanedUploadSources(): Promise<void> {

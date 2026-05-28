@@ -1,10 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { EncodingType, readAsStringAsync } from "expo-file-system/legacy";
 import { logger } from "./logger";
+import { addUploadBreadcrumb } from "./sentry";
 import { supabase } from "./supabase";
 
 const TUS_VERSION = "1.0.0";
-const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+const TUS_CHUNK_SIZE = 2 * 1024 * 1024;
 const TUS_CHUNK_TIMEOUT_MS = 90 * 1000;
 const TUS_CREATE_TIMEOUT_MS = 30 * 1000;
 const TUS_STATE_PREFIX = "recapd_tus_v1_";
@@ -280,6 +281,17 @@ export async function uploadMediaResumable(
 		throw new Error("TUS upload requires a positive fileSize");
 	}
 
+	const totalChunks = Math.ceil(fileSize / TUS_CHUNK_SIZE);
+	const startedAt = Date.now();
+	addUploadBreadcrumb("tus.start", {
+		bucket,
+		objectName,
+		fileSize,
+		totalChunks,
+		chunkSize: TUS_CHUNK_SIZE,
+		contentType,
+	});
+
 	const persisted = await loadPersistedState(fileFingerprint);
 	let tusUrl: string;
 	let offset = 0;
@@ -288,25 +300,24 @@ export async function uploadMediaResumable(
 		try {
 			offset = await getTusOffset(persisted.tusUrl);
 			tusUrl = persisted.tusUrl;
-			logger.info("Resuming TUS upload", {
+			addUploadBreadcrumb("tus.resume.ok", {
 				bucket,
 				objectName,
-				offset,
+				resumedOffset: offset,
 				totalBytes: fileSize,
 			});
 		} catch (error) {
-			logger.warn("TUS resume probe failed, restarting upload", error, {
-				objectName,
-			});
+			addUploadBreadcrumb(
+				"tus.resume.failed",
+				{
+					bucket,
+					objectName,
+					err: error instanceof Error ? error.message : String(error),
+				},
+				"warning"
+			);
 			await clearPersistedState(fileFingerprint);
-			tusUrl = await createTusUpload({
-				totalBytes: fileSize,
-				bucket,
-				objectName,
-				contentType,
-				cacheControl,
-				upsert,
-			});
+			tusUrl = await createWithBreadcrumb();
 			offset = 0;
 			await savePersistedState(fileFingerprint, {
 				tusUrl,
@@ -318,14 +329,7 @@ export async function uploadMediaResumable(
 		if (persisted) {
 			await clearPersistedState(fileFingerprint);
 		}
-		tusUrl = await createTusUpload({
-			totalBytes: fileSize,
-			bucket,
-			objectName,
-			contentType,
-			cacheControl,
-			upsert,
-		});
+		tusUrl = await createWithBreadcrumb();
 		await savePersistedState(fileFingerprint, {
 			tusUrl,
 			totalBytes: fileSize,
@@ -333,14 +337,54 @@ export async function uploadMediaResumable(
 		});
 	}
 
+	let chunkIndex = Math.floor(offset / TUS_CHUNK_SIZE);
 	while (offset < fileSize) {
 		if (signal?.aborted) {
+			addUploadBreadcrumb("tus.aborted", { offset, fileSize }, "warning");
 			throw new Error("TUS upload aborted");
 		}
 		const length = Math.min(TUS_CHUNK_SIZE, fileSize - offset);
+		const chunkStart = Date.now();
 		const chunk = await readFileChunk(fileUri, offset, length);
-		const nextOffset = await uploadTusChunk({ tusUrl, chunk, offset });
+		const readMs = Date.now() - chunkStart;
+		const patchStart = Date.now();
+		let nextOffset: number;
+		try {
+			nextOffset = await uploadTusChunk({ tusUrl, chunk, offset });
+		} catch (chunkError) {
+			addUploadBreadcrumb(
+				"tus.chunk.failed",
+				{
+					chunkIndex,
+					of: totalChunks,
+					offset,
+					length,
+					readMs,
+					patchMs: Date.now() - patchStart,
+					err: chunkError instanceof Error ? chunkError.message : String(chunkError),
+					httpStatus:
+						chunkError &&
+						typeof chunkError === "object" &&
+						"httpStatus" in chunkError
+							? (chunkError as { httpStatus?: number }).httpStatus
+							: undefined,
+				},
+				"error"
+			);
+			throw chunkError;
+		}
+		const patchMs = Date.now() - patchStart;
+		addUploadBreadcrumb("tus.chunk.ok", {
+			chunkIndex,
+			of: totalChunks,
+			from: offset,
+			to: nextOffset,
+			length,
+			readMs,
+			patchMs,
+		});
 		offset = nextOffset;
+		chunkIndex += 1;
 		onProgress?.(offset, fileSize);
 		await savePersistedState(fileFingerprint, {
 			tusUrl,
@@ -350,5 +394,51 @@ export async function uploadMediaResumable(
 	}
 
 	await clearPersistedState(fileFingerprint);
+	const elapsedMs = Date.now() - startedAt;
+	addUploadBreadcrumb("tus.done", {
+		bucket,
+		objectName,
+		fileSize,
+		elapsedMs,
+		throughputKbps: elapsedMs > 0 ? Math.round((fileSize * 8) / elapsedMs) : null,
+	});
 	return { path: objectName };
+
+	async function createWithBreadcrumb(): Promise<string> {
+		const createStart = Date.now();
+		try {
+			const url = await createTusUpload({
+				totalBytes: fileSize,
+				bucket,
+				objectName,
+				contentType,
+				cacheControl,
+				upsert,
+			});
+			addUploadBreadcrumb("tus.create.ok", {
+				bucket,
+				objectName,
+				elapsedMs: Date.now() - createStart,
+			});
+			return url;
+		} catch (createError) {
+			addUploadBreadcrumb(
+				"tus.create.failed",
+				{
+					bucket,
+					objectName,
+					elapsedMs: Date.now() - createStart,
+					err: createError instanceof Error ? createError.message : String(createError),
+					httpStatus:
+						createError &&
+						typeof createError === "object" &&
+						"httpStatus" in createError
+							? (createError as { httpStatus?: number }).httpStatus
+							: undefined,
+				},
+				"error"
+			);
+			throw createError;
+		}
+	}
 }
