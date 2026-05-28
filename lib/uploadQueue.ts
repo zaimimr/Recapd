@@ -1,3 +1,4 @@
+import { addUploadBreadcrumb } from "./sentry";
 import { type UploadFailureReason, uploadMedia } from "./storage";
 
 export type MediaType = "photo" | "video";
@@ -93,6 +94,13 @@ export async function processUpload(
 	upload: PendingUpload
 ): Promise<{ success: boolean; retryable: boolean }> {
 	const startedAt = new Date().toISOString();
+	addUploadBreadcrumb("queue.processUpload.start", {
+		uploadId: upload.id,
+		eventId: upload.eventId,
+		mediaType: upload.mediaType,
+		attempt: upload.retryCount,
+		sizeBytes: upload.fileSize,
+	});
 	await onStatusChange?.(upload.id, {
 		status: "syncing",
 		startedAt: upload.startedAt ?? startedAt,
@@ -150,6 +158,10 @@ export async function processUpload(
 	}
 
 	if (result.success && result.path) {
+		addUploadBreadcrumb("queue.processUpload.ok", {
+			uploadId: upload.id,
+			storagePath: result.path,
+		});
 		await onUploadComplete?.(upload, result);
 		await onStatusChange?.(upload.id, {
 			finishedAt: new Date().toISOString(),
@@ -159,6 +171,18 @@ export async function processUpload(
 		return { success: true, retryable: false };
 	} else {
 		const failureReason = result.failureReason || "unknown";
+		addUploadBreadcrumb(
+			"queue.processUpload.failed",
+			{
+				uploadId: upload.id,
+				attempt: upload.retryCount,
+				maxRetries: MAX_RETRIES,
+				failureReason,
+				err: result.error,
+				retryable: isRetryableFailureReason(failureReason),
+			},
+			"warning"
+		);
 		if (upload.retryCount >= MAX_RETRIES) {
 			await onUploadFailed?.(upload, result.error || "Upload failed", failureReason);
 			await onStatusChange?.(upload.id, {

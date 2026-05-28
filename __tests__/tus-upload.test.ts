@@ -287,7 +287,7 @@ describe("tusUpload protocol", () => {
 
 			expect(result.path).toBe("ev/usr/big.mp4");
 			const patchCount = getCalls().filter((c) => (c.init.method ?? "").toUpperCase() === "PATCH").length;
-			expect(patchCount).toBe(Math.ceil(fileSize / (6 * 1024 * 1024)));
+			expect(patchCount).toBe(Math.ceil(fileSize / (2 * 1024 * 1024)));
 			expect(mockedAsyncStorage.__store.size).toBe(0);
 		});
 
@@ -339,7 +339,7 @@ describe("tusUpload protocol", () => {
 			expect(methods).toContain("HEAD");
 			expect(methods).not.toContain("POST");
 			const patchCount = methods.filter((m) => m === "PATCH").length;
-			expect(patchCount).toBe(1);
+			expect(patchCount).toBe(Math.ceil((fileSize - 12000000) / (2 * 1024 * 1024)));
 		});
 
 		it("restarts when persisted upload is gone (404 on HEAD)", async () => {

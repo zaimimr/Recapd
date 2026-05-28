@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
 import { safeDate } from "./dateUtils";
 import { logger } from "./logger";
+import { addUploadBreadcrumb } from "./sentry";
 import { supabase } from "./supabase";
 import { uploadMediaResumable } from "./tusUpload";
 import {
@@ -312,9 +313,23 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 
 	const effectiveUploadId =
 		uploadId ?? `upl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+	const overallStart = Date.now();
+	addUploadBreadcrumb("uploadMedia.enter", {
+		uploadId: effectiveUploadId,
+		eventId,
+		userId,
+		mediaType,
+		knownSize: fileSize,
+		hasAssetId: Boolean(assetId),
+	});
 
 	const currentProfileId = await getCurrentProfileId();
 	if (!currentProfileId) {
+		addUploadBreadcrumb(
+			"uploadMedia.no-session",
+			{ uploadId: effectiveUploadId, eventId, userId },
+			"warning"
+		);
 		logger.warn("Skipping upload without an active profile", undefined, { eventId, userId });
 		return {
 			success: false,
@@ -324,6 +339,11 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 	}
 
 	if (currentProfileId !== userId) {
+		addUploadBreadcrumb(
+			"uploadMedia.stale-profile",
+			{ uploadId: effectiveUploadId, eventId, userId, currentProfileId },
+			"warning"
+		);
 		logger.warn("Skipping upload for stale profile", undefined, {
 			eventId,
 			queuedUserId: userId,
@@ -348,6 +368,15 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			});
 		} catch (sourceError) {
 			if (sourceError instanceof UploadSourceUnavailableError) {
+				addUploadBreadcrumb(
+					"uploadMedia.materialize.unavailable",
+					{
+						uploadId: effectiveUploadId,
+						reason: sourceError.reason,
+						err: sourceError.message,
+					},
+					"warning"
+				);
 				logger.warn("Upload source unavailable", sourceError, {
 					eventId,
 					userId,
@@ -390,9 +419,29 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 				mediaType,
 				fileFingerprint: tusFingerprint,
 			});
+			addUploadBreadcrumb("uploadMedia.tus.ok", {
+				uploadId: effectiveUploadId,
+				storagePath: uploadData.path,
+				sizeBytes: mediaSize,
+			});
 		} catch (uploadError) {
-			logger.error("Storage upload error", uploadError, { eventId, userId });
 			const failureReason: UploadFailureReason = classifyUploadError(uploadError);
+			addUploadBreadcrumb(
+				"uploadMedia.tus.failed",
+				{
+					uploadId: effectiveUploadId,
+					storagePath: fileName,
+					sizeBytes: mediaSize,
+					failureReason,
+					err: uploadError instanceof Error ? uploadError.message : String(uploadError),
+					httpStatus:
+						uploadError && typeof uploadError === "object" && "httpStatus" in uploadError
+							? (uploadError as { httpStatus?: number }).httpStatus
+							: undefined,
+				},
+				"error"
+			);
+			logger.error("Storage upload error", uploadError, { eventId, userId });
 			const baseMessage =
 				uploadError instanceof Error ? uploadError.message : "Storage upload failed";
 			let userMessage = baseMessage;
@@ -442,6 +491,16 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			.single();
 
 		if (dbError) {
+			addUploadBreadcrumb(
+				"uploadMedia.db.failed",
+				{
+					uploadId: effectiveUploadId,
+					storagePath: uploadData.path,
+					dbCode: dbError.code,
+					dbMessage: dbError.message,
+				},
+				"error"
+			);
 			logger.error("Database insert error", dbError, { eventId, userId });
 			await supabase.storage.from("event-photos").remove([uploadData.path]);
 			if (thumbnailPath) {
@@ -460,6 +519,12 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			};
 		}
 
+		addUploadBreadcrumb("uploadMedia.success", {
+			uploadId: effectiveUploadId,
+			storagePath: uploadData.path,
+			thumbnailPath,
+			elapsedMs: Date.now() - overallStart,
+		});
 		return {
 			success: true,
 			path: uploadData.path,
@@ -467,6 +532,15 @@ export async function uploadMedia(options: UploadMediaOptions): Promise<UploadRe
 			mediaItem: mediaItem as MediaItemWithUser,
 		};
 	} catch (error) {
+		addUploadBreadcrumb(
+			"uploadMedia.unhandled",
+			{
+				uploadId: effectiveUploadId,
+				err: error instanceof Error ? error.message : String(error),
+				elapsedMs: Date.now() - overallStart,
+			},
+			"error"
+		);
 		logger.error("Upload error", error, { eventId, userId });
 		const failureReason: UploadFailureReason = classifyUploadError(error);
 		return {
@@ -537,6 +611,21 @@ export async function resolveStorageUrl(
 		.createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS, options);
 
 	if (error || !data?.signedUrl) {
+		addUploadBreadcrumb(
+			"signedUrl.failed",
+			{
+				bucket,
+				storagePath,
+				transformed: Boolean(options?.transform),
+				errCode:
+					error && typeof error === "object" && "code" in (error as unknown as Record<string, unknown>)
+						? (error as unknown as { code?: string }).code
+						: undefined,
+				errName: error?.name,
+				errMessage: error?.message,
+			},
+			"warning"
+		);
 		throw error || new Error("Signed URL was not returned");
 	}
 
