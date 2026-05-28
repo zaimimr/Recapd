@@ -67,186 +67,129 @@ describe("upload chaos scenarios", () => {
 		jest.useRealTimers();
 	});
 
-	it("recovers from a transient network drop on the first attempt", async () => {
-		mockedUploadMedia
-			.mockResolvedValueOnce({
-				success: false,
-				error: "Network hiccup during upload. We'll retry automatically.",
-				failureReason: "network",
-			})
-			.mockResolvedValue({ success: true, path: "ok/path" });
 
-		const store = makeStore([makePendingUpload()]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(mockedUploadMedia).toHaveBeenCalledTimes(2);
-		expect(onComplete).toHaveBeenCalledTimes(1);
-		expect(onFailed).not.toHaveBeenCalled();
-	});
-
-	it("recovers from a 503 burst then a thrown network error then success", async () => {
-		mockedUploadMedia
-			.mockResolvedValueOnce({
-				success: false,
-				error: "Service Unavailable",
-				failureReason: "network",
-			})
-			.mockRejectedValueOnce(new Error("Network request failed"))
-			.mockResolvedValue({ success: true, path: "ok/path" });
-
-		const store = makeStore([makePendingUpload()]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(mockedUploadMedia).toHaveBeenCalledTimes(3);
-		expect(onComplete).toHaveBeenCalledTimes(1);
-	});
-
-	it("gives up after MAX_RETRIES on persistent network error and calls onFailed once", async () => {
-		mockedUploadMedia.mockResolvedValue({
+	it("fails terminally on the first network drop (no auto-retry)", async () => {
+		mockedUploadMedia.mockResolvedValueOnce({
 			success: false,
-			error: "Network down",
+			error: "Network hiccup during upload.",
 			failureReason: "network",
 		});
 
 		const store = makeStore([makePendingUpload()]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
 		await runPendingTimers();
-		await run;
 
-		expect(mockedUploadMedia).toHaveBeenCalledTimes(4);
-		expect(onFailed).toHaveBeenCalledTimes(1);
+		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
 		expect(onComplete).not.toHaveBeenCalled();
+		expect(onFailed).toHaveBeenCalledTimes(1);
+		expect(onFailed).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "upload_chaos" }),
+			"Network hiccup during upload.",
+			"network"
+		);
 	});
 
-	it("treats stale-profile storage failure as terminal (no retry)", async () => {
-		mockedUploadMedia.mockResolvedValue({
+	it("fails terminally on a thrown network error (no auto-retry)", async () => {
+		mockedUploadMedia.mockRejectedValueOnce(new Error("Network request failed"));
+
+		const store = makeStore([makePendingUpload()]);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
+		await runPendingTimers();
+
+		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
+		expect(onFailed).toHaveBeenCalledTimes(1);
+		expect(onFailed).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "upload_chaos" }),
+			"Network request failed",
+			"network"
+		);
+	});
+
+	it("fails terminally on a timeout (no auto-retry)", async () => {
+		mockedUploadMedia.mockResolvedValueOnce({
+			success: false,
+			error: "Upload took too long. Reconnect to a stable network.",
+			failureReason: "timeout",
+		});
+
+		const store = makeStore([makePendingUpload()]);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
+		await runPendingTimers();
+
+		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
+		expect(onFailed).toHaveBeenCalledTimes(1);
+	});
+
+	it("treats stale-profile storage failure as terminal", async () => {
+		mockedUploadMedia.mockResolvedValueOnce({
 			success: false,
 			error: "Your session changed. Re-select the media and try again.",
 			failureReason: "storage",
 		});
 
 		const store = makeStore([makePendingUpload()]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
 		await runPendingTimers();
-		await run;
 
 		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-		expect(onFailed).not.toHaveBeenCalled();
+		expect(onFailed).toHaveBeenCalledTimes(1);
 	});
 
 	it("disk-full surfaces as storage failure without retry", async () => {
-		mockedUploadMedia.mockResolvedValue({
+		mockedUploadMedia.mockResolvedValueOnce({
 			success: false,
-			error: "Not enough free space on device. Need 600MB, have 120MB free.",
-			failureReason: "storage",
-		});
-
-		const store = makeStore([makePendingUpload({ mediaType: "video", duration: 30000 })]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-		expect(onFailed).not.toHaveBeenCalled();
-	});
-
-	it("iCloud-unavailable surfaces as storage failure without retry", async () => {
-		mockedUploadMedia.mockResolvedValue({
-			success: false,
-			error:
-				"This item is in iCloud and could not be downloaded. Open it in Photos first, then retry.",
+			error: "Not enough free space on device.",
 			failureReason: "storage",
 		});
 
 		const store = makeStore([makePendingUpload()]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
 		await runPendingTimers();
-		await run;
 
 		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-		expect(onFailed).not.toHaveBeenCalled();
-	});
-
-	it("recovers a timeout-then-success sequence", async () => {
-		mockedUploadMedia
-			.mockResolvedValueOnce({
-				success: false,
-				error:
-					"Upload took too long. Reconnect to a stable network and we'll retry automatically.",
-				failureReason: "timeout",
-			})
-			.mockResolvedValue({ success: true, path: "ok/path" });
-
-		const store = makeStore([makePendingUpload({ mediaType: "video", duration: 30000 })]);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(mockedUploadMedia).toHaveBeenCalledTimes(2);
-		expect(onComplete).toHaveBeenCalledTimes(1);
-	});
-
-	it("mixed batch: 3 succeed instantly, 2 recover after one network blip", async () => {
-		const callCounts: Record<string, number> = {};
-		mockedUploadMedia.mockImplementation(async (opts: any) => {
-			const id = opts.eventId;
-			callCounts[id] = (callCounts[id] ?? 0) + 1;
-			if ((id === "flaky_a" || id === "flaky_b") && callCounts[id] === 1) {
-				return {
-					success: false,
-					error: "Network hiccup",
-					failureReason: "network",
-				};
-			}
-			return { success: true, path: `path_${id}` };
-		});
-
-		const uploads = [
-			makePendingUpload({ id: "u1", eventId: "ok_1" }),
-			makePendingUpload({ id: "u2", eventId: "flaky_a" }),
-			makePendingUpload({ id: "u3", eventId: "ok_2" }),
-			makePendingUpload({ id: "u4", eventId: "flaky_b" }),
-			makePendingUpload({ id: "u5", eventId: "ok_3" }),
-		];
-		const store = makeStore(uploads);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(onComplete).toHaveBeenCalledTimes(5);
-		expect(onFailed).not.toHaveBeenCalled();
-		expect(callCounts.flaky_a).toBe(2);
-		expect(callCounts.flaky_b).toBe(2);
-		expect(callCounts.ok_1).toBe(1);
-	});
-
-	it("permanent failure on one upload does not block siblings", async () => {
-		mockedUploadMedia.mockImplementation(async (opts: any) => {
-			if (opts.eventId === "doomed") {
-				return {
-					success: false,
-					error: "Network down",
-					failureReason: "network",
-				};
-			}
-			return { success: true, path: `path_${opts.eventId}` };
-		});
-
-		const uploads = [
-			makePendingUpload({ id: "u1", eventId: "ok_1" }),
-			makePendingUpload({ id: "u2", eventId: "doomed" }),
-			makePendingUpload({ id: "u3", eventId: "ok_2" }),
-		];
-		const store = makeStore(uploads);
-		const run = processUploadQueue(store.uploads, store.getLatest, store.update);
-		await runPendingTimers();
-		await run;
-
-		expect(onComplete).toHaveBeenCalledTimes(2);
 		expect(onFailed).toHaveBeenCalledTimes(1);
+	});
+
+	it("iCloud-unavailable (permission) surfaces as failure without retry", async () => {
+		mockedUploadMedia.mockResolvedValueOnce({
+			success: false,
+			error: "This item is in iCloud and could not be downloaded.",
+			failureReason: "permission",
+		});
+
+		const store = makeStore([makePendingUpload()]);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
+		await runPendingTimers();
+
+		expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
+		expect(onFailed).toHaveBeenCalledTimes(1);
+	});
+
+	it("mixed batch: 3 succeed, 2 fail terminally on first attempt", async () => {
+		const uploads = [
+			makePendingUpload({ id: "u1", eventId: "evt1" }),
+			makePendingUpload({ id: "u2", eventId: "evt2" }),
+			makePendingUpload({ id: "u3", eventId: "evt3" }),
+			makePendingUpload({ id: "u4", eventId: "evt4" }),
+			makePendingUpload({ id: "u5", eventId: "evt5" }),
+		];
+		mockedUploadMedia.mockImplementation(async (opts: any) => {
+			if (opts.eventId === "evt2" || opts.eventId === "evt4") {
+				return {
+					success: false,
+					error: "Network hiccup.",
+					failureReason: "network",
+				};
+			}
+			return { success: true, path: `path-${opts.eventId}` };
+		});
+
+		const store = makeStore(uploads);
+		await processUploadQueue(store.uploads, store.getLatest, store.update);
+		await runPendingTimers();
+
+		expect(mockedUploadMedia).toHaveBeenCalledTimes(5);
+		expect(onComplete).toHaveBeenCalledTimes(3);
+		expect(onFailed).toHaveBeenCalledTimes(2);
 	});
 });

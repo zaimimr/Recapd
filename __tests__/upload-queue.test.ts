@@ -2,7 +2,6 @@ jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
 
 import { uploadMedia } from "@/lib/storage";
 import {
-	computeRetryDelayMs,
 	generateUploadId,
 	type PendingUpload,
 	processUpload,
@@ -61,13 +60,13 @@ describe("uploadQueue", () => {
 			expect(onFailed).not.toHaveBeenCalled();
 		});
 
-		it("returns false and calls onStatusChange(failed) when below max retries", async () => {
+		it("marks failure terminal on every error (no auto-retry)", async () => {
 			mockedUploadMedia.mockResolvedValue({ success: false, error: "fail" });
 
-			const upload = makePendingUpload({ retryCount: 1 });
+			const upload = makePendingUpload({ retryCount: 0 });
 			const result = await processUpload(upload);
 
-			expect(result).toEqual({ success: false, retryable: true });
+			expect(result).toEqual({ success: false, retryable: false });
 			expect(onStatusChangeCb).toHaveBeenCalledWith(
 				"upload_123",
 				expect.objectContaining({ status: "syncing" })
@@ -76,24 +75,20 @@ describe("uploadQueue", () => {
 				"upload_123",
 				expect.objectContaining({ status: "failed" })
 			);
-			expect(onFailed).not.toHaveBeenCalled();
+			expect(onFailed).toHaveBeenCalledTimes(1);
 		});
 
-		it("calls onUploadFailed when retryCount >= MAX_RETRIES", async () => {
+		it("calls onUploadFailed once per failure regardless of retryCount", async () => {
 			mockedUploadMedia.mockResolvedValue({ success: false, error: "permanent fail" });
 
-			const upload = makePendingUpload({ retryCount: 3 });
+			const upload = makePendingUpload({ retryCount: 0 });
 			const result = await processUpload(upload);
 
-			expect(result).toEqual({ success: false, retryable: true });
+			expect(result).toEqual({ success: false, retryable: false });
 			expect(onFailed).toHaveBeenCalledWith(upload, "permanent fail", "unknown");
-			expect(onStatusChangeCb).toHaveBeenCalledWith(
-				"upload_123",
-				expect.objectContaining({ status: "syncing" })
-			);
 		});
 
-		it("marks storage authorization failures as non-retryable", async () => {
+		it("marks storage authorization failures as terminal", async () => {
 			mockedUploadMedia.mockResolvedValue({
 				success: false,
 				error: "Your session changed. Re-select the media and try again.",
@@ -105,62 +100,29 @@ describe("uploadQueue", () => {
 			expect(result).toEqual({ success: false, retryable: false });
 		});
 
-		it("marks network failures as retryable", async () => {
+		it("marks network failures as terminal too (no auto-retry)", async () => {
 			mockedUploadMedia.mockResolvedValue({
 				success: false,
-				error: "Network hiccup during upload. We'll retry automatically.",
+				error: "Network hiccup during upload.",
 				failureReason: "network",
 			});
 
 			const result = await processUpload(makePendingUpload());
 
-			expect(result).toEqual({ success: false, retryable: true });
+			expect(result).toEqual({ success: false, retryable: false });
 		});
 
-		it("classifies thrown network errors as network failureReason", async () => {
+		it("classifies thrown network errors as network failureReason but still terminal", async () => {
 			mockedUploadMedia.mockRejectedValue(new Error("Network request failed"));
 
-			const result = await processUpload(makePendingUpload({ retryCount: 3 }));
+			const result = await processUpload(makePendingUpload({ retryCount: 0 }));
 
-			expect(result).toEqual({ success: false, retryable: true });
+			expect(result).toEqual({ success: false, retryable: false });
 			expect(onFailed).toHaveBeenCalledWith(
 				expect.objectContaining({ id: "upload_123" }),
 				"Network request failed",
 				"network"
 			);
-		});
-	});
-
-	describe("computeRetryDelayMs", () => {
-		const originalRandom = Math.random;
-
-		afterEach(() => {
-			Math.random = originalRandom;
-		});
-
-		it("grows exponentially with attempt number", () => {
-			Math.random = () => 0;
-			expect(computeRetryDelayMs(0)).toBe(1000);
-			expect(computeRetryDelayMs(1)).toBe(2000);
-			expect(computeRetryDelayMs(2)).toBe(4000);
-			expect(computeRetryDelayMs(3)).toBe(8000);
-		});
-
-		it("caps delay at 60 seconds", () => {
-			Math.random = () => 0.999999;
-			expect(computeRetryDelayMs(100)).toBe(60_000);
-		});
-
-		it("adds jitter up to base delay", () => {
-			Math.random = () => 0.5;
-			const delay = computeRetryDelayMs(0);
-			expect(delay).toBeGreaterThanOrEqual(1000);
-			expect(delay).toBeLessThan(2000);
-		});
-
-		it("handles negative attempts safely", () => {
-			Math.random = () => 0;
-			expect(computeRetryDelayMs(-1)).toBe(1000);
 		});
 	});
 

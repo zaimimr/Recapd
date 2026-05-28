@@ -261,6 +261,36 @@ export async function uploadTusChunk(args: {
 	return nextOffset;
 }
 
+function encodeObjectPath(objectName: string): string {
+	return objectName
+		.split("/")
+		.map((segment) => encodeURIComponent(segment))
+		.join("/");
+}
+
+async function verifyObjectExists(args: {
+	bucket: string;
+	objectName: string;
+}): Promise<void> {
+	const { bucket, objectName } = args;
+	const base = process.env.EXPO_PUBLIC_SUPABASE_URL;
+	if (!base) {
+		throw new Error("EXPO_PUBLIC_SUPABASE_URL is not configured");
+	}
+	const headers = await getAuthHeaders();
+	const url = `${base.replace(/\/$/, "")}/storage/v1/object/info/${bucket}/${encodeObjectPath(objectName)}`;
+	const response = await withTusTimeout(
+		fetch(url, { method: "GET", headers }),
+		TUS_CREATE_TIMEOUT_MS
+	);
+	if (response.status >= 200 && response.status < 300) return;
+	const err = new Error(
+		`TUS verify: storage object missing at ${bucket}/${objectName} (status ${response.status})`
+	) as Error & { httpStatus?: number };
+	err.httpStatus = response.status;
+	throw err;
+}
+
 export async function uploadMediaResumable(
 	options: TusUploadOptions
 ): Promise<TusUploadResult> {
@@ -391,6 +421,36 @@ export async function uploadMediaResumable(
 			totalBytes: fileSize,
 			updatedAt: new Date().toISOString(),
 		});
+	}
+
+	const verifyStart = Date.now();
+	try {
+		await verifyObjectExists({ bucket, objectName });
+		addUploadBreadcrumb("tus.verify.ok", {
+			bucket,
+			objectName,
+			elapsedMs: Date.now() - verifyStart,
+		});
+	} catch (verifyError) {
+		const httpStatus =
+			verifyError && typeof verifyError === "object" && "httpStatus" in verifyError
+				? (verifyError as { httpStatus?: number }).httpStatus
+				: undefined;
+		addUploadBreadcrumb(
+			"tus.verify.failed",
+			{
+				bucket,
+				objectName,
+				fileSize,
+				totalChunks,
+				elapsedMs: Date.now() - verifyStart,
+				httpStatus,
+				err: verifyError instanceof Error ? verifyError.message : String(verifyError),
+			},
+			"error"
+		);
+		await clearPersistedState(fileFingerprint);
+		throw verifyError;
 	}
 
 	await clearPersistedState(fileFingerprint);
