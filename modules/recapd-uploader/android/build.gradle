@@ -1,0 +1,28 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'com.zaimimran.recapd.uploader'
+version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useExpoPublishing()
+
+android {
+  namespace "com.zaimimran.recapd.uploader"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    minSdkVersion 24
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation "androidx.work:work-runtime-ktx:2.9.1"
+  implementation "com.squareup.okhttp3:okhttp:4.12.0"
+}

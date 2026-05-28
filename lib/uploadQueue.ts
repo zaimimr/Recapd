@@ -1,5 +1,10 @@
+import {
+	enqueueRecapdUploads,
+	type RecapdUploaderItemArgs,
+	setRecapdUploaderHandlers,
+} from "./recapdUploaderBridge";
 import { addUploadBreadcrumb } from "./sentry";
-import { type UploadFailureReason, uploadMedia } from "./storage";
+import { getContentType, getPathExtension, type UploadFailureReason } from "./storage";
 
 export type MediaType = "photo" | "video";
 
@@ -28,193 +33,115 @@ export interface PendingUpload {
 	thumbnailPath?: string | null;
 }
 
-const PHOTO_CONCURRENT_UPLOADS = 2;
-const VIDEO_CONCURRENT_UPLOADS = 1;
-const UPLOAD_TIMEOUT_MS = 60 * 60 * 1000;
+interface UploadCompletionResult {
+	success: boolean;
+	path?: string;
+	mediaItem?: unknown;
+	error?: string;
+	failureReason?: UploadFailureReason;
+}
 
-let isProcessing = false;
 let onUploadComplete:
-	| ((
-			upload: PendingUpload,
-			result: Awaited<ReturnType<typeof uploadMedia>>
-	  ) => void | Promise<void>)
+	| ((upload: PendingUpload, result: UploadCompletionResult) => void | Promise<void>)
 	| null = null;
 let onUploadFailed:
-	| ((
-			upload: PendingUpload,
-			error: string,
-			failureReason?: UploadFailureReason
-	  ) => void | Promise<void>)
+	| ((upload: PendingUpload, error: string, failureReason?: UploadFailureReason) => void | Promise<void>)
 	| null = null;
 let onStatusChange: ((id: string, updates: Partial<PendingUpload>) => void | Promise<void>) | null =
 	null;
 
+let getUploadsForBridge: (() => PendingUpload[]) | null = null;
+
 export function setUploadCallbacks(callbacks: {
-	onComplete: (upload: PendingUpload, result: Awaited<ReturnType<typeof uploadMedia>>) => void;
+	onComplete: (upload: PendingUpload, result: UploadCompletionResult) => void;
 	onFailed: (upload: PendingUpload, error: string, failureReason?: UploadFailureReason) => void;
 	onStatusChange: (id: string, updates: Partial<PendingUpload>) => void;
+	getUploads?: () => PendingUpload[];
 }) {
 	onUploadComplete = callbacks.onComplete;
 	onUploadFailed = callbacks.onFailed;
 	onStatusChange = callbacks.onStatusChange;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const timeoutPromise = new Promise<T>((_, reject) => {
-		timeoutId = setTimeout(() => reject(new Error("timeout")), timeoutMs);
-	});
-
-	return Promise.race([promise, timeoutPromise]).finally(() => {
-		if (timeoutId) {
-			clearTimeout(timeoutId);
-		}
-	});
-}
-
-export async function processUpload(
-	upload: PendingUpload
-): Promise<{ success: boolean; retryable: boolean }> {
-	const startedAt = new Date().toISOString();
-	addUploadBreadcrumb("queue.processUpload.start", {
-		uploadId: upload.id,
-		eventId: upload.eventId,
-		mediaType: upload.mediaType,
-		attempt: upload.retryCount,
-		sizeBytes: upload.fileSize,
-	});
-	await onStatusChange?.(upload.id, {
-		status: "syncing",
-		startedAt: upload.startedAt ?? startedAt,
-		lastAttemptAt: startedAt,
-		error: undefined,
-		failureReason: undefined,
-	});
-
-	let result: Awaited<ReturnType<typeof uploadMedia>> | undefined;
-	try {
-		result = await withTimeout(
-			uploadMedia({
-				uri: upload.localUri,
-				eventId: upload.eventId,
-				userId: upload.userId,
-				capturedAt: upload.capturedAt,
-				width: upload.width,
-				height: upload.height,
-				fileSize: upload.fileSize,
-				mediaType: upload.mediaType,
-				duration: upload.duration,
-				latitude: upload.latitude,
-				longitude: upload.longitude,
-				assetId: upload.assetId,
-				uploadId: upload.id,
-			}),
-			UPLOAD_TIMEOUT_MS
-		);
-	} catch (error) {
-		let failureReason: UploadFailureReason = "unknown";
-		if (error instanceof Error) {
-			if (error.message === "timeout") {
-				failureReason = "timeout";
-			} else if (/network request failed|network error|fetch failed|econnreset|econnaborted|etimedout|enotfound|socket hang up/i.test(error.message)) {
-				failureReason = "network";
-			}
-		}
-		await onUploadFailed?.(
-			upload,
-			error instanceof Error ? error.message : "Upload failed",
-			failureReason
-		);
-		await onStatusChange?.(upload.id, {
-			status: "failed",
-			error: error instanceof Error ? error.message : "Upload failed",
-			failureReason,
-			finishedAt: new Date().toISOString(),
-		});
-		return {
-			success: false,
-			retryable: false,
-		};
+	if (callbacks.getUploads) {
+		getUploadsForBridge = callbacks.getUploads;
 	}
 
-	if (result.success && result.path) {
-		addUploadBreadcrumb("queue.processUpload.ok", {
-			uploadId: upload.id,
-			storagePath: result.path,
-		});
-		await onUploadComplete?.(upload, result);
-		await onStatusChange?.(upload.id, {
-			finishedAt: new Date().toISOString(),
-			error: undefined,
-			failureReason: undefined,
-		});
-		return { success: true, retryable: false };
-	}
-
-	const failureReason = result.failureReason || "unknown";
-	addUploadBreadcrumb(
-		"queue.processUpload.failed",
-		{
-			uploadId: upload.id,
-			attempt: upload.retryCount,
-			failureReason,
-			err: result.error,
+	setRecapdUploaderHandlers({
+		onProgress: (uploadId, bytes, total) => {
+			void onStatusChange?.(uploadId, {
+				status: "syncing",
+				lastAttemptAt: new Date().toISOString(),
+				fileSize: total > 0 ? total : undefined,
+			});
 		},
-		"warning"
-	);
-	await onUploadFailed?.(upload, result.error || "Upload failed", failureReason);
-	await onStatusChange?.(upload.id, {
-		status: "failed",
-		error: result.error || "Upload failed",
-		failureReason,
-		finishedAt: new Date().toISOString(),
+		onCompletion: (uploadId, mediaItem, error) => {
+			const uploads = getUploadsForBridge?.() ?? [];
+			const upload = uploads.find((u) => u.id === uploadId);
+			if (!upload) {
+				return;
+			}
+			if (error) {
+				const failureReason = classifyError(error);
+				void onUploadFailed?.(upload, error, failureReason);
+				void onStatusChange?.(uploadId, {
+					status: "failed",
+					error,
+					failureReason,
+					finishedAt: new Date().toISOString(),
+				});
+				return;
+			}
+			void onUploadComplete?.(upload, {
+				success: true,
+				path: undefined,
+				mediaItem: mediaItem ?? undefined,
+			});
+		},
 	});
+}
+
+function classifyError(message: string): UploadFailureReason {
+	const lower = message.toLowerCase();
+	if (lower.includes("timeout")) return "timeout";
+	if (
+		lower.includes("network") ||
+		lower.includes("econnreset") ||
+		lower.includes("etimedout") ||
+		lower.includes("fetch failed")
+	) {
+		return "network";
+	}
+	if (lower.includes("asset") || lower.includes("permission") || lower.includes("icloud")) {
+		return "permission";
+	}
+	if (lower.includes("disk") || lower.includes("storage")) return "storage";
+	return "unknown";
+}
+
+function buildItem(upload: PendingUpload): RecapdUploaderItemArgs {
+	const timestamp = Date.now();
+	const uniqueSuffix = Math.random().toString(36).substring(2, 10);
+	const extension = getPathExtension(upload.localUri, upload.mediaType);
+	const objectName = `${upload.eventId}/${upload.userId}/${timestamp}_${uniqueSuffix}.${extension}`;
+	const contentType = getContentType(extension, upload.mediaType);
+	const isAsset = Boolean(upload.assetId);
 	return {
-		success: false,
-		retryable: false,
+		uploadId: upload.id,
+		assetIdentifier: isAsset ? upload.assetId : undefined,
+		fileUri: isAsset ? undefined : upload.localUri,
+		eventId: upload.eventId,
+		userId: upload.userId,
+		mediaType: upload.mediaType,
+		capturedAt: upload.capturedAt,
+		width: upload.width,
+		height: upload.height,
+		duration: upload.duration,
+		latitude: upload.latitude,
+		longitude: upload.longitude,
+		fileSize: upload.fileSize,
+		contentType,
+		objectName,
+		thumbnailPath: upload.thumbnailPath ?? null,
 	};
-}
-
-async function processUploadOnce(
-	upload: PendingUpload,
-	getLatestUploads: () => PendingUpload[],
-	updateUpload: (id: string, updates: Partial<PendingUpload>) => void
-): Promise<void> {
-	const latestUploads = getLatestUploads();
-	const currentUpload = latestUploads.find((u) => u.id === upload.id);
-
-	if (!currentUpload || currentUpload.status === "skipped" || currentUpload.status === "failed") {
-		return;
-	}
-
-	const startedAt = new Date().toISOString();
-	updateUpload(upload.id, {
-		status: "syncing",
-		startedAt: currentUpload.startedAt ?? startedAt,
-		lastAttemptAt: startedAt,
-		error: undefined,
-		failureReason: undefined,
-	});
-
-	await processUpload({
-		...currentUpload,
-		retryCount: currentUpload.retryCount,
-	});
-}
-
-async function runPool(
-	uploads: PendingUpload[],
-	concurrency: number,
-	getLatestUploads: () => PendingUpload[],
-	updateUpload: (id: string, updates: Partial<PendingUpload>) => void
-): Promise<void> {
-	if (uploads.length === 0) return;
-	for (let i = 0; i < uploads.length; i += concurrency) {
-		const batch = uploads.slice(i, i + concurrency);
-		await Promise.all(
-			batch.map((upload) => processUploadOnce(upload, getLatestUploads, updateUpload))
-		);
-	}
 }
 
 export async function processUploadQueue(
@@ -222,31 +149,26 @@ export async function processUploadQueue(
 	getLatestUploads: () => PendingUpload[],
 	updateUpload: (id: string, updates: Partial<PendingUpload>) => void
 ): Promise<void> {
-	if (isProcessing) return;
-	isProcessing = true;
-
-	try {
-		const latestUploads = getLatestUploads();
-		const pendingUploads = latestUploads.filter(
-			(u) => u.status === "pending" || u.status === "syncing"
-		);
-
-		if (pendingUploads.length === 0) {
-			return;
-		}
-
-		const photoUploads = pendingUploads.filter((upload) => upload.mediaType === "photo");
-		const videoUploads = pendingUploads.filter((upload) => upload.mediaType === "video");
-
-		await Promise.all([
-			runPool(photoUploads, PHOTO_CONCURRENT_UPLOADS, getLatestUploads, updateUpload),
-			runPool(videoUploads, VIDEO_CONCURRENT_UPLOADS, getLatestUploads, updateUpload),
-		]);
-	} finally {
-		isProcessing = false;
+	getUploadsForBridge = getLatestUploads;
+	const latest = getLatestUploads();
+	const pending = latest.filter((u) => u.status === "pending");
+	if (pending.length === 0) return;
+	for (const u of pending) {
+		updateUpload(u.id, {
+			status: "syncing",
+			startedAt: u.startedAt ?? new Date().toISOString(),
+			lastAttemptAt: new Date().toISOString(),
+			error: undefined,
+			failureReason: undefined,
+		});
 	}
+	const items = pending.map(buildItem);
+	addUploadBreadcrumb("uploadQueue.enqueueNative", {
+		count: items.length,
+		photos: items.filter((i) => i.mediaType === "photo").length,
+		videos: items.filter((i) => i.mediaType === "video").length,
+	});
+	await enqueueRecapdUploads(items);
 }
 
-export function generateUploadId(): string {
-	return `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-}
+export { generateUploadId } from "./uploadId";

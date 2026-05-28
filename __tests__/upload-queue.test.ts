@@ -1,23 +1,62 @@
-jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
+jest.mock("@/lib/recapdUploaderBridge", () => ({
+	enqueueRecapdUploads: jest.fn(async () => {}),
+	setRecapdUploaderHandlers: jest.fn(),
+}));
 
-import { uploadMedia } from "@/lib/storage";
+jest.mock("@/lib/sentry", () => ({
+	addUploadBreadcrumb: jest.fn(),
+}));
+
+jest.mock("@/lib/storage", () => ({
+	getContentType: (extension: string, mediaType: string) => {
+		if (mediaType === "video") {
+			if (extension === "mov") return "video/quicktime";
+			return "video/mp4";
+		}
+		if (extension === "heic") return "image/heic";
+		if (extension === "png") return "image/png";
+		return "image/jpeg";
+	},
+	getPathExtension: (uri: string, mediaType: string) => {
+		const last = uri.split("/").pop() ?? "";
+		const dot = last.lastIndexOf(".");
+		if (dot >= 0) return last.slice(dot + 1).toLowerCase();
+		return mediaType === "video" ? "mp4" : "jpg";
+	},
+}));
+
+jest.mock("recapd-uploader", () => ({
+	RecapdUploader: {
+		configure: jest.fn(),
+		enqueue: jest.fn(async () => []),
+		cancel: jest.fn(),
+		clearFailed: jest.fn(),
+		getQueueState: jest.fn(async () => ({ items: [] })),
+		retry: jest.fn(),
+		kick: jest.fn(),
+		addProgressListener: jest.fn(() => ({ remove: jest.fn() })),
+		addCompletedListener: jest.fn(() => ({ remove: jest.fn() })),
+		addFailedListener: jest.fn(() => ({ remove: jest.fn() })),
+		addDrainedListener: jest.fn(() => ({ remove: jest.fn() })),
+	},
+}));
+
+import { enqueueRecapdUploads } from "@/lib/recapdUploaderBridge";
 import {
 	generateUploadId,
 	type PendingUpload,
-	processUpload,
 	processUploadQueue,
-	setUploadCallbacks,
 } from "@/lib/uploadQueue";
 
-const mockedUploadMedia = uploadMedia as jest.MockedFunction<typeof uploadMedia>;
+const mockedEnqueue = enqueueRecapdUploads as jest.MockedFunction<typeof enqueueRecapdUploads>;
 
 function makePendingUpload(overrides: Partial<PendingUpload> = {}): PendingUpload {
 	return {
 		id: "upload_123",
-		localUri: "file:///photo.jpg",
+		localUri: "file:///photo.heic",
 		eventId: "event1",
 		userId: "user1",
-		capturedAt: new Date("2025-01-01"),
+		capturedAt: new Date("2026-05-29T00:00:00Z"),
 		width: 1920,
 		height: 1080,
 		status: "pending",
@@ -27,212 +66,55 @@ function makePendingUpload(overrides: Partial<PendingUpload> = {}): PendingUploa
 	};
 }
 
-describe("uploadQueue", () => {
-	let onComplete: jest.Mock;
-	let onFailed: jest.Mock;
-	let onStatusChangeCb: jest.Mock;
-
+describe("uploadQueue (native bridge)", () => {
 	beforeEach(() => {
-		jest.clearAllMocks();
-		onComplete = jest.fn();
-		onFailed = jest.fn();
-		onStatusChangeCb = jest.fn();
-		setUploadCallbacks({
-			onComplete,
-			onFailed,
-			onStatusChange: onStatusChangeCb,
-		});
+		mockedEnqueue.mockClear();
 	});
 
-	describe("processUpload", () => {
-		it("calls onStatusChange with syncing, then onUploadComplete on success", async () => {
-			mockedUploadMedia.mockResolvedValue({ success: true, path: "some/path" });
-
-			const upload = makePendingUpload();
-			const result = await processUpload(upload);
-
-			expect(result).toEqual({ success: true, retryable: false });
-			expect(onStatusChangeCb).toHaveBeenCalledWith(
-				"upload_123",
-				expect.objectContaining({ status: "syncing" })
-			);
-			expect(onComplete).toHaveBeenCalledWith(upload, { success: true, path: "some/path" });
-			expect(onFailed).not.toHaveBeenCalled();
-		});
-
-		it("marks failure terminal on every error (no auto-retry)", async () => {
-			mockedUploadMedia.mockResolvedValue({ success: false, error: "fail" });
-
-			const upload = makePendingUpload({ retryCount: 0 });
-			const result = await processUpload(upload);
-
-			expect(result).toEqual({ success: false, retryable: false });
-			expect(onStatusChangeCb).toHaveBeenCalledWith(
-				"upload_123",
-				expect.objectContaining({ status: "syncing" })
-			);
-			expect(onStatusChangeCb).toHaveBeenCalledWith(
-				"upload_123",
-				expect.objectContaining({ status: "failed" })
-			);
-			expect(onFailed).toHaveBeenCalledTimes(1);
-		});
-
-		it("calls onUploadFailed once per failure regardless of retryCount", async () => {
-			mockedUploadMedia.mockResolvedValue({ success: false, error: "permanent fail" });
-
-			const upload = makePendingUpload({ retryCount: 0 });
-			const result = await processUpload(upload);
-
-			expect(result).toEqual({ success: false, retryable: false });
-			expect(onFailed).toHaveBeenCalledWith(upload, "permanent fail", "unknown");
-		});
-
-		it("marks storage authorization failures as terminal", async () => {
-			mockedUploadMedia.mockResolvedValue({
-				success: false,
-				error: "Your session changed. Re-select the media and try again.",
-				failureReason: "storage",
-			});
-
-			const result = await processUpload(makePendingUpload());
-
-			expect(result).toEqual({ success: false, retryable: false });
-		});
-
-		it("marks network failures as terminal too (no auto-retry)", async () => {
-			mockedUploadMedia.mockResolvedValue({
-				success: false,
-				error: "Network hiccup during upload.",
-				failureReason: "network",
-			});
-
-			const result = await processUpload(makePendingUpload());
-
-			expect(result).toEqual({ success: false, retryable: false });
-		});
-
-		it("classifies thrown network errors as network failureReason but still terminal", async () => {
-			mockedUploadMedia.mockRejectedValue(new Error("Network request failed"));
-
-			const result = await processUpload(makePendingUpload({ retryCount: 0 }));
-
-			expect(result).toEqual({ success: false, retryable: false });
-			expect(onFailed).toHaveBeenCalledWith(
-				expect.objectContaining({ id: "upload_123" }),
-				"Network request failed",
-				"network"
-			);
-		});
+	test("generateUploadId returns a unique-looking string", () => {
+		const a = generateUploadId();
+		const b = generateUploadId();
+		expect(a).not.toBe(b);
+		expect(a).toMatch(/^upload_/);
 	});
 
-	describe("processUploadQueue", () => {
-		it("processes uploads in concurrent batches of 3", async () => {
-			mockedUploadMedia.mockResolvedValue({ success: true, path: "p" });
-			const processingOrder: string[] = [];
-			const _originalUploadMedia = mockedUploadMedia.getMockImplementation();
+	test("processUploadQueue enqueues only pending uploads via the native bridge", async () => {
+		const uploads: PendingUpload[] = [
+			makePendingUpload({ id: "u1", status: "pending" }),
+			makePendingUpload({ id: "u2", status: "failed" }),
+			makePendingUpload({ id: "u3", status: "syncing" }),
+			makePendingUpload({ id: "u4", status: "pending", mediaType: "video", localUri: "file:///vid.mp4" }),
+		];
+		const updates: Array<[string, Partial<PendingUpload>]> = [];
 
-			mockedUploadMedia.mockImplementation(async (opts: any) => {
-				processingOrder.push(opts.eventId);
-				return { success: true, path: "p" };
-			});
+		await processUploadQueue(
+			uploads,
+			() => uploads,
+			(id, u) => updates.push([id, u])
+		);
 
-			const uploads = Array.from({ length: 5 }, (_, i) =>
-				makePendingUpload({ id: `upload_${i}`, eventId: `event_${i}`, status: "pending" })
-			);
-
-			const getLatestUploads = jest.fn(() => uploads);
-			const updateUpload = jest.fn();
-
-			await processUploadQueue(uploads, getLatestUploads, updateUpload);
-
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(5);
-		});
-
-		it("returns immediately if already processing (re-entry guard)", async () => {
-			let resolveFirst: () => void;
-			const firstCallPromise = new Promise<void>((resolve) => {
-				resolveFirst = resolve;
-			});
-
-			mockedUploadMedia.mockImplementation(async () => {
-				await firstCallPromise;
-				return { success: true, path: "p" };
-			});
-
-			const uploads = [makePendingUpload({ status: "pending" })];
-			const getLatestUploads = jest.fn(() => uploads);
-			const updateUpload = jest.fn();
-
-			const firstCall = processUploadQueue(uploads, getLatestUploads, updateUpload);
-
-			// Wait a tick for the first call to set isProcessing
-			await new Promise((r) => setTimeout(r, 0));
-
-			// First call already started processing (1 call to uploadMedia, blocked on promise)
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-
-			const secondCall = processUploadQueue(uploads, getLatestUploads, updateUpload);
-			await secondCall;
-
-			// Second call returned immediately, no additional uploadMedia calls
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-
-			resolveFirst!();
-			await firstCall;
-
-			// Still only 1 call total
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-		});
-
-		it("only processes pending or syncing uploads, skips failed", async () => {
-			mockedUploadMedia.mockResolvedValue({ success: true, path: "p" });
-
-			const uploads = [
-				makePendingUpload({ id: "u1", status: "pending" }),
-				makePendingUpload({ id: "u2", status: "syncing" }),
-				makePendingUpload({ id: "u3", status: "failed" }),
-			];
-
-			const getLatestUploads = jest.fn(() => uploads);
-			const updateUpload = jest.fn();
-
-			await processUploadQueue(uploads, getLatestUploads, updateUpload);
-
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(2);
-		});
-
-		it("does not retry non-retryable failures", async () => {
-			const uploads = [makePendingUpload({ status: "pending" })];
-			let currentUploads = uploads;
-			mockedUploadMedia.mockResolvedValue({
-				success: false,
-				error: "Your session changed. Re-select the media and try again.",
-				failureReason: "storage",
-			});
-
-			const getLatestUploads = jest.fn(() => currentUploads);
-			const updateUpload = jest.fn((id: string, updates: Partial<PendingUpload>) => {
-				currentUploads = currentUploads.map((upload) =>
-					upload.id === id ? { ...upload, ...updates } : upload
-				);
-			});
-
-			await processUploadQueue(uploads, getLatestUploads, updateUpload);
-
-			expect(mockedUploadMedia).toHaveBeenCalledTimes(1);
-		});
+		expect(mockedEnqueue).toHaveBeenCalledTimes(1);
+		const items = mockedEnqueue.mock.calls[0][0];
+		expect(items).toHaveLength(2);
+		expect(items[0].uploadId).toBe("u1");
+		expect(items[1].uploadId).toBe("u4");
+		expect(items[0].mediaType).toBe("photo");
+		expect(items[1].mediaType).toBe("video");
+		expect(items[0].objectName).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.heic$/);
+		expect(items[1].objectName).toMatch(/^event1\/user1\/\d+_[a-z0-9]+\.mp4$/);
+		expect(items[0].contentType).toBe("image/heic");
+		expect(items[1].contentType).toBe("video/mp4");
+		expect(updates.find(([id]) => id === "u1")?.[1].status).toBe("syncing");
+		expect(updates.find(([id]) => id === "u2")).toBeUndefined();
 	});
 
-	describe("generateUploadId", () => {
-		it("generates IDs in the expected format", () => {
-			const id = generateUploadId();
-			expect(id).toMatch(/^upload_\d+_[a-z0-9]+$/);
-		});
-
-		it("generates unique IDs across calls", () => {
-			const ids = new Set(Array.from({ length: 10 }, () => generateUploadId()));
-			expect(ids.size).toBe(10);
-		});
+	test("processUploadQueue is a no-op when nothing is pending", async () => {
+		const uploads: PendingUpload[] = [makePendingUpload({ status: "failed" })];
+		await processUploadQueue(
+			uploads,
+			() => uploads,
+			() => {}
+		);
+		expect(mockedEnqueue).not.toHaveBeenCalled();
 	});
 });

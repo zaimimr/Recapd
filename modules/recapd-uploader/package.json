@@ -1,0 +1,8 @@
+{
+  "name": "recapd-uploader",
+  "version": "0.1.0",
+  "description": "Native background upload engine (TUS over URLSession.background + WorkManager) for Recapd",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true
+}
