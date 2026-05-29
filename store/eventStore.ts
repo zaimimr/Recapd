@@ -135,7 +135,7 @@ async function mapWithConcurrency<T, R>(
 
 function sortMediaItems(items: MediaItemWithUser[]) {
 	return [...items].sort(
-		(a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime()
+		(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
 	);
 }
 
@@ -661,7 +661,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					.select("*, uploader:users!uploaded_by_user_id(display_name)")
 					.eq("event_id", eventId)
 					.eq("visibility", "shared")
-					.order("captured_at", { ascending: false });
+					.order("captured_at", { ascending: true });
 
 				if (error) throw error;
 
@@ -1164,7 +1164,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			const { mediaItems, pendingUploads } = get();
 
 			const pending = pendingUploads
-				.filter((p) => p.eventId === eventId && p.status !== "skipped")
+				.filter((p) => p.eventId === eventId && p.status === "failed")
 				.map((p) => ({
 					id: p.id,
 					event_id: p.eventId,
@@ -1196,15 +1196,20 @@ export const useEventStore = create<EventState>((set, get) => {
 					finishedAt: p.finishedAt,
 				}));
 
-			return [
-				...mediaItems.map((m) => ({
+			const uploadedSection = mediaItems
+				.map((m) => ({
 					...m,
 					isPending: false,
 					localUri: undefined,
 					syncStatus: undefined,
-				})),
-				...pending,
-			].sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+				}))
+				.sort(
+					(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+				);
+			const pendingSection = [...pending].sort(
+				(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+			);
+			return [...uploadedSection, ...pendingSection];
 		},
 
 		deleteEvent: async (eventId: string, userId: string) => {

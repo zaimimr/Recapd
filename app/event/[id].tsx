@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { differenceInDays, differenceInHours, isPast } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -27,6 +27,47 @@ import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { type ParticipantWithStats, useEventStore } from "@/store/eventStore";
+
+function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boolean }) {
+	const pendingUploads = useEventStore((state) => state.pendingUploads);
+	const progress = useMemo(() => {
+		let active = 0;
+		let failed = 0;
+		for (const p of pendingUploads) {
+			if (p.eventId !== eventId) continue;
+			if (p.status === "pending" || p.status === "syncing") active++;
+			else if (p.status === "failed") failed++;
+		}
+		return { active, failed, total: active + failed };
+	}, [pendingUploads, eventId]);
+
+	if (progress.total === 0) return null;
+
+	const fillWidth =
+		progress.total === 0
+			? 0
+			: ((progress.total - progress.active) / progress.total) * 100;
+
+	return (
+		<View style={[styles.uploadBar, isDark && styles.uploadBarDark]}>
+			<View style={styles.uploadBarRow}>
+				<Text style={[styles.uploadBarText, isDark && styles.uploadBarTextDark]}>
+					{progress.active > 0
+						? `Uploading ${progress.active} of ${progress.total}`
+						: `${progress.failed} failed`}
+				</Text>
+				{progress.failed > 0 && progress.active > 0 && (
+					<Text style={[styles.uploadBarFailed, isDark && styles.uploadBarFailedDark]}>
+						{progress.failed} failed
+					</Text>
+				)}
+			</View>
+			<View style={[styles.uploadBarTrack, isDark && styles.uploadBarTrackDark]}>
+				<View style={[styles.uploadBarFill, { width: `${fillWidth}%` }]} />
+			</View>
+		</View>
+	);
+}
 
 export default function EventScreen() {
 	const { id, justJoined } = useLocalSearchParams<{
@@ -55,6 +96,12 @@ export default function EventScreen() {
 		leaveEvent,
 		removeParticipant,
 	} = useEventStore();
+	const failedUploadsKey = useEventStore((state) =>
+		state.pendingUploads
+			.filter((p) => p.eventId === id && p.status === "failed")
+			.map((p) => p.id)
+			.join(",")
+	);
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
 
@@ -142,7 +189,10 @@ export default function EventScreen() {
 		checkNotificationPrompt();
 	}, [justJoined]);
 
-	const mergedPhotos = id ? getMergedTimeline(id) : [];
+	const mergedPhotos = useMemo(
+		() => (id ? getMergedTimeline(id) : []),
+		[id, mediaItems, failedUploadsKey, getMergedTimeline]
+	);
 
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true);
@@ -623,6 +673,8 @@ export default function EventScreen() {
 					onMaybeLater={handleMaybeLater}
 					isDark={isDark}
 				/>
+
+				{id && <UploadProgressBar eventId={id} isDark={isDark} />}
 			</View>
 		</>
 	);
@@ -911,5 +963,59 @@ const styles = StyleSheet.create({
 		color: "#374151",
 		fontSize: 13,
 		fontWeight: "600",
+	},
+	uploadBar: {
+		position: "absolute",
+		left: 12,
+		right: 12,
+		bottom: 24,
+		paddingHorizontal: 16,
+		paddingVertical: 12,
+		borderRadius: 14,
+		backgroundColor: "rgba(15, 23, 42, 0.92)",
+		shadowColor: "#000",
+		shadowOpacity: 0.18,
+		shadowOffset: { width: 0, height: 4 },
+		shadowRadius: 12,
+		elevation: 6,
+	},
+	uploadBarDark: {
+		backgroundColor: "rgba(20, 27, 40, 0.95)",
+	},
+	uploadBarRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: 8,
+	},
+	uploadBarText: {
+		color: "#f9fafb",
+		fontSize: 13,
+		fontWeight: "700",
+	},
+	uploadBarTextDark: {
+		color: "#f9fafb",
+	},
+	uploadBarFailed: {
+		color: "#fca5a5",
+		fontSize: 12,
+		fontWeight: "600",
+	},
+	uploadBarFailedDark: {
+		color: "#fca5a5",
+	},
+	uploadBarTrack: {
+		height: 4,
+		borderRadius: 999,
+		backgroundColor: "rgba(255, 255, 255, 0.18)",
+		overflow: "hidden",
+	},
+	uploadBarTrackDark: {
+		backgroundColor: "rgba(255, 255, 255, 0.12)",
+	},
+	uploadBarFill: {
+		height: "100%",
+		backgroundColor: "#22c55e",
+		borderRadius: 999,
 	},
 });

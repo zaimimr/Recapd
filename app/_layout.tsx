@@ -9,6 +9,7 @@ import {
 } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { Image as ExpoImage } from "expo-image";
 import { AppState, StatusBar } from "react-native";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
@@ -141,8 +142,18 @@ function RootLayoutNav() {
 				void flushTelemetryQueue(true);
 			}
 		});
+		const memoryWarningSubscription = AppState.addEventListener(
+			"memoryWarning" as Parameters<typeof AppState.addEventListener>[0],
+			() => {
+				traceEvent("app.memory.warning");
+				void ExpoImage.clearMemoryCache();
+			}
+		);
 
-		return () => subscription.remove();
+		return () => {
+			subscription.remove();
+			memoryWarningSubscription.remove();
+		};
 	}, []);
 
 	useEffect(() => {
