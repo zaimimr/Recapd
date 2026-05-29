@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["RecapdUploaderModule"]
+  },
+  "android": {
+    "modules": ["com.zaimimran.recapd.uploader.RecapdUploaderModule"]
+  }
+}

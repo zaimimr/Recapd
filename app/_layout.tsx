@@ -25,6 +25,8 @@ import {
 } from "@/lib/logger";
 import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import { installUploadQueueKicker } from "@/lib/networkKick";
+import { configureRecapdUploader } from "@/lib/recapdUploaderBridge";
+import { supabase } from "@/lib/supabase";
 import {
 	registerForPushNotifications,
 	savePushToken,
@@ -130,6 +132,31 @@ function RootLayoutNav() {
 		});
 		initializeSubscription(user.id);
 	}, [user?.id, initializeSubscription]);
+
+	useEffect(() => {
+		if (!user?.id) return;
+		let cancelled = false;
+		(async () => {
+			const { data: sessionData } = await supabase.auth.getSession();
+			if (cancelled) return;
+			const bearer = sessionData.session?.access_token;
+			const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+			const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+			if (!bearer || !supabaseUrl || !anonKey) {
+				logger.warn("Recapd uploader configure skipped (missing config)");
+				return;
+			}
+			await configureRecapdUploader({
+				supabaseUrl,
+				anonKey,
+				bearerToken: bearer,
+			});
+			traceEvent("recapd.uploader.configured");
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [user?.id]);
 
 	useEffect(() => {
 		traceEvent("app.state.changed", { state: AppState.currentState });

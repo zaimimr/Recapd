@@ -5,6 +5,7 @@ module.exports = {
 	],
 	moduleNameMapper: {
 		"^@/(.*)$": "<rootDir>/$1",
+		"^recapd-uploader$": "<rootDir>/jest/recapd-uploader-mock.ts",
 	},
 	moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
 	testMatch: ["**/__tests__/**/*.test.{ts,tsx}", "**/*.test.{ts,tsx}"],

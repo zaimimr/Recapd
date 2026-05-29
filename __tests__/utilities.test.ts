@@ -3,7 +3,7 @@ jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
 import { getAvatarColor } from "@/lib/colors";
 import { safeDate } from "@/lib/dateUtils";
 import { FREE_MAX_VIDEO_DURATION_MS, PRO_MAX_VIDEO_DURATION_MS } from "@/lib/mediaLibrary";
-import { generateUploadId } from "@/lib/uploadQueue";
+import { generateUploadId } from "@/lib/uploadId";
 import { formatDuration } from "@/lib/utils";
 
 jest.mock("expo-image-picker", () => ({}));

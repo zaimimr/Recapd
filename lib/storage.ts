@@ -113,7 +113,7 @@ export interface UploadMediaOptions {
 	uploadId?: string;
 }
 
-function getContentType(extension: string, mediaType: MediaType): string {
+export function getContentType(extension: string, mediaType: MediaType): string {
 	if (mediaType === "video") {
 		switch (extension) {
 			case "mov":
@@ -155,7 +155,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 	});
 }
 
-function getPathExtension(filePath: string, mediaType: MediaType): string {
+export function getPathExtension(filePath: string, mediaType: MediaType): string {
 	const fallbackExtension = mediaType === "video" ? "mp4" : "jpg";
 	const lastSegment = filePath.split("/").pop() || "";
 	const match = lastSegment.match(/\.([a-z0-9]+)$/i);

@@ -312,6 +312,7 @@ function generateJoinCode(): string {
 
 export const useEventStore = create<EventState>((set, get) => {
 	setUploadCallbacks({
+		getUploads: () => get().pendingUploads,
 		onComplete: async (upload, result) => {
 			const currentUpload = get().pendingUploads.find((u) => u.id === upload.id);
 			const remainingUploads = get().pendingUploads.filter((u) => u.id !== upload.id);
