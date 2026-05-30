@@ -1,6 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
+import { Image as ExpoImage } from "expo-image";
 import {
 	type ErrorBoundaryProps,
 	ErrorBoundary as ExpoRouterErrorBoundary,
@@ -9,12 +10,12 @@ import {
 } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { Image as ExpoImage } from "expo-image";
 import { AppState, StatusBar } from "react-native";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
 import { useColorScheme } from "@/components/useColorScheme";
+import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import {
 	flushTelemetryQueue,
 	installTelemetry,
@@ -23,16 +24,15 @@ import {
 	traceEvent,
 	traceScreen,
 } from "@/lib/logger";
-import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import { installUploadQueueKicker } from "@/lib/networkKick";
-import { configureRecapdUploader } from "@/lib/recapdUploaderBridge";
-import { supabase } from "@/lib/supabase";
 import {
 	registerForPushNotifications,
 	savePushToken,
 	setupNotificationHandler,
 } from "@/lib/notifications";
+import { configureRecapdUploader } from "@/lib/recapdUploaderBridge";
 import { initSentry, Sentry, setSentryUser } from "@/lib/sentry";
+import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 import { useSubscriptionStore } from "@/store/subscriptionStore";
@@ -136,25 +136,33 @@ function RootLayoutNav() {
 	useEffect(() => {
 		if (!user?.id) return;
 		let cancelled = false;
-		(async () => {
-			const { data: sessionData } = await supabase.auth.getSession();
+
+		const configureWith = async (bearer: string | undefined, source: string) => {
 			if (cancelled) return;
-			const bearer = sessionData.session?.access_token;
 			const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 			const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 			if (!bearer || !supabaseUrl || !anonKey) {
-				logger.warn("Recapd uploader configure skipped (missing config)");
+				logger.warn("Recapd uploader configure skipped (missing config)", { source });
 				return;
 			}
-			await configureRecapdUploader({
-				supabaseUrl,
-				anonKey,
-				bearerToken: bearer,
-			});
-			traceEvent("recapd.uploader.configured");
+			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer });
+			traceEvent("recapd.uploader.configured", { source });
+		};
+
+		(async () => {
+			const { data: sessionData } = await supabase.auth.getSession();
+			await configureWith(sessionData.session?.access_token, "initial");
 		})();
+
+		const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+				void configureWith(session?.access_token, event);
+			}
+		});
+
 		return () => {
 			cancelled = true;
+			authSub.subscription.unsubscribe();
 		};
 	}, [user?.id]);
 

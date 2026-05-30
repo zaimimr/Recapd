@@ -44,15 +44,22 @@ function installListenersOnce() {
 		progressHandler?.(uploadId, bytesUploaded, totalBytes);
 	});
 
-	RecapdUploader.addCompletedListener(async ({ uploadId, objectName }) => {
+	RecapdUploader.addCompletedListener(async ({ uploadId, objectName, recorded }) => {
+		logger.info("[up] DONE", { uploadId, recorded: Boolean(recorded) });
 		const meta = pendingMeta.get(uploadId);
 		pendingMeta.delete(uploadId);
-		if (!meta) return;
 		addUploadBreadcrumb("recapd.completed", {
 			uploadId,
 			storagePath: objectName,
-			eventId: meta.eventId,
+			recorded: Boolean(recorded),
 		});
+		if (recorded) {
+			// Native already inserted the media_items row (works while suspended).
+			// Just mark the local upload complete; the row arrives via realtime/refetch.
+			completionHandler?.(uploadId, null);
+			return;
+		}
+		if (!meta) return;
 		try {
 			const insertData: MediaItemInsert = {
 				event_id: meta.eventId,
@@ -61,8 +68,7 @@ function installListenersOnce() {
 				media_type: meta.mediaType,
 				width: meta.width,
 				height: meta.height,
-				duration_milliseconds:
-					meta.mediaType === "video" ? Math.round(meta.duration || 0) : null,
+				duration_milliseconds: meta.mediaType === "video" ? Math.round(meta.duration || 0) : null,
 				file_size_bytes: meta.fileSize ?? null,
 				storage_path: objectName,
 				thumbnail_path: meta.thumbnailPath ?? null,
@@ -89,6 +95,7 @@ function installListenersOnce() {
 	});
 
 	RecapdUploader.addFailedListener(({ uploadId, error }) => {
+		logger.error("[up] FAILED", new Error(error), { uploadId });
 		pendingMeta.delete(uploadId);
 		addUploadBreadcrumb(
 			"recapd.failed",
@@ -133,9 +140,42 @@ export interface RecapdUploaderItemArgs {
 	thumbnailPath?: string | null;
 }
 
+async function refreshUploaderConfig(): Promise<void> {
+	try {
+		const { data } = await supabase.auth.getSession();
+		let session = data.session;
+		const expiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
+		const secondsLeft = expiresAt ? Math.round((expiresAt - Date.now()) / 1000) : -1;
+		if (!session || secondsLeft < 120) {
+			const refreshed = await supabase.auth.refreshSession();
+			if (refreshed.data.session) {
+				session = refreshed.data.session;
+			} else if (refreshed.error) {
+				logger.warn("[uploader] token refreshSession failed", refreshed.error);
+			}
+		}
+		const bearer = session?.access_token;
+		const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+		const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+		if (bearer && supabaseUrl && anonKey) {
+			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer });
+			logger.info("[up] configured", { secondsLeft });
+		} else {
+			logger.warn("[up] config skipped (missing token/config)", {
+				hasBearer: Boolean(bearer),
+				hasUrl: Boolean(supabaseUrl),
+				hasAnon: Boolean(anonKey),
+			});
+		}
+	} catch (error) {
+		logger.warn("[uploader] refresh config failed", error);
+	}
+}
+
 export async function enqueueRecapdUploads(items: RecapdUploaderItemArgs[]): Promise<void> {
 	if (items.length === 0) return;
 	installListenersOnce();
+	await refreshUploaderConfig();
 	const inputs: UploadItemInput[] = items.map((item) => {
 		pendingMeta.set(item.uploadId, {
 			uploadId: item.uploadId,
@@ -161,6 +201,14 @@ export async function enqueueRecapdUploads(items: RecapdUploaderItemArgs[]): Pro
 			eventId: item.eventId,
 			userId: item.userId,
 			fileFingerprint: `${item.uploadId}:${item.fileSize ?? 0}`,
+			capturedAt: item.capturedAt.toISOString(),
+			width: item.width,
+			height: item.height,
+			durationMs: Math.round(item.duration ?? 0),
+			latitude: item.latitude,
+			longitude: item.longitude,
+			fileSizeBytes: item.fileSize,
+			thumbnailPath: item.thumbnailPath ?? undefined,
 		};
 	});
 	addUploadBreadcrumb("recapd.enqueue", {
@@ -168,10 +216,35 @@ export async function enqueueRecapdUploads(items: RecapdUploaderItemArgs[]): Pro
 		photoCount: inputs.filter((i) => i.mediaType === "photo").length,
 		videoCount: inputs.filter((i) => i.mediaType === "video").length,
 	});
-	await RecapdUploader.enqueue(inputs);
+	logger.info("[up] enqueue", {
+		count: inputs.length,
+		sample: inputs[0] ? { assetId: inputs[0].assetIdentifier, obj: inputs[0].objectName } : null,
+	});
+	try {
+		await RecapdUploader.enqueue(inputs);
+		logger.info("[up] enqueue ok");
+	} catch (e) {
+		logger.error("[up] enqueue threw", e);
+		throw e;
+	}
+	const logQueue = async (tag: string) => {
+		try {
+			const state = await RecapdUploader.getQueueState();
+			const phases: Record<string, number> = {};
+			for (const it of state.items) {
+				phases[it.status] = (phases[it.status] ?? 0) + 1;
+			}
+			logger.info(`[up] queue ${tag}`, { total: state.items.length, phases });
+		} catch (e) {
+			logger.error(`[up] queue ${tag} err`, e);
+		}
+	};
+	await logQueue("t0");
+	setTimeout(() => void logQueue("t6"), 6000);
 }
 
 export async function retryRecapdUpload(uploadId: string): Promise<void> {
+	await refreshUploaderConfig();
 	await RecapdUploader.retry(uploadId);
 }
 

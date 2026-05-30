@@ -1,9 +1,14 @@
 {
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["RecapdUploaderModule"]
-  },
-  "android": {
-    "modules": ["com.zaimimran.recapd.uploader.RecapdUploaderModule"]
-  }
+	"platforms": ["apple", "android"],
+	"apple": {
+		"podspecPath": "RecapdUploader.podspec",
+		"modules": ["RecapdUploaderModule"],
+		"appDelegateSubscribers": ["RecapdUploaderAppDelegate"]
+	},
+	"ios": {
+		"modules": ["RecapdUploaderModule"]
+	},
+	"android": {
+		"modules": ["com.zaimimran.recapd.uploader.RecapdUploaderModule"]
+	}
 }

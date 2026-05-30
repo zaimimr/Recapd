@@ -1,9 +1,11 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image } from "expo-image";
+import type { ReactElement } from "react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
 	FlatList,
+	type RefreshControlProps,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
@@ -37,6 +39,9 @@ interface MasonryGridProps {
 	onSkip?: (id: string) => void;
 	onRemove?: (id: string) => void;
 	isDark: boolean;
+	headerComponent?: ReactElement | null;
+	emptyComponent?: ReactElement | null;
+	refreshControl?: ReactElement<RefreshControlProps>;
 }
 
 function GridTile({
@@ -264,6 +269,9 @@ export default function MasonryGrid({
 	onSkip,
 	onRemove,
 	isDark,
+	headerComponent,
+	emptyComponent,
+	refreshControl,
 }: MasonryGridProps) {
 	const { width: screenWidth } = useWindowDimensions();
 	const [gridColumns, setGridColumns] = useState<GridColumns>(3);
@@ -298,61 +306,64 @@ export default function MasonryGrid({
 		[isDark, onPhotoPress, onRemove, onRetry, onSkip, tileSize]
 	);
 
-	if (photos.length === 0) {
-		return null;
-	}
-
-	return (
-		<View>
-			<View style={styles.controlsRow}>
-				<Text style={[styles.controlsLabel, isDark && styles.controlsLabelDark]}>Grid size</Text>
-				<View style={[styles.controlsGroup, isDark && styles.controlsGroupDark]}>
-					{GRID_DENSITY_OPTIONS.map((option) => {
-						const isActive = option.columns === gridColumns;
-						return (
-							<TouchableOpacity
-								key={option.columns}
-								onPress={() => setGridColumns(option.columns)}
-								activeOpacity={0.85}
-								style={[
-									styles.controlButton,
-									isActive && styles.controlButtonActive,
-									isDark && styles.controlButtonDark,
-									isDark && isActive && styles.controlButtonActiveDark,
-								]}
-							>
-								<Text
+	const listHeader = (
+		<>
+			{headerComponent}
+			{photos.length > 0 && (
+				<View style={styles.controlsRow}>
+					<Text style={[styles.controlsLabel, isDark && styles.controlsLabelDark]}>Grid size</Text>
+					<View style={[styles.controlsGroup, isDark && styles.controlsGroupDark]}>
+						{GRID_DENSITY_OPTIONS.map((option) => {
+							const isActive = option.columns === gridColumns;
+							return (
+								<TouchableOpacity
+									key={option.columns}
+									onPress={() => setGridColumns(option.columns)}
+									activeOpacity={0.85}
 									style={[
-										styles.controlButtonText,
-										isDark && styles.controlButtonTextDark,
-										isActive && styles.controlButtonTextActive,
-										isDark && isActive && styles.controlButtonTextActiveDark,
+										styles.controlButton,
+										isActive && styles.controlButtonActive,
+										isDark && styles.controlButtonDark,
+										isDark && isActive && styles.controlButtonActiveDark,
 									]}
 								>
-									{option.label}
-								</Text>
-							</TouchableOpacity>
-						);
-					})}
+									<Text
+										style={[
+											styles.controlButtonText,
+											isDark && styles.controlButtonTextDark,
+											isActive && styles.controlButtonTextActive,
+											isDark && isActive && styles.controlButtonTextActiveDark,
+										]}
+									>
+										{option.label}
+									</Text>
+								</TouchableOpacity>
+							);
+						})}
+					</View>
 				</View>
-			</View>
+			)}
+		</>
+	);
 
-			<FlatList
-				key={`grid-${gridColumns}`}
-				data={feedItems}
-				renderItem={renderItem}
-				keyExtractor={(item) => item.id}
-				numColumns={gridColumns}
-				columnWrapperStyle={styles.row}
-				contentContainerStyle={styles.container}
-				showsVerticalScrollIndicator={false}
-				scrollEnabled={false}
-				initialNumToRender={9}
-				maxToRenderPerBatch={6}
-				windowSize={3}
-				removeClippedSubviews
-			/>
-		</View>
+	return (
+		<FlatList
+			key={`grid-${gridColumns}`}
+			data={feedItems}
+			renderItem={renderItem}
+			keyExtractor={(item) => item.id}
+			numColumns={gridColumns}
+			columnWrapperStyle={styles.row}
+			contentContainerStyle={styles.container}
+			showsVerticalScrollIndicator={false}
+			ListHeaderComponent={listHeader}
+			ListEmptyComponent={emptyComponent ?? null}
+			refreshControl={refreshControl}
+			initialNumToRender={9}
+			maxToRenderPerBatch={6}
+			windowSize={3}
+			removeClippedSubviews
+		/>
 	);
 }
 

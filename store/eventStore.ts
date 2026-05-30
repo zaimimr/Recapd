@@ -310,6 +310,19 @@ function generateJoinCode(): string {
 	return code;
 }
 
+const mediaRefetchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function scheduleMediaRefetch(eventId: string, run: () => void) {
+	const existing = mediaRefetchTimers.get(eventId);
+	if (existing) clearTimeout(existing);
+	mediaRefetchTimers.set(
+		eventId,
+		setTimeout(() => {
+			mediaRefetchTimers.delete(eventId);
+			run();
+		}, 1000)
+	);
+}
+
 export const useEventStore = create<EventState>((set, get) => {
 	setUploadCallbacks({
 		getUploads: () => get().pendingUploads,
@@ -332,13 +345,18 @@ export const useEventStore = create<EventState>((set, get) => {
 					mediaItems: upsertMediaItem(state.mediaItems, result.mediaItem as MediaItemWithUser),
 				}));
 			} else {
-				try {
-					await get().fetchMediaItems(upload.eventId);
-				} catch (error) {
-					logger.error("Failed to refresh media items after upload", error, {
-						eventId: upload.eventId,
-					});
-				}
+				// Native uploads insert the row themselves and realtime delivers it.
+				// Coalesce refetches so a burst of completions doesn't trigger one
+				// full grid refetch per item.
+				scheduleMediaRefetch(upload.eventId, () => {
+					get()
+						.fetchMediaItems(upload.eventId)
+						.catch((error) => {
+							logger.error("Failed to refresh media items after upload", error, {
+								eventId: upload.eventId,
+							});
+						});
+				});
 			}
 		},
 		onFailed: async (upload, error, failureReason) => {
@@ -1204,9 +1222,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					localUri: undefined,
 					syncStatus: undefined,
 				}))
-				.sort(
-					(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
-				);
+				.sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
 			const pendingSection = [...pending].sort(
 				(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
 			);

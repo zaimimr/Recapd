@@ -6,7 +6,6 @@ import {
 	ActivityIndicator,
 	Alert,
 	RefreshControl,
-	ScrollView,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
@@ -30,40 +29,51 @@ import { type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 
 function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boolean }) {
 	const pendingUploads = useEventStore((state) => state.pendingUploads);
+	const retryFailedUpload = useEventStore((state) => state.retryFailedUpload);
 	const progress = useMemo(() => {
 		let active = 0;
 		let failed = 0;
+		const failedIds: string[] = [];
 		for (const p of pendingUploads) {
 			if (p.eventId !== eventId) continue;
 			if (p.status === "pending" || p.status === "syncing") active++;
-			else if (p.status === "failed") failed++;
+			else if (p.status === "failed") {
+				failed++;
+				failedIds.push(p.id);
+			}
 		}
-		return { active, failed, total: active + failed };
+		return { active, failed, failedIds, total: active + failed };
 	}, [pendingUploads, eventId]);
 
-	if (progress.total === 0) return null;
+	const handleRetryAll = useCallback(() => {
+		for (const id of progress.failedIds) retryFailedUpload(id);
+	}, [progress.failedIds, retryFailedUpload]);
 
-	const fillWidth =
-		progress.total === 0
-			? 0
-			: ((progress.total - progress.active) / progress.total) * 100;
+	if (progress.active === 0 && progress.failed === 0) return null;
 
 	return (
 		<View style={[styles.uploadBar, isDark && styles.uploadBarDark]}>
 			<View style={styles.uploadBarRow}>
-				<Text style={[styles.uploadBarText, isDark && styles.uploadBarTextDark]}>
-					{progress.active > 0
-						? `Uploading ${progress.active} of ${progress.total}`
-						: `${progress.failed} failed`}
-				</Text>
-				{progress.failed > 0 && progress.active > 0 && (
+				{progress.active > 0 && (
+					<Text style={[styles.uploadBarText, isDark && styles.uploadBarTextDark]}>
+						{progress.active} left
+					</Text>
+				)}
+				{progress.failed > 0 && (
 					<Text style={[styles.uploadBarFailed, isDark && styles.uploadBarFailedDark]}>
 						{progress.failed} failed
 					</Text>
 				)}
-			</View>
-			<View style={[styles.uploadBarTrack, isDark && styles.uploadBarTrackDark]}>
-				<View style={[styles.uploadBarFill, { width: `${fillWidth}%` }]} />
+				{progress.failed > 0 && (
+					<TouchableOpacity
+						style={styles.uploadBarRetry}
+						onPress={handleRetryAll}
+						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+					>
+						<FontAwesome name="refresh" size={11} color="#fff" />
+						<Text style={styles.uploadBarRetryText}>Retry</Text>
+					</TouchableOpacity>
+				)}
 			</View>
 		</View>
 	);
@@ -96,7 +106,7 @@ export default function EventScreen() {
 		leaveEvent,
 		removeParticipant,
 	} = useEventStore();
-	const failedUploadsKey = useEventStore((state) =>
+	const _failedUploadsKey = useEventStore((state) =>
 		state.pendingUploads
 			.filter((p) => p.eventId === id && p.status === "failed")
 			.map((p) => p.id)
@@ -189,10 +199,7 @@ export default function EventScreen() {
 		checkNotificationPrompt();
 	}, [justJoined]);
 
-	const mergedPhotos = useMemo(
-		() => (id ? getMergedTimeline(id) : []),
-		[id, mediaItems, failedUploadsKey, getMergedTimeline]
-	);
+	const mergedPhotos = useMemo(() => (id ? getMergedTimeline(id) : []), [id, getMergedTimeline]);
 
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true);
@@ -472,160 +479,15 @@ export default function EventScreen() {
 			/>
 
 			<View style={[styles.container, isDark && styles.containerDark]}>
-				<ScrollView
-					contentContainerStyle={styles.scrollContent}
+				<MasonryGrid
+					photos={mergedPhotos}
+					onPhotoPress={handlePhotoPress}
+					onRetry={retryFailedUpload}
+					onSkip={handleSkipUpload}
+					onRemove={handleRemoveUpload}
+					isDark={isDark}
 					refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
-				>
-					<View style={styles.header}>
-						<View style={styles.eventInfo}>
-							<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Event</Text>
-							<Text style={[styles.eventDate, isDark && styles.textDark]}>
-								{formatLocalizedDate(currentEvent.starts_at, {
-									weekday: "long",
-									month: "long",
-									day: "numeric",
-									year: "numeric",
-								})}
-							</Text>
-							<Text style={[styles.eventTime, isDark && styles.textMuted]}>
-								{formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}
-							</Text>
-						</View>
-
-						{isEnded && daysUntilExpiry > 0 && (
-							<View style={[styles.expiryBanner, isDark && styles.expiryBannerDark]}>
-								<View style={[styles.expiryIconContainer, { backgroundColor: getExpiryColor() }]}>
-									<FontAwesome name="clock-o" size={16} color="#fff" />
-								</View>
-								<View style={styles.expiryContent}>
-									<Text style={[styles.expiryLabel, isDark && styles.textMuted]}>
-										Media expire in
-									</Text>
-									<Text style={[styles.expiryValue, { color: getExpiryColor() }]}>
-										{daysUntilExpiry <= 1 ? `${hoursUntilExpiry} hours` : `${daysUntilExpiry} days`}
-									</Text>
-								</View>
-							</View>
-						)}
-
-						<View style={[styles.stats, isDark && styles.statsDark]}>
-							<View style={styles.stat}>
-								<Text style={[styles.statValue, isDark && styles.textDark]}>
-									{mergedPhotos.filter((p) => p.syncStatus !== "failed").length}
-								</Text>
-								<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
-							</View>
-							<View style={[styles.statDivider, isDark && styles.statDividerDark]} />
-							<TouchableOpacity style={styles.stat} onPress={handleOpenGuestSheet}>
-								<Text style={[styles.statValue, isDark && styles.textDark]}>
-									{currentEvent.participant_count || 0}
-								</Text>
-								<Text style={[styles.statLabel, isDark && styles.textMuted]}>Guests</Text>
-							</TouchableOpacity>
-						</View>
-
-						<ParticipantLimitBanner
-							participantCount={currentEvent.participant_count || 0}
-							hostIsPro={currentEvent.hostIsPro || false}
-							isHost={isHost || false}
-							isDark={isDark}
-						/>
-
-						<View style={styles.actionStack}>
-							<TouchableOpacity
-								style={[
-									styles.secondaryActionButton,
-									styles.remindButton,
-									isDark && styles.remindButtonDark,
-								]}
-								onPress={handleContribute}
-							>
-								<FontAwesome name="plus" size={16} color={isDark ? "#0a0d12" : "#fff"} />
-								<Text
-									style={[styles.contributeButtonText, isDark && styles.contributeButtonTextDark]}
-								>
-									Add Your Media
-								</Text>
-							</TouchableOpacity>
-
-							{mediaItems.length > 0 ? (
-								<View style={styles.secondaryActionRow}>
-									{mediaItems.length > 0 && (
-										<TouchableOpacity
-											style={[
-												styles.secondaryActionButton,
-												isDark && styles.secondaryActionButtonDark,
-											]}
-											onPress={handleDownloadAll}
-											disabled={downloadingAll}
-										>
-											{downloadingAll ? (
-												<>
-													<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
-													<Text
-														style={[styles.secondaryActionText, isDark && styles.textDark]}
-														numberOfLines={1}
-													>
-														{downloadProgress.current}/{downloadProgress.total}
-													</Text>
-												</>
-											) : (
-												<>
-													<FontAwesome
-														name="download"
-														size={15}
-														color={isDark ? "#fff" : "#111827"}
-													/>
-													<Text style={[styles.secondaryActionText, isDark && styles.textDark]}>
-														Download All
-													</Text>
-												</>
-											)}
-										</TouchableOpacity>
-									)}
-								</View>
-							) : null}
-
-							{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos && (
-								<TouchableOpacity
-									style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
-									onPress={handleNoPhotosToShare}
-									disabled={markingNoPhotos}
-								>
-									{markingNoPhotos ? (
-										<ActivityIndicator size="small" color={isDark ? "#d1d5db" : "#374151"} />
-									) : (
-										<FontAwesome name="check" size={14} color={isDark ? "#d1d5db" : "#374151"} />
-									)}
-									<Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
-										I don't have media to share
-									</Text>
-								</TouchableOpacity>
-							)}
-
-							{isEnded && myMediaCount === 0 && hasMarkedNoPhotos && (
-								<View
-									style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}
-								>
-									<FontAwesome name="check-circle" size={16} color="#22c55e" />
-									<Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
-										Thanks! We won't remind you about this event.
-									</Text>
-								</View>
-							)}
-						</View>
-
-						{mergedPhotos.length > 0 && (
-							<View style={styles.sectionHeader}>
-								<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Feed</Text>
-								<Text style={[styles.timelineTitle, isDark && styles.textDark]}>
-									Everyone's media
-								</Text>
-							</View>
-						)}
-					</View>
-
-					{mergedPhotos.length === 0 ? (
+					emptyComponent={
 						<View style={[styles.emptyState, isDark && styles.panelDark]}>
 							<FontAwesome name="camera" size={48} color={isDark ? "#444" : "#ccc"} />
 							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No media yet</Text>
@@ -633,17 +495,160 @@ export default function EventScreen() {
 								Photos and videos appear here as guests share them.
 							</Text>
 						</View>
-					) : (
-						<MasonryGrid
-							photos={mergedPhotos}
-							onPhotoPress={handlePhotoPress}
-							onRetry={retryFailedUpload}
-							onSkip={handleSkipUpload}
-							onRemove={handleRemoveUpload}
-							isDark={isDark}
-						/>
-					)}
-				</ScrollView>
+					}
+					headerComponent={
+						<View style={styles.header}>
+							<View style={styles.eventInfo}>
+								<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Event</Text>
+								<Text style={[styles.eventDate, isDark && styles.textDark]}>
+									{formatLocalizedDate(currentEvent.starts_at, {
+										weekday: "long",
+										month: "long",
+										day: "numeric",
+										year: "numeric",
+									})}
+								</Text>
+								<Text style={[styles.eventTime, isDark && styles.textMuted]}>
+									{formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}
+								</Text>
+							</View>
+
+							{isEnded && daysUntilExpiry > 0 && (
+								<View style={[styles.expiryBanner, isDark && styles.expiryBannerDark]}>
+									<View style={[styles.expiryIconContainer, { backgroundColor: getExpiryColor() }]}>
+										<FontAwesome name="clock-o" size={16} color="#fff" />
+									</View>
+									<View style={styles.expiryContent}>
+										<Text style={[styles.expiryLabel, isDark && styles.textMuted]}>
+											Media expire in
+										</Text>
+										<Text style={[styles.expiryValue, { color: getExpiryColor() }]}>
+											{daysUntilExpiry <= 1
+												? `${hoursUntilExpiry} hours`
+												: `${daysUntilExpiry} days`}
+										</Text>
+									</View>
+								</View>
+							)}
+
+							<View style={[styles.stats, isDark && styles.statsDark]}>
+								<View style={styles.stat}>
+									<Text style={[styles.statValue, isDark && styles.textDark]}>
+										{mergedPhotos.filter((p) => p.syncStatus !== "failed").length}
+									</Text>
+									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
+								</View>
+								<View style={[styles.statDivider, isDark && styles.statDividerDark]} />
+								<TouchableOpacity style={styles.stat} onPress={handleOpenGuestSheet}>
+									<Text style={[styles.statValue, isDark && styles.textDark]}>
+										{currentEvent.participant_count || 0}
+									</Text>
+									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Guests</Text>
+								</TouchableOpacity>
+							</View>
+
+							<ParticipantLimitBanner
+								participantCount={currentEvent.participant_count || 0}
+								hostIsPro={currentEvent.hostIsPro || false}
+								isHost={isHost || false}
+								isDark={isDark}
+							/>
+
+							<View style={styles.actionStack}>
+								<TouchableOpacity
+									style={[
+										styles.secondaryActionButton,
+										styles.remindButton,
+										isDark && styles.remindButtonDark,
+									]}
+									onPress={handleContribute}
+								>
+									<FontAwesome name="plus" size={16} color={isDark ? "#0a0d12" : "#fff"} />
+									<Text
+										style={[styles.contributeButtonText, isDark && styles.contributeButtonTextDark]}
+									>
+										Add Your Media
+									</Text>
+								</TouchableOpacity>
+
+								{mediaItems.length > 0 ? (
+									<View style={styles.secondaryActionRow}>
+										{mediaItems.length > 0 && (
+											<TouchableOpacity
+												style={[
+													styles.secondaryActionButton,
+													isDark && styles.secondaryActionButtonDark,
+												]}
+												onPress={handleDownloadAll}
+												disabled={downloadingAll}
+											>
+												{downloadingAll ? (
+													<>
+														<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
+														<Text
+															style={[styles.secondaryActionText, isDark && styles.textDark]}
+															numberOfLines={1}
+														>
+															{downloadProgress.current}/{downloadProgress.total}
+														</Text>
+													</>
+												) : (
+													<>
+														<FontAwesome
+															name="download"
+															size={15}
+															color={isDark ? "#fff" : "#111827"}
+														/>
+														<Text style={[styles.secondaryActionText, isDark && styles.textDark]}>
+															Download All
+														</Text>
+													</>
+												)}
+											</TouchableOpacity>
+										)}
+									</View>
+								) : null}
+
+								{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos && (
+									<TouchableOpacity
+										style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
+										onPress={handleNoPhotosToShare}
+										disabled={markingNoPhotos}
+									>
+										{markingNoPhotos ? (
+											<ActivityIndicator size="small" color={isDark ? "#d1d5db" : "#374151"} />
+										) : (
+											<FontAwesome name="check" size={14} color={isDark ? "#d1d5db" : "#374151"} />
+										)}
+										<Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
+											I don't have media to share
+										</Text>
+									</TouchableOpacity>
+								)}
+
+								{isEnded && myMediaCount === 0 && hasMarkedNoPhotos && (
+									<View
+										style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}
+									>
+										<FontAwesome name="check-circle" size={16} color="#22c55e" />
+										<Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
+											Thanks! We won't remind you about this event.
+										</Text>
+									</View>
+								)}
+							</View>
+
+							{mergedPhotos.length > 0 && (
+								<View style={styles.sectionHeader}>
+									<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Feed</Text>
+									<Text style={[styles.timelineTitle, isDark && styles.textDark]}>
+										Everyone's media
+									</Text>
+								</View>
+							)}
+						</View>
+					}
+				/>
 				<PhotoViewer
 					photos={mergedPhotos}
 					initialIndex={selectedPhotoIndex}
@@ -985,8 +990,7 @@ const styles = StyleSheet.create({
 	uploadBarRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "space-between",
-		marginBottom: 8,
+		gap: 12,
 	},
 	uploadBarText: {
 		color: "#f9fafb",
@@ -1003,6 +1007,21 @@ const styles = StyleSheet.create({
 	},
 	uploadBarFailedDark: {
 		color: "#fca5a5",
+	},
+	uploadBarRetry: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		marginLeft: "auto",
+		paddingHorizontal: 12,
+		paddingVertical: 6,
+		borderRadius: 999,
+		backgroundColor: "rgba(37, 99, 235, 0.9)",
+	},
+	uploadBarRetryText: {
+		color: "#fff",
+		fontSize: 12,
+		fontWeight: "700",
 	},
 	uploadBarTrack: {
 		height: 4,

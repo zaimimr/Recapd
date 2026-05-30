@@ -52,25 +52,6 @@ function getPreferredAssetRepresentationMode() {
 	);
 }
 
-/**
- * Process items in batches to prevent memory issues and API overload
- */
-async function batchProcess<T, R>(
-	items: T[],
-	batchSize: number,
-	processor: (item: T) => Promise<R>
-): Promise<R[]> {
-	const results: R[] = [];
-
-	for (let i = 0; i < items.length; i += batchSize) {
-		const batch = items.slice(i, i + batchSize);
-		const batchResults = await Promise.all(batch.map(processor));
-		results.push(...batchResults);
-	}
-
-	return results;
-}
-
 export interface MediaScanProgress {
 	scannedPages: number;
 	scannedAssets: number;
@@ -85,6 +66,55 @@ export interface MediaScanOptions {
 	paddingMs?: number;
 	pageSize?: number;
 	onProgress?: (progress: MediaScanProgress) => void;
+	onBatch?: (media: LocalPhoto[], progress: MediaScanProgress) => void;
+}
+
+function assetToLocalPhoto(asset: MediaLibrary.Asset): LocalPhoto {
+	return {
+		id: asset.id,
+		uri: asset.uri,
+		filename: asset.filename,
+		creationTime: asset.creationTime,
+		width: asset.width,
+		height: asset.height,
+		duration: durationToMs(asset.duration),
+		mediaType: asset.mediaType === "photo" ? "photo" : "video",
+	};
+}
+
+/**
+ * Best-effort file size lookup without forcing an iCloud download.
+ * Used to fill in size limits after the grid has already rendered.
+ */
+export async function resolveAssetFileSizes(
+	assets: LocalPhoto[],
+	onBatch?: (sizes: Map<string, number>) => void
+): Promise<Map<string, number>> {
+	const sizes = new Map<string, number>();
+	for (let i = 0; i < assets.length; i += ASSET_INFO_BATCH_SIZE) {
+		const batch = assets.slice(i, i + ASSET_INFO_BATCH_SIZE);
+		const batchSizes = new Map<string, number>();
+		await Promise.all(
+			batch.map(async (asset) => {
+				try {
+					const info = await MediaLibrary.getAssetInfoAsync(asset.id, {
+						shouldDownloadFromNetwork: false,
+					});
+					const size = (info as { fileSize?: number } | null | undefined)?.fileSize;
+					if (typeof size === "number" && size > 0) {
+						sizes.set(asset.id, size);
+						batchSizes.set(asset.id, size);
+					}
+				} catch {
+					// Ignore - size stays unknown, enforced later at upload time.
+				}
+			})
+		);
+		if (batchSizes.size > 0) {
+			onBatch?.(batchSizes);
+		}
+	}
+	return sizes;
 }
 
 export interface MediaScanResult {
@@ -118,6 +148,7 @@ export async function scanMediaInTimeRange(
 		paddingMs = DEFAULT_SCAN_PADDING_MS,
 		pageSize = DEFAULT_PAGE_SIZE,
 		onProgress,
+		onBatch,
 	} = options;
 
 	const mediaTypes: MediaLibrary.MediaTypeValue[] = includeVideos ? ["photo", "video"] : ["photo"];
@@ -126,19 +157,24 @@ export async function scanMediaInTimeRange(
 	const endTimestamp = endTime.getTime() + paddingMs;
 	const deadline = timeoutMs > 0 ? Date.now() + timeoutMs : Number.POSITIVE_INFINITY;
 
-	// Use pagination to fetch assets in chunks
-	const allFilteredAssets: MediaLibrary.Asset[] = [];
+	// Use pagination to fetch assets in chunks. Each page is mapped straight from
+	// the asset listing (no per-asset getAssetInfoAsync / iCloud download) and
+	// streamed to the caller so the grid fills as we scan. Local file URIs and
+	// exact file sizes are resolved lazily later (at display + upload time).
+	const media: LocalPhoto[] = [];
 	let cursor: string | undefined;
 	let hasMore = true;
 	let scannedPages = 0;
 	let scannedAssets = 0;
+	let timedOut = false;
 
-	while (hasMore && allFilteredAssets.length < limit) {
+	while (hasMore && media.length < limit) {
 		if (Date.now() > deadline) {
+			timedOut = true;
 			onProgress?.({
 				scannedPages,
 				scannedAssets,
-				matchedAssets: allFilteredAssets.length,
+				matchedAssets: media.length,
 				timedOut: true,
 			});
 			break;
@@ -153,15 +189,15 @@ export async function scanMediaInTimeRange(
 		scannedPages += 1;
 		scannedAssets += result.assets.length;
 
-		// Filter assets by time range
-		const filtered = result.assets.filter((asset) => {
+		const matched = result.assets.filter((asset) => {
 			const created = asset.creationTime;
 			return created >= startTimestamp && created <= endTimestamp;
 		});
 
-		allFilteredAssets.push(...filtered);
+		const remaining = limit - media.length;
+		const pageMedia = matched.slice(0, remaining).map(assetToLocalPhoto);
+		media.push(...pageMedia);
 
-		// Check if we should continue pagination
 		hasMore = result.hasNextPage;
 		cursor = result.endCursor;
 
@@ -174,65 +210,24 @@ export async function scanMediaInTimeRange(
 			}
 		}
 
-		onProgress?.({
+		const progress: MediaScanProgress = {
 			scannedPages,
 			scannedAssets,
-			matchedAssets: allFilteredAssets.length,
+			matchedAssets: media.length,
 			timedOut: false,
-		});
-	}
-
-	// Trim to limit
-	const assetsToProcess = allFilteredAssets.slice(0, limit);
-
-	let iCloudUnavailable = 0;
-
-	const resolvedAssets = await batchProcess(
-		assetsToProcess,
-		ASSET_INFO_BATCH_SIZE,
-		async (asset): Promise<LocalPhoto | null> => {
-			const assetInfo = await MediaLibrary.getAssetInfoAsync(asset.id, {
-				shouldDownloadFromNetwork: true,
-			});
-			const localUri = assetInfo?.localUri;
-			if (!localUri) {
-				iCloudUnavailable += 1;
-				return null;
-			}
-			const assetFileSize =
-				(assetInfo as { fileSize?: number } | null | undefined)?.fileSize ?? undefined;
-			return {
-				id: asset.id,
-				uri: localUri,
-				filename: asset.filename,
-				creationTime: asset.creationTime,
-				width: asset.width,
-				height: asset.height,
-				duration: durationToMs(assetInfo?.duration || asset.duration),
-				fileSize: assetFileSize,
-				mediaType: asset.mediaType === "photo" ? "photo" : ("video" as "photo" | "video"),
-				latitude: assetInfo?.location?.latitude,
-				longitude: assetInfo?.location?.longitude,
-			};
+		};
+		if (pageMedia.length > 0) {
+			onBatch?.(pageMedia, progress);
 		}
-	);
-
-	const photosWithLocalUri = resolvedAssets.filter((item): item is LocalPhoto => item !== null);
-
-	if (iCloudUnavailable > 0) {
-		logger.info("Media scan skipped iCloud-only assets", {
-			iCloudUnavailable,
-			scannedAssets,
-			matched: photosWithLocalUri.length,
-		});
+		onProgress?.(progress);
 	}
 
 	return {
-		media: photosWithLocalUri,
-		timedOut: Date.now() > deadline,
+		media,
+		timedOut,
 		scannedPages,
 		scannedAssets,
-		iCloudUnavailable,
+		iCloudUnavailable: 0,
 	};
 }
 

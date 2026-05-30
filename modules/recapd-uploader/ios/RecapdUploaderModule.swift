@@ -62,4 +62,12 @@ struct UploadItemInput: Record {
   @Field var eventId: String = ""
   @Field var userId: String = ""
   @Field var fileFingerprint: String = ""
+  @Field var capturedAt: String = ""
+  @Field var width: Int = 0
+  @Field var height: Int = 0
+  @Field var durationMs: Int = 0
+  @Field var latitude: Double? = nil
+  @Field var longitude: Double? = nil
+  @Field var fileSizeBytes: Int? = nil
+  @Field var thumbnailPath: String? = nil
 }

@@ -1,5 +1,6 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image as ExpoImage } from "expo-image";
+import * as MediaLibrary from "expo-media-library";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,6 +21,7 @@ import {
 	type LocalPhoto,
 	pickMediaFromLibrary,
 	requestMediaPermissions,
+	resolveAssetFileSizes,
 	scanMediaInTimeRange,
 } from "@/lib/mediaLibrary";
 import { createVideoThumbnailUri } from "@/lib/storage";
@@ -40,7 +42,6 @@ const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
 const SCAN_ACTION_DELAY_MS = 4000;
-const GRID_PAGE_SIZE = 50;
 
 function formatDurationHms(milliseconds: number): string {
 	if (!Number.isFinite(milliseconds) || milliseconds < 0) return "00:00:00";
@@ -55,24 +56,34 @@ function formatDurationHms(milliseconds: number): string {
 
 const VideoThumbnail = memo(function VideoThumbnail({
 	uri,
+	assetId,
 	style,
 }: {
 	uri: string;
+	assetId?: string;
 	style: object;
 }) {
 	const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
 
 	useEffect(() => {
 		let mounted = true;
-		createVideoThumbnailUri(uri, 0)
-			.then((thumbUri) => {
-				if (mounted) setThumbnailUri(thumbUri);
-			})
-			.catch(() => {});
+		(async () => {
+			let sourceUri = uri;
+			if (uri.startsWith("ph://") && assetId) {
+				try {
+					const info = await MediaLibrary.getAssetInfoAsync(assetId, {
+						shouldDownloadFromNetwork: false,
+					});
+					if (info?.localUri) sourceUri = info.localUri;
+				} catch {}
+			}
+			const thumbUri = await createVideoThumbnailUri(sourceUri, 0).catch(() => null);
+			if (mounted) setThumbnailUri(thumbUri);
+		})();
 		return () => {
 			mounted = false;
 		};
-	}, [uri]);
+	}, [uri, assetId]);
 
 	if (!thumbnailUri) {
 		return <View style={[style, { backgroundColor: "#1a1a1a" }]} />;
@@ -151,35 +162,23 @@ export default function ContributeScreen() {
 	const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 	const [showSlowScanActions, setShowSlowScanActions] = useState(false);
 	const [isQueueingUploads, setIsQueueingUploads] = useState(false);
-	const [visibleCount, setVisibleCount] = useState(GRID_PAGE_SIZE);
 	const scanRequestIdRef = useRef(0);
 
 	const allPhotos = useMemo(() => [...photos, ...manualPhotos], [photos, manualPhotos]);
-	const visiblePhotos = useMemo(
-		() => allPhotos.slice(0, visibleCount),
-		[allPhotos, visibleCount]
-	);
-
-	useEffect(() => {
-		setVisibleCount(GRID_PAGE_SIZE);
-	}, [photos]);
 
 	const cancelActiveScan = useCallback(() => {
 		scanRequestIdRef.current += 1;
 		setShowSlowScanActions(false);
 	}, []);
 
-	const applyScannedMedia = useCallback(
-		(filteredMedia: LocalPhoto[], alreadyUploaded: Set<string>) => {
-			const newPhotoIds = filteredMedia.filter((p) => !alreadyUploaded.has(p.id)).map((p) => p.id);
-			startTransition(() => {
-				setPhotos(filteredMedia);
-				setUploadedIds(alreadyUploaded);
-				setSelectedIds(new Set(newPhotoIds));
-				setStep(filteredMedia.length > 0 ? "select" : "empty");
-			});
-		},
-		[]
+	const passesDurationLimit = useCallback(
+		(item: LocalPhoto) =>
+			!(
+				item.mediaType === "video" &&
+				maxVideoDurationMilliseconds > 0 &&
+				item.duration > maxVideoDurationMilliseconds
+			),
+		[maxVideoDurationMilliseconds]
 	);
 
 	const mergeManualMedia = useCallback(
@@ -238,6 +237,9 @@ export default function ContributeScreen() {
 		setPermissionDenied(false);
 		setScanError(false);
 		setShowSlowScanActions(false);
+		setPhotos([]);
+		setSelectedIds(new Set());
+		setUploadedIds(new Set());
 
 		const slowScanTimer = setTimeout(() => {
 			if (scanRequestIdRef.current === requestId) {
@@ -261,11 +263,32 @@ export default function ContributeScreen() {
 			const startTime = new Date(event.starts_at);
 			const endTime = new Date(event.ends_at);
 
+			let streamedAny = false;
+
 			const scanResult = await scanMediaInTimeRange(startTime, endTime, {
 				limit: 1000,
 				includeVideos: true,
 				timeoutMs: 20000,
 				paddingMs: 2 * 60 * 1000,
+				onBatch: (batch) => {
+					if (scanRequestIdRef.current !== requestId) return;
+					const pageMedia = batch.filter(passesDurationLimit);
+					if (pageMedia.length === 0) return;
+					streamedAny = true;
+					startTransition(() => {
+						setPhotos((prev) => {
+							const seen = new Set(prev.map((p) => p.id));
+							const additions = pageMedia.filter((p) => !seen.has(p.id));
+							return additions.length ? [...prev, ...additions] : prev;
+						});
+						setSelectedIds((prev) => {
+							const next = new Set(prev);
+							for (const p of pageMedia) next.add(p.id);
+							return next;
+						});
+						setStep("select");
+					});
+				},
 			});
 			if (scanRequestIdRef.current !== requestId) {
 				return;
@@ -275,33 +298,48 @@ export default function ContributeScreen() {
 				setShowSlowScanActions(true);
 			}
 
-			const filteredMedia = scanResult.media.filter((item) => {
-				if (
-					item.mediaType === "video" &&
-					maxVideoDurationMilliseconds > 0 &&
-					item.duration > maxVideoDurationMilliseconds
-				) {
-					return false;
-				}
-				if (
-					maxFileSizeBytes > 0 &&
-					typeof item.fileSize === "number" &&
-					item.fileSize > maxFileSizeBytes
-				) {
-					return false;
-				}
-				return true;
-			});
+			const scanned = scanResult.media.filter(passesDurationLimit);
 
-			const alreadyUploaded = user
-				? await getUploadedPhotoIdsForEvent(eventId, user.id, filteredMedia)
-				: new Set<string>();
-			if (scanRequestIdRef.current !== requestId) {
-				return;
+			if (!streamedAny) {
+				setStep(scanned.length > 0 ? "select" : "empty");
 			}
-			applyScannedMedia(filteredMedia, alreadyUploaded);
-			if (scanResult.iCloudUnavailable > 0) {
-				notifySkippedMedia(0, 0, scanResult.iCloudUnavailable);
+
+			if (user && scanned.length > 0) {
+				getUploadedPhotoIdsForEvent(eventId, user.id, scanned)
+					.then((alreadyUploaded) => {
+						if (scanRequestIdRef.current !== requestId || alreadyUploaded.size === 0) return;
+						setUploadedIds(alreadyUploaded);
+						setSelectedIds((prev) => {
+							const next = new Set(prev);
+							for (const id of alreadyUploaded) next.delete(id);
+							return next;
+						});
+					})
+					.catch(() => {});
+			}
+
+			if (maxFileSizeBytes > 0 && scanned.length > 0) {
+				resolveAssetFileSizes(scanned)
+					.then((sizes) => {
+						if (scanRequestIdRef.current !== requestId || sizes.size === 0) return;
+						const oversize = new Set<string>();
+						for (const [id, size] of sizes) {
+							if (size > maxFileSizeBytes) oversize.add(id);
+						}
+						setPhotos((prev) =>
+							prev
+								.map((p) => (sizes.has(p.id) ? { ...p, fileSize: sizes.get(p.id) } : p))
+								.filter((p) => !oversize.has(p.id))
+						);
+						if (oversize.size > 0) {
+							setSelectedIds((prev) => {
+								const next = new Set(prev);
+								for (const id of oversize) next.delete(id);
+								return next;
+							});
+						}
+					})
+					.catch(() => {});
 			}
 		} catch (error) {
 			logger.error("Photo scanning failed", error, { eventId });
@@ -314,14 +352,12 @@ export default function ContributeScreen() {
 			}
 		}
 	}, [
-		applyScannedMedia,
 		eventId,
 		currentEvent,
 		fetchEventById,
 		getUploadedPhotoIdsForEvent,
-		notifySkippedMedia,
+		passesDurationLimit,
 		user,
-		maxVideoDurationMilliseconds,
 		maxFileSizeBytes,
 	]);
 
@@ -662,28 +698,17 @@ export default function ContributeScreen() {
 				</View>
 
 				<FlatList
-					data={visiblePhotos}
+					data={allPhotos}
 					keyExtractor={(item) => item.id}
 					numColumns={NUM_COLUMNS}
-					initialNumToRender={15}
-					maxToRenderPerBatch={9}
-					windowSize={2}
+					initialNumToRender={18}
+					maxToRenderPerBatch={12}
+					windowSize={5}
 					removeClippedSubviews
-					ListFooterComponent={
-						visibleCount < allPhotos.length ? (
-							<TouchableOpacity
-								style={[styles.loadMoreButton, isDark && styles.loadMoreButtonDark]}
-								onPress={() =>
-									setVisibleCount((count) => Math.min(count + GRID_PAGE_SIZE, allPhotos.length))
-								}
-							>
-								<Text style={[styles.loadMoreText, isDark && styles.textDark]}>
-									Load {Math.min(GRID_PAGE_SIZE, allPhotos.length - visibleCount)} more
-									{" "}({allPhotos.length - visibleCount} remaining)
-								</Text>
-							</TouchableOpacity>
-						) : null
-					}
+					getItemLayout={(_, index) => {
+						const length = photoSize + GRID_GAP;
+						return { length, offset: length * Math.floor(index / NUM_COLUMNS), index };
+					}}
 					renderItem={({ item, index }) => {
 						const isSelected = selectedIds.has(item.id);
 						const isUploaded = uploadedIds.has(item.id);
@@ -697,14 +722,20 @@ export default function ContributeScreen() {
 								disabled={isUploaded}
 							>
 								{isVideo ? (
-									<VideoThumbnail uri={item.uri} style={styles.selectPhotoImage} />
+									<VideoThumbnail
+										uri={item.uri}
+										assetId={item.id}
+										style={styles.selectPhotoImage}
+									/>
 								) : (
 									<ExpoImage
 										source={{ uri: item.uri }}
 										style={styles.selectPhotoImage}
 										contentFit="cover"
-										cachePolicy="disk"
+										cachePolicy="memory-disk"
 										recyclingKey={item.id}
+										allowDownscaling
+										priority="low"
 									/>
 								)}
 								{isVideo && (

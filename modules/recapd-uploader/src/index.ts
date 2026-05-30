@@ -22,6 +22,14 @@ export interface UploadItemInput {
 	eventId: string;
 	userId: string;
 	fileFingerprint: string;
+	capturedAt: string;
+	width: number;
+	height: number;
+	durationMs: number;
+	latitude?: number;
+	longitude?: number;
+	fileSizeBytes?: number;
+	thumbnailPath?: string;
 }
 
 export interface UploadProgressEvent {
@@ -33,6 +41,7 @@ export interface UploadProgressEvent {
 export interface UploadCompletedEvent {
 	uploadId: string;
 	objectName: string;
+	recorded?: boolean;
 }
 
 export interface UploadFailedEvent {

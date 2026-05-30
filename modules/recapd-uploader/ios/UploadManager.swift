@@ -8,6 +8,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   private let backgroundIdentifier = "com.zaimimran.recapd.upload.background"
   private let queueFileName = "recapd-upload-queue.json"
   private let stateDirName = "recapd-upload-state"
+  private let stageDirName = "recapd-upload-stage"
 
   private weak var emitter: Module?
 
@@ -15,14 +16,20 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   private var anonKey: String = ""
   private var bearerToken: String = ""
   private var bucket: String = "event-photos"
-  private var maxConcurrentPhotos: Int = 2
-  private var maxConcurrentVideos: Int = 1
-  private var chunkBytes: Int = 1 * 1024 * 1024
+
+  // How many jobs may be staged-to-disk and in flight at once (windowed staging
+  // keeps disk + memory bounded; only staged files can upload in the background).
+  private var stagingWindow: Int = 16
+  // Free-disk safety margin before staging another file.
+  private let minFreeDiskSafetyBytes: Int64 = 200 * 1024 * 1024
+  private let minFreeDiskHeadroom: Double = 2.0
 
   private let queueLock = NSLock()
   private var queue: [UploadJob] = []
-  private var inflight: [String: UploadInflight] = [:]
-  private var taskToUpload: [Int: String] = [:]
+  private var stagingInProgress = Set<String>()
+
+  // Set by the AppDelegate subscriber when iOS relaunches us for background events.
+  private var backgroundCompletionHandler: (() -> Void)?
 
   private lazy var session: URLSession = {
     let config = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
@@ -38,25 +45,30 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   override init() {
     super.init()
     loadQueue()
+    // Touch the session so the background delegate reconnects to any tasks that
+    // finished while we were suspended/killed.
+    _ = session
   }
 
   func bind(emitter: Module) {
     self.emitter = emitter
   }
 
+  func setBackgroundCompletionHandler(_ handler: @escaping () -> Void) {
+    queueLock.lock()
+    backgroundCompletionHandler = handler
+    queueLock.unlock()
+    kick()
+  }
+
   func configure(_ config: UploaderConfig) {
     queueLock.lock()
-    defer { queueLock.unlock() }
     supabaseUrl = config.supabaseUrl
     anonKey = config.anonKey
     bearerToken = config.bearerToken
     bucket = config.bucket
-    maxConcurrentPhotos = max(1, config.maxConcurrentPhotos)
-    maxConcurrentVideos = max(1, config.maxConcurrentVideos)
-    chunkBytes = max(256 * 1024, config.chunkBytes)
-    DispatchQueue.global(qos: .utility).async { [weak self] in
-      self?.pump()
-    }
+    queueLock.unlock()
+    kick()
   }
 
   func enqueue(items: [UploadItemInput]) throws -> [String] {
@@ -67,48 +79,46 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
         ids.append(item.uploadId)
         continue
       }
-      let job = UploadJob(input: item)
-      queue.append(job)
+      queue.append(UploadJob(input: item))
       ids.append(item.uploadId)
     }
     persistLocked()
     queueLock.unlock()
-    DispatchQueue.global(qos: .utility).async { [weak self] in
-      self?.pump()
-    }
+    kick()
     return ids
   }
 
   func cancel(uploadId: String) {
     queueLock.lock()
-    if let inflight = inflight[uploadId] {
-      inflight.task.cancel()
-    }
     queue.removeAll { $0.uploadId == uploadId }
-    inflight.removeValue(forKey: uploadId)
     persistLocked()
     queueLock.unlock()
+    session.getAllTasks { tasks in
+      for task in tasks where self.jobId(of: task) == uploadId {
+        task.cancel()
+      }
+    }
   }
 
   func clearFailed() {
     queueLock.lock()
-    queue.removeAll { $0.status == .failed }
+    let failed = queue.filter { $0.phase == .failed }
+    queue.removeAll { $0.phase == .failed }
     persistLocked()
     queueLock.unlock()
+    for job in failed { removeStagedFile(job) }
   }
 
   func retry(uploadId: String) {
     queueLock.lock()
     if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
-      queue[idx].status = .queued
+      queue[idx].phase = queue[idx].stagedPath != nil ? .staged : .queued
       queue[idx].lastError = nil
       queue[idx].attemptCount = 0
     }
     persistLocked()
     queueLock.unlock()
-    DispatchQueue.global(qos: .utility).async { [weak self] in
-      self?.pump()
-    }
+    kick()
   }
 
   func kick() {
@@ -123,105 +133,100 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     let items = queue.map { job -> [String: Any] in
       [
         "uploadId": job.uploadId,
-        "status": job.status.rawValue,
+        "status": job.phase.rawValue,
         "objectName": job.objectName,
         "mediaType": job.mediaType,
         "eventId": job.eventId,
         "userId": job.userId,
-        "bytesUploaded": job.bytesUploaded,
+        "bytesUploaded": job.offset,
         "totalBytes": job.totalBytes,
         "lastError": job.lastError ?? NSNull(),
         "attemptCount": job.attemptCount
       ]
     }
-    return [
-      "items": items,
-      "inflight": Array(inflight.keys)
-    ]
+    return ["items": items]
   }
 
-  // MARK: - Queue pump
+  // MARK: - Pump (foreground-driven staging + chain start)
 
   private func pump() {
+    guard !supabaseUrl.isEmpty, !bearerToken.isEmpty else { return }
+
     queueLock.lock()
-    let activePhotos = inflight.values.filter { $0.job.mediaType == "photo" }.count
-    let activeVideos = inflight.values.filter { $0.job.mediaType == "video" }.count
-    let needPhotos = max(0, maxConcurrentPhotos - activePhotos)
-    let needVideos = max(0, maxConcurrentVideos - activeVideos)
-    var toStart: [UploadJob] = []
-    var photosBudget = needPhotos
-    var videosBudget = needVideos
-    for job in queue where job.status == .queued || job.status == .syncing {
-      guard inflight[job.uploadId] == nil else { continue }
-      if job.mediaType == "video" && videosBudget > 0 {
-        toStart.append(job)
-        videosBudget -= 1
-      } else if job.mediaType != "video" && photosBudget > 0 {
-        toStart.append(job)
-        photosBudget -= 1
-      }
-      if photosBudget == 0 && videosBudget == 0 { break }
-    }
+    let inWindow = queue.filter {
+      $0.phase != .queued && $0.phase != .completed && $0.phase != .failed
+    }.count
+    var budget = max(0, stagingWindow - inWindow)
+    let toStage = queue.filter { $0.phase == .queued }
     queueLock.unlock()
-    for job in toStart {
-      Task { await start(job: job) }
+
+    for job in toStage {
+      if budget <= 0 { break }
+      queueLock.lock()
+      let already = stagingInProgress.contains(job.uploadId)
+      if !already { stagingInProgress.insert(job.uploadId) }
+      queueLock.unlock()
+      if already { continue }
+      budget -= 1
+      Task { await stageAndStart(job) }
     }
   }
 
-  // MARK: - Single-job state machine
+  // MARK: - Staging (PHAsset / file -> disk). Foreground / wake-window only.
 
-  private func start(job: UploadJob) async {
-    do {
+  private func stageAndStart(_ job: UploadJob) async {
+    defer {
       queueLock.lock()
-      if let idx = queue.firstIndex(where: { $0.uploadId == job.uploadId }) {
-        queue[idx].status = .syncing
-        queue[idx].attemptCount += 1
-        persistLocked()
-      }
+      stagingInProgress.remove(job.uploadId)
       queueLock.unlock()
-      let materialized = try await materialize(job: job)
-      let tusUrl = try await ensureTusUpload(job: job, fileURL: materialized.fileURL, totalBytes: materialized.size)
-      let startOffset = try await fetchOffset(tusUrl: tusUrl)
-      try await uploadChunks(job: job, fileURL: materialized.fileURL, tusUrl: tusUrl, totalBytes: materialized.size, startOffset: startOffset)
-      try await verifyExists(job: job)
-      finishSuccess(uploadId: job.uploadId, materialized: materialized)
+    }
+    do {
+      let staged = try await materialize(job: job)
+      let attrs = try FileManager.default.attributesOfItem(atPath: staged.path)
+      let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+      if size <= 0 { throw UploaderError.assetUnavailable("staged file empty") }
+      try ensureFreeDiskFor(size)
+
+      queueLock.lock()
+      guard let idx = queue.firstIndex(where: { $0.uploadId == job.uploadId }) else {
+        queueLock.unlock()
+        try? FileManager.default.removeItem(at: staged)
+        return
+      }
+      queue[idx].stagedPath = staged.path
+      queue[idx].totalBytes = size
+      queue[idx].phase = .staged
+      let started = queue[idx]
+      persistLocked()
+      queueLock.unlock()
+
+      startCreate(started)
     } catch {
       finishFailure(uploadId: job.uploadId, error: error)
     }
   }
 
-  // MARK: - PHAsset / file source materialization
-
-  private struct Materialized {
-    let fileURL: URL
-    let size: Int64
-    let cleanup: () -> Void
-  }
-
-  private func materialize(job: UploadJob) async throws -> Materialized {
-    let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("recapd-upload-stage", isDirectory: true)
+  private func materialize(job: UploadJob) async throws -> URL {
+    let cacheDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      .appendingPathComponent(stageDirName, isDirectory: true)
     try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
     let ext = (job.objectName as NSString).pathExtension.lowercased()
     let staged = cacheDir.appendingPathComponent("\(job.uploadId).\(ext.isEmpty ? "bin" : ext)")
+
+    if FileManager.default.fileExists(atPath: staged.path) {
+      return staged
+    }
 
     if let assetId = job.assetIdentifier, !assetId.isEmpty {
       try await streamPHAsset(assetId: assetId, to: staged, mediaType: job.mediaType)
     } else if let fileUri = job.fileUri, !fileUri.isEmpty {
       let src = URL(fileURLWithPath: fileUri.replacingOccurrences(of: "file://", with: ""))
-      if staged != src {
-        try? FileManager.default.removeItem(at: staged)
-        try FileManager.default.copyItem(at: src, to: staged)
-      }
+      try? FileManager.default.removeItem(at: staged)
+      try FileManager.default.copyItem(at: src, to: staged)
     } else {
       throw UploaderError.invalidInput("missing asset identifier or file URI")
     }
-
-    let attrs = try FileManager.default.attributesOfItem(atPath: staged.path)
-    let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
-    return Materialized(fileURL: staged, size: size) {
-      try? FileManager.default.removeItem(at: staged)
-    }
+    return staged
   }
 
   private func streamPHAsset(assetId: String, to destination: URL, mediaType: String) async throws {
@@ -229,13 +234,6 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     guard let asset = fetched.firstObject else {
       throw UploaderError.assetUnavailable("PHAsset not found: \(assetId)")
     }
-    try? FileManager.default.removeItem(at: destination)
-    FileManager.default.createFile(atPath: destination.path, contents: nil)
-    guard let handle = try? FileHandle(forWritingTo: destination) else {
-      throw UploaderError.assetUnavailable("Cannot open destination for writing")
-    }
-    defer { try? handle.close() }
-
     let resources = PHAssetResource.assetResources(for: asset)
     let target: PHAssetResource?
     if mediaType == "video" {
@@ -247,15 +245,14 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       throw UploaderError.assetUnavailable("no resource on asset")
     }
 
+    try? FileManager.default.removeItem(at: destination)
     let options = PHAssetResourceRequestOptions()
     options.isNetworkAccessAllowed = true
 
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-      PHAssetResourceManager.default().requestData(for: resource, options: options) { data in
-        handle.write(data)
-      } completionHandler: { error in
+      PHAssetResourceManager.default().writeData(for: resource, toFile: destination, options: options) { error in
         if let error = error {
-          cont.resume(throwing: UploaderError.assetUnavailable("PHAssetResource read failed: \(error.localizedDescription)"))
+          cont.resume(throwing: UploaderError.assetUnavailable("PHAssetResource write failed: \(error.localizedDescription)"))
         } else {
           cont.resume()
         }
@@ -263,167 +260,238 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     }
   }
 
-  // MARK: - TUS protocol
+  // MARK: - Background task chain (create -> patch -> verify -> record)
 
-  private func tusCreateURL() -> URL? {
-    URL(string: "\(supabaseUrl)/storage/v1/upload/resumable")
-  }
-
-  private func ensureTusUpload(job: UploadJob, fileURL: URL, totalBytes: Int64) async throws -> URL {
-    if let url = loadTusUrl(fingerprint: job.fileFingerprint), totalBytes > 0 {
-      return url
+  private func startCreate(_ job: UploadJob) {
+    setPhase(job.uploadId, .creating)
+    guard let url = URL(string: "\(supabaseUrl)/storage/v1/upload/resumable") else {
+      finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid supabaseUrl"))
+      return
     }
-    guard let createUrl = tusCreateURL() else {
-      throw UploaderError.config("invalid supabaseUrl")
-    }
-    var request = URLRequest(url: createUrl)
+    var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
-    request.setValue("\(totalBytes)", forHTTPHeaderField: "Upload-Length")
-    request.setValue("\(totalBytes)", forHTTPHeaderField: "Content-Length")
-    let metadataValue = [
-      "bucketName \(base64(bucket))",
-      "objectName \(base64(job.objectName))",
-      "contentType \(base64(job.contentType))",
-      "cacheControl \(base64("3600"))"
+    request.setValue("\(job.totalBytes)", forHTTPHeaderField: "Upload-Length")
+    let metadata = [
+      "bucketName \(b64(bucket))",
+      "objectName \(b64(job.objectName))",
+      "contentType \(b64(job.contentType))",
+      "cacheControl \(b64("3600"))"
     ].joined(separator: ",")
-    request.setValue(metadataValue, forHTTPHeaderField: "Upload-Metadata")
-    request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-    request.setValue(anonKey, forHTTPHeaderField: "apikey")
-
-    let (_, response) = try await URLSession.shared.data(for: request)
-    guard let http = response as? HTTPURLResponse, http.statusCode == 201,
-          let location = http.value(forHTTPHeaderField: "Location") else {
-      throw UploaderError.tus("TUS create failed status \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-    }
-    let url: URL
-    if location.hasPrefix("http") {
-      url = URL(string: location)!
-    } else if let base = URL(string: supabaseUrl) {
-      url = base.appendingPathComponent(location)
-    } else {
-      throw UploaderError.tus("invalid Location header")
-    }
-    saveTusUrl(fingerprint: job.fileFingerprint, url: url, totalBytes: totalBytes)
-    return url
+    request.setValue(metadata, forHTTPHeaderField: "Upload-Metadata")
+    authorize(&request)
+    startTask(request, job: job, phase: .creating, bodyFile: emptyBodyFile())
   }
 
-  private func fetchOffset(tusUrl: URL) async throws -> Int64 {
-    var request = URLRequest(url: tusUrl)
+  private func startHead(_ job: UploadJob) {
+    setPhase(job.uploadId, .checking)
+    guard let tus = job.tusUrl, let url = URL(string: tus) else {
+      // No tus url yet -> (re)create.
+      startCreate(job)
+      return
+    }
+    var request = URLRequest(url: url)
     request.httpMethod = "HEAD"
     request.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
-    request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-    request.setValue(anonKey, forHTTPHeaderField: "apikey")
-    let (_, response) = try await URLSession.shared.data(for: request)
-    guard let http = response as? HTTPURLResponse else {
-      throw UploaderError.tus("HEAD failed")
-    }
-    if http.statusCode == 404 {
-      throw UploaderError.tus("tus upload expired (404)")
-    }
-    guard let offsetStr = http.value(forHTTPHeaderField: "Upload-Offset"),
-          let offset = Int64(offsetStr) else {
-      throw UploaderError.tus("missing Upload-Offset header")
-    }
-    return offset
+    authorize(&request)
+    startTask(request, job: job, phase: .checking, bodyFile: nil)
   }
 
-  private func uploadChunks(job: UploadJob, fileURL: URL, tusUrl: URL, totalBytes: Int64, startOffset: Int64) async throws {
-    var offset = startOffset
-    let handle = try FileHandle(forReadingFrom: fileURL)
-    defer { try? handle.close() }
-    try handle.seek(toOffset: UInt64(offset))
-
-    while offset < totalBytes {
-      let remaining = totalBytes - offset
-      let length = Int(min(Int64(chunkBytes), remaining))
-      let chunkData = try handle.read(upToCount: length) ?? Data()
-      guard chunkData.count > 0 else {
-        throw UploaderError.tus("read returned empty chunk")
-      }
-      let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("\(job.uploadId)-chunk-\(offset).bin")
-      try chunkData.write(to: tmp, options: .atomic)
-      defer { try? FileManager.default.removeItem(at: tmp) }
-
-      var request = URLRequest(url: tusUrl)
-      request.httpMethod = "PATCH"
-      request.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
-      request.setValue("application/offset+octet-stream", forHTTPHeaderField: "Content-Type")
-      request.setValue("\(offset)", forHTTPHeaderField: "Upload-Offset")
-      request.setValue("\(chunkData.count)", forHTTPHeaderField: "Content-Length")
-      request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-      request.setValue(anonKey, forHTTPHeaderField: "apikey")
-      request.timeoutInterval = 90
-
-      let task = session.uploadTask(with: request, fromFile: tmp)
-      let inflightRecord = UploadInflight(job: job, task: task)
-      queueLock.lock()
-      inflight[job.uploadId] = inflightRecord
-      taskToUpload[task.taskIdentifier] = job.uploadId
-      queueLock.unlock()
-      let (response, _) = try await runTaskAwaitable(task: task)
-      queueLock.lock()
-      inflight.removeValue(forKey: job.uploadId)
-      taskToUpload.removeValue(forKey: task.taskIdentifier)
-      queueLock.unlock()
-      guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-        throw UploaderError.tus("PATCH non-2xx status \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-      }
-      let advance = Int64(http.value(forHTTPHeaderField: "Upload-Offset") ?? "")
-        ?? (offset + Int64(chunkData.count))
-      if advance <= offset {
-        throw UploaderError.tus("non-advancing offset")
-      }
-      offset = advance
-      emitProgress(uploadId: job.uploadId, bytes: offset, total: totalBytes)
-      queueLock.lock()
-      if let idx = queue.firstIndex(where: { $0.uploadId == job.uploadId }) {
-        queue[idx].bytesUploaded = offset
-        queue[idx].totalBytes = totalBytes
-        persistLocked()
-      }
-      queueLock.unlock()
+  private func startPatch(_ job: UploadJob) {
+    guard let tus = job.tusUrl, let url = URL(string: tus),
+          let stagedPath = job.stagedPath else {
+      finishFailure(uploadId: job.uploadId, error: UploaderError.tus("missing tus url or staged file"))
+      return
     }
+    setPhase(job.uploadId, .uploading)
+    let stagedURL = URL(fileURLWithPath: stagedPath)
+    let bodyFile: URL
+    if job.offset > 0 {
+      // Resume: PATCH only the remaining bytes from a temp slice.
+      guard let slice = makeSlice(of: stagedURL, from: job.offset, uploadId: job.uploadId) else {
+        finishFailure(uploadId: job.uploadId, error: UploaderError.tus("could not slice for resume"))
+        return
+      }
+      bodyFile = slice
+    } else {
+      bodyFile = stagedURL
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "PATCH"
+    request.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
+    request.setValue("application/offset+octet-stream", forHTTPHeaderField: "Content-Type")
+    request.setValue("\(job.offset)", forHTTPHeaderField: "Upload-Offset")
+    authorize(&request)
+    startTask(request, job: job, phase: .uploading, bodyFile: bodyFile)
   }
 
-  private func verifyExists(job: UploadJob) async throws {
+  private func startVerify(_ job: UploadJob) {
+    setPhase(job.uploadId, .verifying)
     guard let url = URL(string: "\(supabaseUrl)/storage/v1/object/info/\(bucket)/\(escape(job.objectName))") else {
-      throw UploaderError.config("invalid verify URL")
+      finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid verify URL"))
+      return
     }
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
-    request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-    request.setValue(anonKey, forHTTPHeaderField: "apikey")
-    let (_, response) = try await URLSession.shared.data(for: request)
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-      throw UploaderError.tus("verify failed status \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+    authorize(&request)
+    startTask(request, job: job, phase: .verifying, bodyFile: nil)
+  }
+
+  private func startRecord(_ job: UploadJob) {
+    setPhase(job.uploadId, .recording)
+    guard let url = URL(string: "\(supabaseUrl)/rest/v1/media_items"),
+          let bodyFile = mediaItemBodyFile(job) else {
+      finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid record request"))
+      return
     }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+    authorize(&request)
+    startTask(request, job: job, phase: .recording, bodyFile: bodyFile)
+  }
+
+  private func startTask(_ request: URLRequest, job: UploadJob, phase: UploadPhase, bodyFile: URL?) {
+    let task: URLSessionTask
+    if let bodyFile = bodyFile {
+      task = session.uploadTask(with: request, fromFile: bodyFile)
+    } else {
+      // Background sessions don't support data tasks; HEAD/GET ride a download task.
+      task = session.downloadTask(with: request)
+    }
+    task.taskDescription = "\(job.uploadId)|\(phase.rawValue)"
+    task.resume()
+  }
+
+  func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    // We only need status/headers (read in didCompleteWithError); ignore the body.
+  }
+
+  // MARK: - Delegate routing
+
+  private func jobId(of task: URLSessionTask) -> String? {
+    task.taskDescription?.components(separatedBy: "|").first
+  }
+
+  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    guard let desc = task.taskDescription else { return }
+    let parts = desc.components(separatedBy: "|")
+    guard parts.count == 2, let phase = UploadPhase(rawValue: parts[1]) else { return }
+    let uploadId = parts[0]
+
+    queueLock.lock()
+    guard let job = queue.first(where: { $0.uploadId == uploadId }) else {
+      queueLock.unlock()
+      return
+    }
+    queueLock.unlock()
+
+    if let error = error {
+      finishFailure(uploadId: uploadId, error: error)
+      return
+    }
+    guard let http = task.response as? HTTPURLResponse else {
+      finishFailure(uploadId: uploadId, error: UploaderError.tus("no response in \(phase.rawValue)"))
+      return
+    }
+
+    switch phase {
+    case .creating:
+      guard http.statusCode == 201, let location = http.value(forHTTPHeaderField: "Location") else {
+        finishFailure(uploadId: uploadId, error: UploaderError.tus("create status \(http.statusCode)"))
+        return
+      }
+      let tusUrl = absoluteTusUrl(location)
+      setTusUrl(uploadId, tusUrl)
+      if let updated = jobById(uploadId) { startPatch(updated) }
+
+    case .checking:
+      if http.statusCode == 404 {
+        // tus upload expired -> recreate from scratch.
+        setTusUrl(uploadId, nil)
+        setOffset(uploadId, 0)
+        if let updated = jobById(uploadId) { startCreate(updated) }
+        return
+      }
+      let offset = Int64(http.value(forHTTPHeaderField: "Upload-Offset") ?? "") ?? 0
+      setOffset(uploadId, offset)
+      if let updated = jobById(uploadId) {
+        if offset >= updated.totalBytes { startVerify(updated) } else { startPatch(updated) }
+      }
+
+    case .uploading:
+      cleanupSlice(uploadId)
+      guard (200..<300).contains(http.statusCode) else {
+        // Re-check offset and resume rather than failing outright.
+        if let updated = jobById(uploadId) { startHead(updated) }
+        return
+      }
+      let newOffset = Int64(http.value(forHTTPHeaderField: "Upload-Offset") ?? "")
+        ?? (jobById(uploadId)?.totalBytes ?? 0)
+      setOffset(uploadId, newOffset)
+      if let updated = jobById(uploadId) {
+        emitProgress(uploadId: uploadId, bytes: newOffset, total: updated.totalBytes)
+        if newOffset >= updated.totalBytes { startVerify(updated) } else { startPatch(updated) }
+      }
+
+    case .verifying:
+      guard (200..<300).contains(http.statusCode) else {
+        finishFailure(uploadId: uploadId, error: UploaderError.tus("verify status \(http.statusCode)"))
+        return
+      }
+      if let updated = jobById(uploadId) { startRecord(updated) }
+
+    case .recording:
+      guard (200..<300).contains(http.statusCode) else {
+        finishFailure(uploadId: uploadId, error: UploaderError.tus("record status \(http.statusCode)"))
+        return
+      }
+      finishSuccess(uploadId: uploadId)
+
+    default:
+      break
+    }
+  }
+
+  func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+    guard let uploadId = jobId(of: task), task.taskDescription?.hasSuffix("uploading") == true else { return }
+    if let job = jobById(uploadId) {
+      emitProgress(uploadId: uploadId, bytes: job.offset + totalBytesSent, total: job.totalBytes)
+    }
+  }
+
+  func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+    queueLock.lock()
+    let handler = backgroundCompletionHandler
+    backgroundCompletionHandler = nil
+    queueLock.unlock()
+    DispatchQueue.main.async { handler?() }
   }
 
   // MARK: - Completion
 
-  private func finishSuccess(uploadId: String, materialized: Materialized) {
-    materialized.cleanup()
+  private func finishSuccess(uploadId: String) {
     queueLock.lock()
-    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
-      queue[idx].status = .completed
-    }
     let objectName = queue.first(where: { $0.uploadId == uploadId })?.objectName ?? ""
+    let job = queue.first(where: { $0.uploadId == uploadId })
     queue.removeAll { $0.uploadId == uploadId }
     persistLocked()
     queueLock.unlock()
+    if let job = job { removeStagedFile(job) }
     emitter?.sendEvent("onItemCompleted", [
       "uploadId": uploadId,
-      "objectName": objectName
+      "objectName": objectName,
+      "recorded": true
     ])
-    pump()
-    pingDrainIfEmpty()
+    kick()
   }
 
   private func finishFailure(uploadId: String, error: Error) {
+    cleanupSlice(uploadId)
     queueLock.lock()
     if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
-      queue[idx].status = .failed
+      queue[idx].phase = .failed
       queue[idx].lastError = error.localizedDescription
     }
     persistLocked()
@@ -432,17 +500,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       "uploadId": uploadId,
       "error": error.localizedDescription
     ])
-    pump()
-    pingDrainIfEmpty()
-  }
-
-  private func pingDrainIfEmpty() {
-    queueLock.lock()
-    let active = queue.contains(where: { $0.status == .queued || $0.status == .syncing }) || !inflight.isEmpty
-    queueLock.unlock()
-    if !active {
-      emitter?.sendEvent("onQueueDrained", [:])
-    }
+    kick()
   }
 
   private func emitProgress(uploadId: String, bytes: Int64, total: Int64) {
@@ -453,37 +511,134 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     ])
   }
 
-  // MARK: - URLSession bridging
+  // MARK: - Job state mutation helpers
 
-  private struct AwaitResult {
-    let response: URLResponse?
-    let data: Data?
+  private func jobById(_ uploadId: String) -> UploadJob? {
+    queueLock.lock(); defer { queueLock.unlock() }
+    return queue.first(where: { $0.uploadId == uploadId })
   }
 
-  private var taskContinuations: [Int: CheckedContinuation<(URLResponse, Data), Error>] = [:]
-  private let continuationLock = NSLock()
+  private func setPhase(_ uploadId: String, _ phase: UploadPhase) {
+    queueLock.lock()
+    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
+      queue[idx].phase = phase
+      if phase == .uploading { queue[idx].attemptCount += 1 }
+      persistLocked()
+    }
+    queueLock.unlock()
+  }
 
-  private func runTaskAwaitable(task: URLSessionUploadTask) async throws -> (URLResponse, Data) {
-    return try await withCheckedThrowingContinuation { cont in
-      continuationLock.lock()
-      taskContinuations[task.taskIdentifier] = cont
-      continuationLock.unlock()
-      task.resume()
+  private func setTusUrl(_ uploadId: String, _ tusUrl: String?) {
+    queueLock.lock()
+    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
+      queue[idx].tusUrl = tusUrl
+      persistLocked()
+    }
+    queueLock.unlock()
+  }
+
+  private func setOffset(_ uploadId: String, _ offset: Int64) {
+    queueLock.lock()
+    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
+      queue[idx].offset = offset
+      persistLocked()
+    }
+    queueLock.unlock()
+  }
+
+  // MARK: - Helpers
+
+  private func authorize(_ request: inout URLRequest) {
+    request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+    request.setValue(anonKey, forHTTPHeaderField: "apikey")
+  }
+
+  private func absoluteTusUrl(_ location: String) -> String {
+    if location.hasPrefix("http") { return location }
+    return "\(supabaseUrl)\(location.hasPrefix("/") ? "" : "/")\(location)"
+  }
+
+  private func emptyBodyFile() -> URL {
+    let dir = FileManager.default.temporaryDirectory
+    let url = dir.appendingPathComponent("recapd-empty-body")
+    if !FileManager.default.fileExists(atPath: url.path) {
+      FileManager.default.createFile(atPath: url.path, contents: Data())
+    }
+    return url
+  }
+
+  private func makeSlice(of file: URL, from offset: Int64, uploadId: String) -> URL? {
+    do {
+      let handle = try FileHandle(forReadingFrom: file)
+      defer { try? handle.close() }
+      try handle.seek(toOffset: UInt64(offset))
+      let data = try handle.readToEnd() ?? Data()
+      let slice = FileManager.default.temporaryDirectory.appendingPathComponent("\(uploadId)-resume.bin")
+      try data.write(to: slice, options: .atomic)
+      return slice
+    } catch {
+      return nil
     }
   }
 
-  func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-    let id = task.taskIdentifier
-    continuationLock.lock()
-    let cont = taskContinuations.removeValue(forKey: id)
-    continuationLock.unlock()
-    guard let cont = cont else { return }
-    if let error = error {
-      cont.resume(throwing: error)
-    } else {
-      let response = task.response ?? URLResponse()
-      cont.resume(returning: (response, Data()))
+  private func cleanupSlice(_ uploadId: String) {
+    let slice = FileManager.default.temporaryDirectory.appendingPathComponent("\(uploadId)-resume.bin")
+    try? FileManager.default.removeItem(at: slice)
+  }
+
+  private func mediaItemBodyFile(_ job: UploadJob) -> URL? {
+    var payload: [String: Any] = [
+      "event_id": job.eventId,
+      "uploaded_by_user_id": job.userId,
+      "captured_at": job.capturedAt,
+      "media_type": job.mediaType,
+      "width": job.width,
+      "height": job.height,
+      "storage_path": job.objectName,
+      "visibility": "shared"
+    ]
+    payload["duration_milliseconds"] = job.mediaType == "video" ? job.durationMs : NSNull()
+    payload["file_size_bytes"] = job.fileSizeBytes ?? NSNull()
+    payload["thumbnail_path"] = job.thumbnailPath ?? NSNull()
+    payload["latitude"] = job.latitude ?? NSNull()
+    payload["longitude"] = job.longitude ?? NSNull()
+    guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(job.uploadId)-record.json")
+    do {
+      try data.write(to: url, options: .atomic)
+      return url
+    } catch {
+      return nil
     }
+  }
+
+  private func removeStagedFile(_ job: UploadJob) {
+    if let path = job.stagedPath {
+      try? FileManager.default.removeItem(at: URL(fileURLWithPath: path))
+    }
+    cleanupSlice(job.uploadId)
+    let record = FileManager.default.temporaryDirectory.appendingPathComponent("\(job.uploadId)-record.json")
+    try? FileManager.default.removeItem(at: record)
+  }
+
+  private func ensureFreeDiskFor(_ size: Int64) throws {
+    let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    guard let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+          let free = values.volumeAvailableCapacityForImportantUsage else {
+      return
+    }
+    let required = Int64(Double(size) * minFreeDiskHeadroom) + minFreeDiskSafetyBytes
+    if free < required {
+      throw UploaderError.disk("not enough free space (need \(required), have \(free))")
+    }
+  }
+
+  private func b64(_ s: String) -> String {
+    Data(s.utf8).base64EncodedString()
+  }
+
+  private func escape(_ s: String) -> String {
+    s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? s
   }
 
   // MARK: - Persistence
@@ -503,28 +658,18 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func loadQueue() {
-    guard let data = try? Data(contentsOf: queueFileURL()) else { return }
-    guard let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+    guard let data = try? Data(contentsOf: queueFileURL()),
+          let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
     queue = arr.compactMap { UploadJob.fromDict($0) }
-  }
-
-  private func loadTusUrl(fingerprint: String) -> URL? {
-    let key = "recapd.tus.\(fingerprint)"
-    guard let str = UserDefaults.standard.string(forKey: key) else { return nil }
-    return URL(string: str)
-  }
-
-  private func saveTusUrl(fingerprint: String, url: URL, totalBytes: Int64) {
-    let key = "recapd.tus.\(fingerprint)"
-    UserDefaults.standard.set(url.absoluteString, forKey: key)
-  }
-
-  private func base64(_ s: String) -> String {
-    Data(s.utf8).base64EncodedString()
-  }
-
-  private func escape(_ s: String) -> String {
-    s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? s
+    // Any job that was mid-flight when we were killed: re-check offset and resume.
+    for idx in queue.indices {
+      switch queue[idx].phase {
+      case .creating, .checking, .uploading, .verifying, .recording:
+        queue[idx].phase = queue[idx].tusUrl != nil ? .checking : .staged
+      default:
+        break
+      }
+    }
   }
 }
 
@@ -533,6 +678,7 @@ enum UploaderError: LocalizedError {
   case assetUnavailable(String)
   case tus(String)
   case config(String)
+  case disk(String)
 
   var errorDescription: String? {
     switch self {
@@ -540,23 +686,24 @@ enum UploaderError: LocalizedError {
     case .assetUnavailable(let s): return "AssetUnavailable: \(s)"
     case .tus(let s): return "Tus: \(s)"
     case .config(let s): return "Config: \(s)"
+    case .disk(let s): return "Disk: \(s)"
     }
   }
 }
 
-struct UploadInflight {
-  let job: UploadJob
-  let task: URLSessionUploadTask
-}
-
-enum UploadJobStatus: String, Codable {
+enum UploadPhase: String, Codable {
   case queued
-  case syncing
+  case staged
+  case creating
+  case checking
+  case uploading
+  case verifying
+  case recording
   case completed
   case failed
 }
 
-struct UploadJob: Codable {
+struct UploadJob {
   let uploadId: String
   let assetIdentifier: String?
   let fileUri: String?
@@ -566,9 +713,21 @@ struct UploadJob: Codable {
   let eventId: String
   let userId: String
   let fileFingerprint: String
-  var status: UploadJobStatus
-  var bytesUploaded: Int64
+
+  let capturedAt: String
+  let width: Int
+  let height: Int
+  let durationMs: Int
+  let latitude: Double?
+  let longitude: Double?
+  let fileSizeBytes: Int?
+  let thumbnailPath: String?
+
+  var phase: UploadPhase
+  var tusUrl: String?
+  var offset: Int64
   var totalBytes: Int64
+  var stagedPath: String?
   var lastError: String?
   var attemptCount: Int
 
@@ -582,11 +741,48 @@ struct UploadJob: Codable {
     self.eventId = input.eventId
     self.userId = input.userId
     self.fileFingerprint = input.fileFingerprint
-    self.status = .queued
-    self.bytesUploaded = 0
+    self.capturedAt = input.capturedAt
+    self.width = input.width
+    self.height = input.height
+    self.durationMs = input.durationMs
+    self.latitude = input.latitude
+    self.longitude = input.longitude
+    self.fileSizeBytes = input.fileSizeBytes
+    self.thumbnailPath = input.thumbnailPath
+    self.phase = .queued
+    self.tusUrl = nil
+    self.offset = 0
     self.totalBytes = 0
+    self.stagedPath = nil
     self.lastError = nil
     self.attemptCount = 0
+  }
+
+  private init(dict d: [String: Any]) {
+    uploadId = d["uploadId"] as? String ?? ""
+    assetIdentifier = (d["assetIdentifier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    fileUri = (d["fileUri"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    objectName = d["objectName"] as? String ?? ""
+    contentType = d["contentType"] as? String ?? "application/octet-stream"
+    mediaType = d["mediaType"] as? String ?? "photo"
+    eventId = d["eventId"] as? String ?? ""
+    userId = d["userId"] as? String ?? ""
+    fileFingerprint = d["fileFingerprint"] as? String ?? ""
+    capturedAt = d["capturedAt"] as? String ?? ""
+    width = (d["width"] as? NSNumber)?.intValue ?? 0
+    height = (d["height"] as? NSNumber)?.intValue ?? 0
+    durationMs = (d["durationMs"] as? NSNumber)?.intValue ?? 0
+    latitude = (d["latitude"] as? NSNumber)?.doubleValue
+    longitude = (d["longitude"] as? NSNumber)?.doubleValue
+    fileSizeBytes = (d["fileSizeBytes"] as? NSNumber)?.intValue
+    thumbnailPath = (d["thumbnailPath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    phase = UploadPhase(rawValue: d["phase"] as? String ?? "queued") ?? .queued
+    tusUrl = (d["tusUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    offset = (d["offset"] as? NSNumber)?.int64Value ?? 0
+    totalBytes = (d["totalBytes"] as? NSNumber)?.int64Value ?? 0
+    stagedPath = (d["stagedPath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    lastError = (d["lastError"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    attemptCount = (d["attemptCount"] as? NSNumber)?.intValue ?? 0
   }
 
   func toDict() -> [String: Any] {
@@ -600,40 +796,28 @@ struct UploadJob: Codable {
       "eventId": eventId,
       "userId": userId,
       "fileFingerprint": fileFingerprint,
-      "status": status.rawValue,
-      "bytesUploaded": bytesUploaded,
+      "capturedAt": capturedAt,
+      "width": width,
+      "height": height,
+      "durationMs": durationMs,
+      "latitude": latitude ?? NSNull(),
+      "longitude": longitude ?? NSNull(),
+      "fileSizeBytes": fileSizeBytes ?? NSNull(),
+      "thumbnailPath": thumbnailPath ?? "",
+      "phase": phase.rawValue,
+      "tusUrl": tusUrl ?? "",
+      "offset": offset,
       "totalBytes": totalBytes,
+      "stagedPath": stagedPath ?? "",
       "lastError": lastError ?? "",
       "attemptCount": attemptCount
     ]
   }
 
   static func fromDict(_ d: [String: Any]) -> UploadJob? {
-    guard let uploadId = d["uploadId"] as? String,
-          let objectName = d["objectName"] as? String,
-          let contentType = d["contentType"] as? String,
-          let mediaType = d["mediaType"] as? String,
-          let eventId = d["eventId"] as? String,
-          let userId = d["userId"] as? String,
-          let fileFingerprint = d["fileFingerprint"] as? String,
-          let statusStr = d["status"] as? String,
-          let status = UploadJobStatus(rawValue: statusStr) else { return nil }
-    var input = UploadItemInput()
-    input.uploadId = uploadId
-    input.assetIdentifier = (d["assetIdentifier"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    input.fileUri = (d["fileUri"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    input.objectName = objectName
-    input.contentType = contentType
-    input.mediaType = mediaType
-    input.eventId = eventId
-    input.userId = userId
-    input.fileFingerprint = fileFingerprint
-    var job = UploadJob(input: input)
-    job.status = status
-    job.bytesUploaded = (d["bytesUploaded"] as? NSNumber)?.int64Value ?? 0
-    job.totalBytes = (d["totalBytes"] as? NSNumber)?.int64Value ?? 0
-    job.lastError = (d["lastError"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    job.attemptCount = (d["attemptCount"] as? NSNumber)?.intValue ?? 0
-    return job
+    guard let uploadId = d["uploadId"] as? String, !uploadId.isEmpty,
+          let objectName = d["objectName"] as? String, !objectName.isEmpty else { return nil }
+    _ = objectName
+    return UploadJob(dict: d)
   }
 }
