@@ -144,12 +144,12 @@ function PhotoPage({
 	photo,
 	initialThumbnailUri,
 	isInitial,
-	isHeavy,
+	isActive,
 }: {
 	photo: MergedMediaItem;
 	initialThumbnailUri?: string;
 	isInitial: boolean;
-	isHeavy: boolean;
+	isActive: boolean;
 }) {
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 	const signedPhotoUrl = usePhotoThumbnailUrl(
@@ -164,7 +164,7 @@ function PhotoPage({
 				(photo.isPending ? photo.localUri : signedPhotoUrl) ||
 				undefined;
 
-	if (!isHeavy) {
+	if (!isActive) {
 		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;
 	}
 
@@ -455,7 +455,7 @@ export default function PhotoViewer({
 								) : (
 									<PhotoPage
 										photo={item}
-										isHeavy={state.isActive || state.isNeighbor}
+										isActive={state.isActive}
 										isInitial={index === safeInitialIndex}
 										initialThumbnailUri={initialThumbnailUri}
 									/>
