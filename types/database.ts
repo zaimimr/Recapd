@@ -315,6 +315,7 @@ export interface Database {
 					file_size_bytes: number | null;
 					storage_path: string;
 					thumbnail_path: string | null;
+					blurhash: string | null;
 					hls_path: string | null;
 					visibility: MediaVisibility;
 					deleted_at: string | null;
@@ -334,6 +335,7 @@ export interface Database {
 					file_size_bytes?: number | null;
 					storage_path: string;
 					thumbnail_path?: string | null;
+					blurhash?: string | null;
 					hls_path?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
@@ -353,6 +355,7 @@ export interface Database {
 					file_size_bytes?: number | null;
 					storage_path?: string;
 					thumbnail_path?: string | null;
+					blurhash?: string | null;
 					hls_path?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;

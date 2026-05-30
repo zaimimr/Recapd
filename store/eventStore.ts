@@ -1197,6 +1197,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					file_size_bytes: null,
 					storage_path: "",
 					thumbnail_path: p.thumbnailPath ?? null,
+					blurhash: null,
 					hls_path: null,
 					visibility: "shared" as const,
 					deleted_at: null,
