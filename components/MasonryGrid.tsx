@@ -12,7 +12,12 @@ import {
 	View,
 } from "react-native";
 import { getAvatarColor } from "@/lib/colors";
-import { createVideoThumbnailUri, getOrCreatePhotoGridThumbnail, useStorageUrl } from "@/lib/storage";
+import {
+	createVideoThumbnailUri,
+	getOrCreatePhotoGridThumbnail,
+	usePhotoThumbnailUrl,
+	useStorageUrl,
+} from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
 import type { MergedMediaItem } from "./MomentCluster";
 import { useImageMemoryGuard } from "./useImageMemoryGuard";
@@ -113,6 +118,11 @@ function GridTile({
 
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 
+	const isHeic = /\.(heic|heif)$/i.test(photo.storage_path);
+	const legacyTransformPath =
+		!photo.isPending && !photo.thumbnail_path && !isHeic ? photo.storage_path : null;
+	const legacyTransformUrl = usePhotoThumbnailUrl(legacyTransformPath);
+
 	const imageUri = (() => {
 		if (photo.isPending) {
 			if (isVideo) {
@@ -121,7 +131,7 @@ function GridTile({
 			return photo.localThumbnailUri || pendingPhotoThumbnailUri || null;
 		}
 
-		return signedThumbnailUrl;
+		return signedThumbnailUrl || legacyTransformUrl;
 	})();
 
 	const isSyncing = photo.isPending && photo.syncStatus === "syncing";
