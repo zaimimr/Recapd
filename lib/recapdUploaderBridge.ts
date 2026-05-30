@@ -44,7 +44,7 @@ function installListenersOnce() {
 		progressHandler?.(uploadId, bytesUploaded, totalBytes);
 	});
 
-	RecapdUploader.addCompletedListener(async ({ uploadId, objectName, recorded }) => {
+	RecapdUploader.addCompletedListener(async ({ uploadId, objectName, recorded, thumbnailPath }) => {
 		logger.info("[up] DONE", { uploadId, recorded: Boolean(recorded) });
 		const meta = pendingMeta.get(uploadId);
 		pendingMeta.delete(uploadId);
@@ -60,6 +60,7 @@ function installListenersOnce() {
 			return;
 		}
 		if (!meta) return;
+		const resolvedThumbnailPath = thumbnailPath || meta.thumbnailPath || null;
 		try {
 			const insertData: MediaItemInsert = {
 				event_id: meta.eventId,
@@ -71,7 +72,7 @@ function installListenersOnce() {
 				duration_milliseconds: meta.mediaType === "video" ? Math.round(meta.duration || 0) : null,
 				file_size_bytes: meta.fileSize ?? null,
 				storage_path: objectName,
-				thumbnail_path: meta.thumbnailPath ?? null,
+				thumbnail_path: resolvedThumbnailPath,
 				visibility: "shared",
 				latitude: meta.latitude ?? null,
 				longitude: meta.longitude ?? null,

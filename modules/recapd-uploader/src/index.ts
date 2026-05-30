@@ -42,6 +42,7 @@ export interface UploadCompletedEvent {
 	uploadId: string;
 	objectName: string;
 	recorded?: boolean;
+	thumbnailPath?: string;
 }
 
 export interface UploadFailedEvent {
