@@ -8,7 +8,7 @@ import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { addUploadBreadcrumb } from "@/lib/sentry";
 import type { UploadFailureReason } from "@/lib/storage";
 import { createVideoThumbnailUri } from "@/lib/storage";
-import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { supabase } from "@/lib/supabase";
 import {
 	generateUploadId,
