@@ -18,7 +18,7 @@ export interface HostReminderCooldown {
 
 export interface HostReminderFailure {
 	ok: false;
-	reason: "unauthorized" | "event_inactive" | "unknown";
+	reason: "unauthorized" | "event_inactive" | "not_found" | "unknown";
 	message?: string;
 }
 
@@ -27,10 +27,16 @@ export type HostReminderOutcome = HostReminderResult | HostReminderCooldown | Ho
 interface ServerResponse {
 	success: boolean;
 	error?: string;
+	code?: string;
+	message?: string;
 	sent?: number;
 	recipients?: number;
 	skipped?: number;
 	retry_after_seconds?: number;
+}
+
+function isFunctionMissing(status: number, parsed: ServerResponse | undefined): boolean {
+	return status === 404 && parsed?.code === "NOT_FOUND";
 }
 
 export async function sendHostReminder(
@@ -51,7 +57,8 @@ export async function sendHostReminder(
 		return { ok: false, reason: "unauthorized" };
 	}
 
-	const url = `${supabaseUrl}/functions/v1/send-host-reminder`;
+	const normalizedBase = supabaseUrl.replace(/\/+$/, "");
+	const url = `${normalizedBase}/functions/v1/send-host-reminder`;
 
 	let status: number;
 	let parsed: ServerResponse | undefined;
@@ -73,6 +80,19 @@ export async function sendHostReminder(
 		return { ok: false, reason: "unknown", message: "Network error" };
 	}
 
+	if (isFunctionMissing(status, parsed)) {
+		logger.error("Host reminder edge function not found at expected path", undefined, {
+			url,
+			status,
+			body: parsed,
+		});
+		return {
+			ok: false,
+			reason: "unknown",
+			message: "Reminder service is temporarily unavailable.",
+		};
+	}
+
 	if (status === 429) {
 		return {
 			ok: false,
@@ -87,6 +107,10 @@ export async function sendHostReminder(
 
 	if (status === 409) {
 		return { ok: false, reason: "event_inactive" };
+	}
+
+	if (status === 404) {
+		return { ok: false, reason: "not_found", message: parsed?.error };
 	}
 
 	if (status < 200 || status >= 300 || !parsed?.success) {
