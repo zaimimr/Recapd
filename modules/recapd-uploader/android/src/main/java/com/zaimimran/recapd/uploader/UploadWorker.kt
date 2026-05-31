@@ -56,6 +56,14 @@ class UploadWorker(
     }
     val totalBytes = staged.length()
 
+    val thumbnailPath = generateAndUploadThumbnail(
+      supabaseUrl = supabaseUrl,
+      anonKey = anonKey,
+      bearerToken = bearerToken,
+      objectName = objectName,
+      staged = staged
+    )
+
     return try {
       val tusUrl = ensureTusUpload(
         supabaseUrl = supabaseUrl,
@@ -105,13 +113,70 @@ class UploadWorker(
         objectName = objectName
       )
       staged.delete()
-      UploadManager.emitCompleted(uploadId, objectName)
+      UploadManager.emitCompleted(uploadId, objectName, thumbnailPath)
       Result.success()
     } catch (e: Exception) {
       UploadManager.emitFailed(uploadId, e.message ?: "unknown")
       Result.retry()
     } finally {
       runCatching { if (staged.exists()) staged.delete() }
+    }
+  }
+
+  private fun thumbnailObjectName(objectName: String): String {
+    val base = objectName.substringBeforeLast('.', objectName)
+    return "${base}_thumb.jpg"
+  }
+
+  private fun generateAndUploadThumbnail(
+    supabaseUrl: String,
+    anonKey: String,
+    bearerToken: String,
+    objectName: String,
+    staged: File
+  ): String? {
+    return try {
+      val jpeg = downsampledJpeg(staged, 512, 60) ?: return null
+      val path = thumbnailObjectName(objectName)
+      val url = "$supabaseUrl/storage/v1/object/thumbnails/" +
+        java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")
+      val body = jpeg.toRequestBody("image/jpeg".toMediaTypeOrNull())
+      val req = Request.Builder()
+        .url(url)
+        .post(body)
+        .header("Authorization", "Bearer $bearerToken")
+        .header("apikey", anonKey)
+        .header("Content-Type", "image/jpeg")
+        .header("Cache-Control", "3600")
+        .build()
+      client.newCall(req).execute().use { resp ->
+        if (resp.code == 409 || resp.isSuccessful) path else null
+      }
+    } catch (e: Exception) {
+      android.util.Log.w("recapd-uploader", "thumbnail best-effort failed: ${e.message}")
+      null
+    }
+  }
+
+  private fun downsampledJpeg(file: File, maxPixelSize: Int, quality: Int): ByteArray? {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeFile(file.absolutePath, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    val largest = maxOf(bounds.outWidth, bounds.outHeight)
+    while (largest / sample > maxPixelSize) {
+      sample *= 2
+    }
+    val decodeOptions = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+    val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+      ?: return null
+    return try {
+      java.io.ByteArrayOutputStream().use { out ->
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+        out.toByteArray()
+      }
+    } finally {
+      bitmap.recycle()
     }
   }
 

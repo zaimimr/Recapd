@@ -170,12 +170,13 @@ object UploadManager {
     ))
   }
 
-  fun emitCompleted(uploadId: String, objectName: String) {
+  fun emitCompleted(uploadId: String, objectName: String, thumbnailPath: String? = null) {
     queue.remove(uploadId)
     saveQueue()
     module?.sendEvent("onItemCompleted", mapOf(
       "uploadId" to uploadId,
-      "objectName" to objectName
+      "objectName" to objectName,
+      "thumbnailPath" to (thumbnailPath ?: "")
     ))
     pingDrainIfEmpty()
   }

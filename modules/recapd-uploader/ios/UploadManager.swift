@@ -1,6 +1,8 @@
 import ExpoModulesCore
 import Foundation
+import ImageIO
 import Photos
+import UniformTypeIdentifiers
 
 final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate, URLSessionDataDelegate {
   static let shared = UploadManager()
@@ -187,6 +189,8 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       if size <= 0 { throw UploaderError.assetUnavailable("staged file empty") }
       try ensureFreeDiskFor(size)
 
+      let thumbnailPath = await generateAndUploadThumbnail(for: job, stagedFile: staged)
+
       queueLock.lock()
       guard let idx = queue.firstIndex(where: { $0.uploadId == job.uploadId }) else {
         queueLock.unlock()
@@ -195,6 +199,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       }
       queue[idx].stagedPath = staged.path
       queue[idx].totalBytes = size
+      if let thumbnailPath = thumbnailPath {
+        queue[idx].thumbnailPath = thumbnailPath
+      }
       queue[idx].phase = .staged
       let started = queue[idx]
       persistLocked()
@@ -203,6 +210,84 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       startCreate(started)
     } catch {
       finishFailure(uploadId: job.uploadId, error: error)
+    }
+  }
+
+  // MARK: - Thumbnail (best-effort, MUST never fail or delay the original)
+
+  private func thumbnailObjectName(for job: UploadJob) -> String {
+    let ns = job.objectName as NSString
+    let base = ns.deletingPathExtension
+    return "\(base)_thumb.jpg"
+  }
+
+  private func generateAndUploadThumbnail(for job: UploadJob, stagedFile: URL) async -> String? {
+    do {
+      guard let jpeg = downsampledJpeg(from: stagedFile, maxPixelSize: 512, quality: 0.6) else {
+        return nil
+      }
+      let path = thumbnailObjectName(for: job)
+      try await uploadThumbnailData(jpeg, objectName: path)
+      return path
+    } catch {
+      NSLog("[recapd-uploader] thumbnail best-effort failed for %@: %@", job.uploadId, "\(error)")
+      return nil
+    }
+  }
+
+  private func downsampledJpeg(from fileURL: URL, maxPixelSize: Int, quality: CGFloat) -> Data? {
+    let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+    guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, sourceOptions) else {
+      return nil
+    }
+    let thumbOptions = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceShouldCacheImmediately: true,
+      kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ] as CFDictionary
+    guard let cgThumb = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions) else {
+      return nil
+    }
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(
+      data, UTType.jpeg.identifier as CFString, 1, nil
+    ) else {
+      return nil
+    }
+    let destOptions = [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary
+    CGImageDestinationAddImage(destination, cgThumb, destOptions)
+    guard CGImageDestinationFinalize(destination) else { return nil }
+    return data as Data
+  }
+
+  private func uploadThumbnailData(_ data: Data, objectName: String) async throws {
+    queueLock.lock()
+    let baseUrl = supabaseUrl
+    let token = bearerToken
+    let apiKey = anonKey
+    queueLock.unlock()
+    guard let url = URL(string: "\(baseUrl)/storage/v1/object/thumbnails/\(escape(objectName))") else {
+      throw UploaderError.config("invalid thumbnail URL")
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue(apiKey, forHTTPHeaderField: "apikey")
+    request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+    request.setValue("3600", forHTTPHeaderField: "Cache-Control")
+    request.timeoutInterval = 30
+    let config = URLSessionConfiguration.ephemeral
+    let session = URLSession(configuration: config)
+    let (_, response) = try await session.upload(for: request, from: data)
+    guard let http = response as? HTTPURLResponse else {
+      throw UploaderError.tus("thumbnail upload: no HTTP response")
+    }
+    if http.statusCode == 409 {
+      return
+    }
+    guard (200..<300).contains(http.statusCode) else {
+      throw UploaderError.tus("thumbnail upload HTTP \(http.statusCode)")
     }
   }
 
@@ -721,7 +806,7 @@ struct UploadJob {
   let latitude: Double?
   let longitude: Double?
   let fileSizeBytes: Int?
-  let thumbnailPath: String?
+  var thumbnailPath: String?
 
   var phase: UploadPhase
   var tusUrl: String?

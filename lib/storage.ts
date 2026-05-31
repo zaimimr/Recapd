@@ -699,12 +699,20 @@ interface ResolveStorageUrlOptions {
 	transform?: StorageUrlTransformOptions;
 }
 
+export function isHeicPath(storagePath?: string | null): boolean {
+	if (!storagePath) {
+		return false;
+	}
+
+	return /\.(heic|heif)$/i.test(storagePath);
+}
+
 function supportsPhotoThumbnailTransform(storagePath?: string | null): boolean {
 	if (!storagePath) {
 		return false;
 	}
 
-	return !/\.(heic|heif)$/i.test(storagePath);
+	return !isHeicPath(storagePath);
 }
 
 function getSignedUrlCacheKey(storagePath: string, options?: ResolveStorageUrlOptions): string {
