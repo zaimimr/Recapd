@@ -25,7 +25,7 @@ import { registerForPushNotifications, savePushToken } from "@/lib/notifications
 import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { type ParticipantWithStats, useEventStore } from "@/store/eventStore";
+import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 
 function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boolean }) {
 	const pendingUploads = useEventStore((state) => state.pendingUploads);
@@ -89,13 +89,13 @@ export default function EventScreen() {
 	const {
 		currentEvent,
 		mediaItems,
+		pendingUploads,
 		isLoading,
 		fetchEventById,
 		fetchMediaItems,
 		subscribeToMediaItems,
 		subscribeToParticipants,
 		subscribeToEvent,
-		getMergedTimeline,
 		retryFailedUpload,
 		skipPendingUpload,
 		removePendingUpload,
@@ -106,12 +106,6 @@ export default function EventScreen() {
 		leaveEvent,
 		removeParticipant,
 	} = useEventStore();
-	const _failedUploadsKey = useEventStore((state) =>
-		state.pendingUploads
-			.filter((p) => p.eventId === id && p.status === "failed")
-			.map((p) => p.id)
-			.join(",")
-	);
 	const colorScheme = useColorScheme();
 	const isDark = colorScheme === "dark";
 
@@ -199,7 +193,10 @@ export default function EventScreen() {
 		checkNotificationPrompt();
 	}, [justJoined]);
 
-	const mergedPhotos = useMemo(() => (id ? getMergedTimeline(id) : []), [id, getMergedTimeline]);
+	const mergedPhotos = useMemo(
+		() => (id ? buildMergedTimeline(mediaItems, pendingUploads, id) : []),
+		[id, mediaItems, pendingUploads]
+	);
 
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true);

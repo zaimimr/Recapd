@@ -55,8 +55,18 @@ function installListenersOnce() {
 		});
 		if (recorded) {
 			// Native already inserted the media_items row (works while suspended).
-			// Just mark the local upload complete; the row arrives via realtime/refetch.
-			completionHandler?.(uploadId, null);
+			// Fetch just that one row and upsert it so it appears immediately without
+			// a full-grid refetch; the store falls back to a coalesced refetch on a miss.
+			try {
+				const { data } = await supabase
+					.from("media_items")
+					.select("*, uploader:users!uploaded_by_user_id(display_name)")
+					.eq("storage_path", objectName)
+					.maybeSingle();
+				completionHandler?.(uploadId, (data as MediaItemWithUser) ?? null);
+			} catch {
+				completionHandler?.(uploadId, null);
+			}
 			return;
 		}
 		if (!meta) return;
@@ -114,11 +124,13 @@ export async function configureRecapdUploader(args: {
 	supabaseUrl: string;
 	anonKey: string;
 	bearerToken: string;
+	refreshToken?: string;
 }) {
 	await RecapdUploader.configure({
 		supabaseUrl: args.supabaseUrl,
 		anonKey: args.anonKey,
 		bearerToken: args.bearerToken,
+		refreshToken: args.refreshToken,
 	});
 }
 
@@ -141,7 +153,7 @@ export interface RecapdUploaderItemArgs {
 	thumbnailPath?: string | null;
 }
 
-async function refreshUploaderConfig(): Promise<void> {
+export async function refreshUploaderConfig(): Promise<void> {
 	try {
 		const { data } = await supabase.auth.getSession();
 		let session = data.session;
@@ -156,10 +168,11 @@ async function refreshUploaderConfig(): Promise<void> {
 			}
 		}
 		const bearer = session?.access_token;
+		const refreshToken = session?.refresh_token;
 		const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 		const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 		if (bearer && supabaseUrl && anonKey) {
-			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer });
+			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer, refreshToken });
 			logger.info("[up] configured", { secondsLeft });
 		} else {
 			logger.warn("[up] config skipped (missing token/config)", {

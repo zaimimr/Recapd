@@ -39,7 +39,8 @@ class UploadWorker(
     val fileUri = data.getString("fileUri") ?: ""
     val supabaseUrl = data.getString("supabaseUrl") ?: ""
     val anonKey = data.getString("anonKey") ?: ""
-    val bearerToken = data.getString("bearerToken") ?: ""
+    var bearerToken = data.getString("bearerToken") ?: ""
+    val refreshToken = data.getString("refreshToken") ?: ""
     val bucket = data.getString("bucket") ?: "event-photos"
     val chunkBytes = data.getInt("chunkBytes", 1 * 1024 * 1024)
 
@@ -65,16 +66,36 @@ class UploadWorker(
     )
 
     return try {
-      val tusUrl = ensureTusUpload(
-        supabaseUrl = supabaseUrl,
-        anonKey = anonKey,
-        bearerToken = bearerToken,
-        bucket = bucket,
-        objectName = objectName,
-        contentType = contentType,
-        totalBytes = totalBytes,
-        fingerprint = fingerprint
-      )
+      val tusUrl = try {
+        ensureTusUpload(
+          supabaseUrl = supabaseUrl,
+          anonKey = anonKey,
+          bearerToken = bearerToken,
+          bucket = bucket,
+          objectName = objectName,
+          contentType = contentType,
+          totalBytes = totalBytes,
+          fingerprint = fingerprint
+        )
+      } catch (e: Exception) {
+        val msg = e.message ?: ""
+        if ((msg.contains("401") || msg.contains("403")) && refreshToken.isNotEmpty()) {
+          val fresh = refreshAccessToken(supabaseUrl, anonKey, refreshToken)
+          if (fresh != null) {
+            bearerToken = fresh
+            ensureTusUpload(
+              supabaseUrl = supabaseUrl,
+              anonKey = anonKey,
+              bearerToken = bearerToken,
+              bucket = bucket,
+              objectName = objectName,
+              contentType = contentType,
+              totalBytes = totalBytes,
+              fingerprint = fingerprint
+            )
+          } else throw e
+        } else throw e
+      }
       var offset = fetchOffset(tusUrl, anonKey, bearerToken)
       val input = staged.inputStream()
       input.skip(offset)
@@ -240,6 +261,27 @@ class UploadWorker(
       val url = if (loc.startsWith("http")) loc else "$supabaseUrl$loc"
       prefs.edit().putString("tus.$fingerprint", url).apply()
       return url
+    }
+  }
+
+  private fun refreshAccessToken(supabaseUrl: String, anonKey: String, refreshToken: String): String? {
+    return try {
+      val url = "$supabaseUrl/auth/v1/token?grant_type=refresh_token"
+      val payload = org.json.JSONObject().put("refresh_token", refreshToken).toString()
+      val req = Request.Builder()
+        .url(url)
+        .post(payload.toRequestBody("application/json".toMediaTypeOrNull()))
+        .header("apikey", anonKey)
+        .header("Content-Type", "application/json")
+        .build()
+      client.newCall(req).execute().use { resp ->
+        if (!resp.isSuccessful) return null
+        val bodyStr = resp.body?.string() ?: return null
+        val access = org.json.JSONObject(bodyStr).optString("access_token", "")
+        if (access.isEmpty()) null else access
+      }
+    } catch (e: Exception) {
+      null
     }
   }
 

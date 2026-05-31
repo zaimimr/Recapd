@@ -17,6 +17,8 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   private var supabaseUrl: String = ""
   private var anonKey: String = ""
   private var bearerToken: String = ""
+  private var refreshToken: String = ""
+  private var refreshingToken = false
   private var bucket: String = "event-photos"
 
   // How many jobs may be staged-to-disk and in flight at once (windowed staging
@@ -68,6 +70,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     supabaseUrl = config.supabaseUrl
     anonKey = config.anonKey
     bearerToken = config.bearerToken
+    if !config.refreshToken.isEmpty {
+      refreshToken = config.refreshToken
+    }
     bucket = config.bucket
     queueLock.unlock()
     kick()
@@ -481,6 +486,22 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       return
     }
 
+    if (http.statusCode == 401 || http.statusCode == 403), !job.authRetried, !refreshToken.isEmpty {
+      setAuthRetried(uploadId)
+      refreshAccessToken { [weak self] ok in
+        guard let self = self else { return }
+        if ok, let updated = self.jobById(uploadId) {
+          self.restartPhase(updated, phase: phase)
+        } else {
+          self.finishFailure(
+            uploadId: uploadId,
+            error: UploaderError.tus("\(phase.rawValue) status \(http.statusCode) (auth refresh failed)")
+          )
+        }
+      }
+      return
+    }
+
     switch phase {
     case .creating:
       guard http.statusCode == 201, let location = http.value(forHTTPHeaderField: "Location") else {
@@ -629,6 +650,69 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       persistLocked()
     }
     queueLock.unlock()
+  }
+
+  private func setAuthRetried(_ uploadId: String) {
+    queueLock.lock()
+    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
+      queue[idx].authRetried = true
+    }
+    queueLock.unlock()
+  }
+
+  private func restartPhase(_ job: UploadJob, phase: UploadPhase) {
+    switch phase {
+    case .creating: startCreate(job)
+    case .checking, .uploading: startHead(job)
+    case .verifying: startVerify(job)
+    case .recording: startRecord(job)
+    default: startHead(job)
+    }
+  }
+
+  private func refreshAccessToken(completion: @escaping (Bool) -> Void) {
+    queueLock.lock()
+    let token = refreshToken
+    let key = anonKey
+    let base = supabaseUrl
+    let alreadyRefreshing = refreshingToken
+    if !alreadyRefreshing { refreshingToken = true }
+    queueLock.unlock()
+
+    guard !token.isEmpty, !base.isEmpty,
+          let url = URL(string: "\(base)/auth/v1/token?grant_type=refresh_token") else {
+      completion(false)
+      return
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue(key, forHTTPHeaderField: "apikey")
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": token])
+    request.timeoutInterval = 30
+
+    URLSession(configuration: .ephemeral).dataTask(with: request) { [weak self] data, response, _ in
+      guard let self = self else { completion(false); return }
+      self.queueLock.lock()
+      self.refreshingToken = false
+      self.queueLock.unlock()
+
+      guard let data = data,
+            let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let access = json["access_token"] as? String, !access.isEmpty else {
+        completion(false)
+        return
+      }
+      self.queueLock.lock()
+      self.bearerToken = access
+      if let newRefresh = json["refresh_token"] as? String, !newRefresh.isEmpty {
+        self.refreshToken = newRefresh
+      }
+      self.queueLock.unlock()
+      completion(true)
+    }.resume()
   }
 
   // MARK: - Helpers
@@ -815,6 +899,7 @@ struct UploadJob {
   var stagedPath: String?
   var lastError: String?
   var attemptCount: Int
+  var authRetried: Bool = false
 
   init(input: UploadItemInput) {
     self.uploadId = input.uploadId

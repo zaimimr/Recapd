@@ -26,6 +26,7 @@ object UploadManager {
   @Volatile var supabaseUrl: String = ""
   @Volatile var anonKey: String = ""
   @Volatile var bearerToken: String = ""
+  @Volatile var refreshToken: String = ""
   @Volatile var bucket: String = "event-photos"
   @Volatile var maxConcurrentPhotos: Int = 2
   @Volatile var maxConcurrentVideos: Int = 1
@@ -43,6 +44,9 @@ object UploadManager {
     supabaseUrl = config.supabaseUrl
     anonKey = config.anonKey
     bearerToken = config.bearerToken
+    if (config.refreshToken.isNotEmpty()) {
+      refreshToken = config.refreshToken
+    }
     bucket = config.bucket
     maxConcurrentPhotos = maxOf(1, config.maxConcurrentPhotos)
     maxConcurrentVideos = maxOf(1, config.maxConcurrentVideos)
@@ -120,6 +124,7 @@ object UploadManager {
       .putString("supabaseUrl", supabaseUrl)
       .putString("anonKey", anonKey)
       .putString("bearerToken", bearerToken)
+      .putString("refreshToken", refreshToken)
       .putString("bucket", bucket)
       .putInt("chunkBytes", chunkBytes)
       .build()

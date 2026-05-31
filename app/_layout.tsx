@@ -30,7 +30,7 @@ import {
 	savePushToken,
 	setupNotificationHandler,
 } from "@/lib/notifications";
-import { configureRecapdUploader } from "@/lib/recapdUploaderBridge";
+import { configureRecapdUploader, refreshUploaderConfig } from "@/lib/recapdUploaderBridge";
 import { initSentry, Sentry, setSentryUser } from "@/lib/sentry";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/authStore";
@@ -137,26 +137,31 @@ function RootLayoutNav() {
 		if (!user?.id) return;
 		let cancelled = false;
 
-		const configureWith = async (bearer: string | undefined, source: string) => {
+		const configureWith = async (
+			session: { access_token?: string; refresh_token?: string } | null | undefined,
+			source: string
+		) => {
 			if (cancelled) return;
+			const bearer = session?.access_token;
+			const refreshToken = session?.refresh_token;
 			const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 			const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 			if (!bearer || !supabaseUrl || !anonKey) {
 				logger.warn("Recapd uploader configure skipped (missing config)", { source });
 				return;
 			}
-			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer });
+			await configureRecapdUploader({ supabaseUrl, anonKey, bearerToken: bearer, refreshToken });
 			traceEvent("recapd.uploader.configured", { source });
 		};
 
 		(async () => {
 			const { data: sessionData } = await supabase.auth.getSession();
-			await configureWith(sessionData.session?.access_token, "initial");
+			await configureWith(sessionData.session, "initial");
 		})();
 
 		const { data: authSub } = supabase.auth.onAuthStateChange((event, session) => {
 			if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
-				void configureWith(session?.access_token, event);
+				void configureWith(session, event);
 			}
 		});
 
@@ -175,6 +180,7 @@ function RootLayoutNav() {
 			}
 			if (state === "background" || state === "inactive") {
 				void flushTelemetryQueue(true);
+				void refreshUploaderConfig();
 			}
 		});
 		const memoryWarningSubscription = AppState.addEventListener(

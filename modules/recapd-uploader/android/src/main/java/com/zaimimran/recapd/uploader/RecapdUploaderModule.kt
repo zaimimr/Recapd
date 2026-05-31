@@ -50,6 +50,7 @@ class UploaderConfig : Record {
   @Field var supabaseUrl: String = ""
   @Field var anonKey: String = ""
   @Field var bearerToken: String = ""
+  @Field var refreshToken: String = ""
   @Field var bucket: String = "event-photos"
   @Field var maxConcurrentPhotos: Int = 2
   @Field var maxConcurrentVideos: Int = 1

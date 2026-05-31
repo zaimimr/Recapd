@@ -160,6 +160,59 @@ function upsertMediaItem(
 	return sortMediaItems([...items, newItem]);
 }
 
+export function buildMergedTimeline(
+	mediaItems: MediaItemWithUser[],
+	pendingUploads: PendingUpload[],
+	eventId: string
+) {
+	const pending = pendingUploads
+		.filter((p) => p.eventId === eventId && p.status === "failed")
+		.map((p) => ({
+			id: p.id,
+			event_id: p.eventId,
+			uploaded_by_user_id: p.userId,
+			captured_at: safeDate(p.capturedAt).toISOString(),
+			uploaded_at: new Date().toISOString(),
+			media_type: p.mediaType,
+			width: p.width,
+			height: p.height,
+			duration_milliseconds: p.mediaType === "video" ? Math.round(p.duration || 0) : null,
+			file_size_bytes: null,
+			storage_path: "",
+			thumbnail_path: p.thumbnailPath ?? null,
+			blurhash: null,
+			hls_path: null,
+			visibility: "shared" as const,
+			deleted_at: null,
+			latitude: p.latitude ?? null,
+			longitude: p.longitude ?? null,
+			uploader: null,
+			isPending: true,
+			localUri: p.localUri,
+			localThumbnailUri: p.thumbnailUri ?? null,
+			syncStatus: p.status,
+			retryCount: p.retryCount,
+			error: p.error,
+			failureReason: p.failureReason,
+			startedAt: p.startedAt,
+			lastAttemptAt: p.lastAttemptAt,
+			finishedAt: p.finishedAt,
+		}));
+
+	const uploadedSection = mediaItems
+		.map((m) => ({
+			...m,
+			isPending: false,
+			localUri: undefined,
+			syncStatus: undefined,
+		}))
+		.sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
+	const pendingSection = [...pending].sort(
+		(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+	);
+	return [...uploadedSection, ...pendingSection];
+}
+
 function getCaptureTime(value: string | number | Date) {
 	return new Date(value).getTime();
 }
@@ -311,16 +364,31 @@ function generateJoinCode(): string {
 }
 
 const mediaRefetchTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const mediaRefetchWindowStart = new Map<string, number>();
+const MEDIA_REFETCH_DEBOUNCE_MS = 1000;
+const MEDIA_REFETCH_MAX_WAIT_MS = 2500;
 function scheduleMediaRefetch(eventId: string, run: () => void) {
 	const existing = mediaRefetchTimers.get(eventId);
 	if (existing) clearTimeout(existing);
-	mediaRefetchTimers.set(
-		eventId,
-		setTimeout(() => {
-			mediaRefetchTimers.delete(eventId);
-			run();
-		}, 1000)
-	);
+
+	const now = Date.now();
+	const windowStart = mediaRefetchWindowStart.get(eventId) ?? now;
+	if (!mediaRefetchWindowStart.has(eventId)) {
+		mediaRefetchWindowStart.set(eventId, now);
+	}
+
+	const fire = () => {
+		mediaRefetchTimers.delete(eventId);
+		mediaRefetchWindowStart.delete(eventId);
+		run();
+	};
+
+	if (now - windowStart >= MEDIA_REFETCH_MAX_WAIT_MS) {
+		fire();
+		return;
+	}
+
+	mediaRefetchTimers.set(eventId, setTimeout(fire, MEDIA_REFETCH_DEBOUNCE_MS));
 }
 
 export const useEventStore = create<EventState>((set, get) => {
@@ -1181,53 +1249,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 		getMergedTimeline: (eventId: string) => {
 			const { mediaItems, pendingUploads } = get();
-
-			const pending = pendingUploads
-				.filter((p) => p.eventId === eventId && p.status === "failed")
-				.map((p) => ({
-					id: p.id,
-					event_id: p.eventId,
-					uploaded_by_user_id: p.userId,
-					captured_at: safeDate(p.capturedAt).toISOString(),
-					uploaded_at: new Date().toISOString(),
-					media_type: p.mediaType,
-					width: p.width,
-					height: p.height,
-					duration_milliseconds: p.mediaType === "video" ? Math.round(p.duration || 0) : null,
-					file_size_bytes: null,
-					storage_path: "",
-					thumbnail_path: p.thumbnailPath ?? null,
-					blurhash: null,
-					hls_path: null,
-					visibility: "shared" as const,
-					deleted_at: null,
-					latitude: p.latitude ?? null,
-					longitude: p.longitude ?? null,
-					uploader: null,
-					isPending: true,
-					localUri: p.localUri,
-					localThumbnailUri: p.thumbnailUri ?? null,
-					syncStatus: p.status,
-					retryCount: p.retryCount,
-					error: p.error,
-					failureReason: p.failureReason,
-					startedAt: p.startedAt,
-					lastAttemptAt: p.lastAttemptAt,
-					finishedAt: p.finishedAt,
-				}));
-
-			const uploadedSection = mediaItems
-				.map((m) => ({
-					...m,
-					isPending: false,
-					localUri: undefined,
-					syncStatus: undefined,
-				}))
-				.sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
-			const pendingSection = [...pending].sort(
-				(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
-			);
-			return [...uploadedSection, ...pendingSection];
+			return buildMergedTimeline(mediaItems, pendingUploads, eventId);
 		},
 
 		deleteEvent: async (eventId: string, userId: string) => {

@@ -6,6 +6,7 @@ export interface UploaderConfig {
 	supabaseUrl: string;
 	anonKey: string;
 	bearerToken: string;
+	refreshToken?: string;
 	bucket?: string;
 	maxConcurrentPhotos?: number;
 	maxConcurrentVideos?: number;
