@@ -40,6 +40,8 @@ function installListenersOnce() {
 	if (listenersInstalled) return;
 	listenersInstalled = true;
 
+	installNativeTokenAdoption();
+
 	RecapdUploader.addProgressListener(({ uploadId, bytesUploaded, totalBytes }) => {
 		progressHandler?.(uploadId, bytesUploaded, totalBytes);
 	});
@@ -120,6 +122,25 @@ function installListenersOnce() {
 	});
 }
 
+let tokenRefreshedListenerInstalled = false;
+
+export function installNativeTokenAdoption(): void {
+	if (tokenRefreshedListenerInstalled) return;
+	tokenRefreshedListenerInstalled = true;
+	RecapdUploader.addTokenRefreshedListener(async ({ accessToken, refreshToken }) => {
+		if (!accessToken || !refreshToken) return;
+		try {
+			await supabase.auth.setSession({
+				access_token: accessToken,
+				refresh_token: refreshToken,
+			});
+			logger.info("[up] adopted native-rotated session");
+		} catch (error) {
+			logger.warn("[uploader] failed to adopt native session", error);
+		}
+	});
+}
+
 export async function configureRecapdUploader(args: {
 	supabaseUrl: string;
 	anonKey: string;
@@ -153,13 +174,28 @@ export interface RecapdUploaderItemArgs {
 	thumbnailPath?: string | null;
 }
 
-export async function refreshUploaderConfig(): Promise<void> {
+const proactiveRefreshThresholdSeconds = 300;
+
+let inFlightConfigRefresh: Promise<void> | null = null;
+
+export function refreshUploaderConfig(): Promise<void> {
+	if (inFlightConfigRefresh) {
+		return inFlightConfigRefresh;
+	}
+	const run = performConfigRefresh().finally(() => {
+		inFlightConfigRefresh = null;
+	});
+	inFlightConfigRefresh = run;
+	return run;
+}
+
+async function performConfigRefresh(): Promise<void> {
 	try {
 		const { data } = await supabase.auth.getSession();
 		let session = data.session;
 		const expiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
 		const secondsLeft = expiresAt ? Math.round((expiresAt - Date.now()) / 1000) : -1;
-		if (!session || secondsLeft < 120) {
+		if (!session || secondsLeft < proactiveRefreshThresholdSeconds) {
 			const refreshed = await supabase.auth.refreshSession();
 			if (refreshed.data.session) {
 				session = refreshed.data.session;

@@ -18,8 +18,11 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   private var anonKey: String = ""
   private var bearerToken: String = ""
   private var refreshToken: String = ""
-  private var refreshingToken = false
   private var bucket: String = "event-photos"
+
+  private let refreshLock = NSLock()
+  private var refreshInFlight = false
+  private var pendingRefreshWaiters: [(Bool) -> Void] = []
 
   // How many jobs may be staged-to-disk and in flight at once (windowed staging
   // keeps disk + memory bounded; only staged files can upload in the background).
@@ -122,6 +125,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       queue[idx].phase = queue[idx].stagedPath != nil ? .staged : .queued
       queue[idx].lastError = nil
       queue[idx].attemptCount = 0
+      queue[idx].authRetried = false
     }
     persistLocked()
     queueLock.unlock()
@@ -486,7 +490,10 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       return
     }
 
-    if (http.statusCode == 401 || http.statusCode == 403), !job.authRetried, !refreshToken.isEmpty {
+    if (http.statusCode == 401 || http.statusCode == 403),
+       !job.authRetried,
+       !refreshToken.isEmpty,
+       shouldAttemptAuthRefresh(statusCode: http.statusCode) {
       setAuthRetried(uploadId)
       refreshAccessToken { [weak self] ok in
         guard let self = self else { return }
@@ -671,17 +678,25 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func refreshAccessToken(completion: @escaping (Bool) -> Void) {
+    refreshLock.lock()
+    if refreshInFlight {
+      pendingRefreshWaiters.append(completion)
+      refreshLock.unlock()
+      return
+    }
+    refreshInFlight = true
+    pendingRefreshWaiters.append(completion)
+    refreshLock.unlock()
+
     queueLock.lock()
     let token = refreshToken
     let key = anonKey
     let base = supabaseUrl
-    let alreadyRefreshing = refreshingToken
-    if !alreadyRefreshing { refreshingToken = true }
     queueLock.unlock()
 
     guard !token.isEmpty, !base.isEmpty,
           let url = URL(string: "\(base)/auth/v1/token?grant_type=refresh_token") else {
-      completion(false)
+      resolveRefreshWaiters(false)
       return
     }
 
@@ -693,26 +708,69 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     request.timeoutInterval = 30
 
     URLSession(configuration: .ephemeral).dataTask(with: request) { [weak self] data, response, _ in
-      guard let self = self else { completion(false); return }
-      self.queueLock.lock()
-      self.refreshingToken = false
-      self.queueLock.unlock()
-
+      guard let self = self else { return }
       guard let data = data,
             let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let access = json["access_token"] as? String, !access.isEmpty else {
-        completion(false)
+        self.resolveRefreshWaiters(false)
         return
       }
       self.queueLock.lock()
       self.bearerToken = access
+      var rotatedRefresh = self.refreshToken
       if let newRefresh = json["refresh_token"] as? String, !newRefresh.isEmpty {
         self.refreshToken = newRefresh
+        rotatedRefresh = newRefresh
       }
       self.queueLock.unlock()
-      completion(true)
+      let expiresIn = (json["expires_in"] as? NSNumber)?.intValue ?? 3600
+      self.emitTokenRefreshed(accessToken: access, refreshToken: rotatedRefresh, expiresIn: expiresIn)
+      self.resolveRefreshWaiters(true)
     }.resume()
+  }
+
+  private func emitTokenRefreshed(accessToken: String, refreshToken: String, expiresIn: Int) {
+    emitter?.sendEvent("onTokenRefreshed", [
+      "accessToken": accessToken,
+      "refreshToken": refreshToken,
+      "expiresIn": expiresIn
+    ])
+  }
+
+  private func shouldAttemptAuthRefresh(statusCode: Int) -> Bool {
+    if statusCode == 401 { return true }
+    queueLock.lock()
+    let token = bearerToken
+    queueLock.unlock()
+    guard let expiry = jwtExpiry(token) else { return true }
+    return expiry.timeIntervalSinceNow < 60
+  }
+
+  private func jwtExpiry(_ token: String) -> Date? {
+    let segments = token.components(separatedBy: ".")
+    guard segments.count == 3 else { return nil }
+    var payload = segments[1]
+      .replacingOccurrences(of: "-", with: "+")
+      .replacingOccurrences(of: "_", with: "/")
+    while payload.count % 4 != 0 { payload += "=" }
+    guard let data = Data(base64Encoded: payload),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let exp = (json["exp"] as? NSNumber)?.doubleValue else {
+      return nil
+    }
+    return Date(timeIntervalSince1970: exp)
+  }
+
+  private func resolveRefreshWaiters(_ success: Bool) {
+    refreshLock.lock()
+    let waiters = pendingRefreshWaiters
+    pendingRefreshWaiters.removeAll()
+    refreshInFlight = false
+    refreshLock.unlock()
+    for waiter in waiters {
+      waiter(success)
+    }
   }
 
   // MARK: - Helpers

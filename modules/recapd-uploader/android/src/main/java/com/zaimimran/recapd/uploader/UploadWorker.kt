@@ -9,9 +9,7 @@ import java.io.InputStream
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 class UploadWorker(
   appContext: Context,
@@ -39,9 +37,9 @@ class UploadWorker(
     val fileUri = data.getString("fileUri") ?: ""
     val supabaseUrl = data.getString("supabaseUrl") ?: ""
     val anonKey = data.getString("anonKey") ?: ""
-    var bearerToken = data.getString("bearerToken") ?: ""
     val refreshToken = data.getString("refreshToken") ?: ""
     val bucket = data.getString("bucket") ?: "event-photos"
+    var bearerToken = UploadManager.currentBearerToken().ifEmpty { data.getString("bearerToken") ?: "" }
     val chunkBytes = data.getInt("chunkBytes", 1 * 1024 * 1024)
 
     if (supabaseUrl.isEmpty() || anonKey.isEmpty()) {
@@ -79,9 +77,11 @@ class UploadWorker(
         )
       } catch (e: Exception) {
         val msg = e.message ?: ""
-        if ((msg.contains("401") || msg.contains("403")) && refreshToken.isNotEmpty()) {
-          val fresh = refreshAccessToken(supabaseUrl, anonKey, refreshToken)
-          if (fresh != null) {
+        val authShaped =
+          msg.contains("401") || (msg.contains("403") && UploadManager.isBearerStale(bearerToken))
+        if (authShaped && refreshToken.isNotEmpty()) {
+          val fresh = UploadManager.refreshAccessTokenIfStale(bearerToken)
+          if (fresh != null && fresh != bearerToken) {
             bearerToken = fresh
             ensureTusUpload(
               supabaseUrl = supabaseUrl,
@@ -114,15 +114,37 @@ class UploadWorker(
             .header("apikey", anonKey)
             .build()
           val resp = client.newCall(req).execute()
-          resp.use {
-            if (!resp.isSuccessful) {
-              throw RuntimeException("PATCH ${resp.code}")
+          var patchCode = resp.code
+          var nextOffsetHeader = resp.header("Upload-Offset")
+          resp.close()
+
+          val patchAuthShaped =
+            patchCode == 401 || (patchCode == 403 && UploadManager.isBearerStale(bearerToken))
+          if (patchAuthShaped && refreshToken.isNotEmpty()) {
+            val fresh = UploadManager.refreshAccessTokenIfStale(bearerToken)
+            if (fresh != null && fresh != bearerToken) {
+              bearerToken = fresh
+              val retryReq = Request.Builder()
+                .url(tusUrl)
+                .patch(buf.copyOf(read).toRequestBody("application/offset+octet-stream".toMediaTypeOrNull()))
+                .header("Tus-Resumable", "1.0.0")
+                .header("Upload-Offset", offset.toString())
+                .header("Authorization", "Bearer $bearerToken")
+                .header("apikey", anonKey)
+                .build()
+              val retryResp = client.newCall(retryReq).execute()
+              patchCode = retryResp.code
+              nextOffsetHeader = retryResp.header("Upload-Offset")
+              retryResp.close()
             }
-            val nextOffsetHeader = resp.header("Upload-Offset")
-            val nextOffset = nextOffsetHeader?.toLongOrNull() ?: (offset + read.toLong())
-            if (nextOffset <= offset) throw RuntimeException("non-advancing offset")
-            offset = nextOffset
           }
+
+          if (patchCode !in 200..299) {
+            throw RuntimeException("PATCH $patchCode")
+          }
+          val nextOffset = nextOffsetHeader?.toLongOrNull() ?: (offset + read.toLong())
+          if (nextOffset <= offset) throw RuntimeException("non-advancing offset")
+          offset = nextOffset
           UploadManager.emitProgress(uploadId, offset, totalBytes)
         }
       }
@@ -261,27 +283,6 @@ class UploadWorker(
       val url = if (loc.startsWith("http")) loc else "$supabaseUrl$loc"
       prefs.edit().putString("tus.$fingerprint", url).apply()
       return url
-    }
-  }
-
-  private fun refreshAccessToken(supabaseUrl: String, anonKey: String, refreshToken: String): String? {
-    return try {
-      val url = "$supabaseUrl/auth/v1/token?grant_type=refresh_token"
-      val payload = org.json.JSONObject().put("refresh_token", refreshToken).toString()
-      val req = Request.Builder()
-        .url(url)
-        .post(payload.toRequestBody("application/json".toMediaTypeOrNull()))
-        .header("apikey", anonKey)
-        .header("Content-Type", "application/json")
-        .build()
-      client.newCall(req).execute().use { resp ->
-        if (!resp.isSuccessful) return null
-        val bodyStr = resp.body?.string() ?: return null
-        val access = org.json.JSONObject(bodyStr).optString("access_token", "")
-        if (access.isEmpty()) null else access
-      }
-    } catch (e: Exception) {
-      null
     }
   }
 
