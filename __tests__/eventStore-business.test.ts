@@ -63,6 +63,7 @@ jest.mock("@/lib/dateUtils", () => ({
 }));
 jest.mock("@/lib/storage", () => ({
 	createVideoThumbnailUri: jest.fn().mockResolvedValue("file:///thumb.jpg"),
+	deletePhotoGridThumbnail: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("@/store/authStore", () => ({
 	useAuthStore: {

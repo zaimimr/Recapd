@@ -95,6 +95,7 @@ jest.mock("@/lib/uploadQueue", () => ({
 }));
 jest.mock("@/lib/storage", () => ({
 	createVideoThumbnailUri: jest.fn().mockResolvedValue("file:///thumb.jpg"),
+	deletePhotoGridThumbnail: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { useEventStore } from "@/store/eventStore";
