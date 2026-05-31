@@ -4,7 +4,6 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Dimensions,
-	FlatList,
 	Modal,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent,
@@ -17,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { createVideoThumbnailUri } from "@/lib/storage";
+import MediaViewerPager from "./MediaViewerPager";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -32,6 +32,8 @@ interface SelectionPhotoViewerProps {
 
 interface ZoomableImageProps {
 	photo: LocalPhoto;
+	isActive: boolean;
+	isHeavy: boolean;
 }
 
 function formatDurationHms(milliseconds: number): string {
@@ -81,7 +83,7 @@ function ZoomableVideoPlayer({ photo }: { photo: LocalPhoto }) {
 	);
 }
 
-function ZoomableImage({ photo }: ZoomableImageProps) {
+function ZoomableImage({ photo, isActive, isHeavy }: ZoomableImageProps) {
 	const scrollRef = useRef<ScrollView>(null);
 	const [isZoomed, setIsZoomed] = useState(false);
 
@@ -97,6 +99,9 @@ function ZoomableImage({ photo }: ZoomableImageProps) {
 	}, []);
 
 	if (photo.mediaType === "video") {
+		if (!isActive) {
+			return <View style={styles.mediaFrame} />;
+		}
 		return (
 			<ScrollView
 				ref={scrollRef}
@@ -131,13 +136,17 @@ function ZoomableImage({ photo }: ZoomableImageProps) {
 			centerContent
 		>
 			<TouchableOpacity activeOpacity={1} onPress={handleDoubleTap} style={styles.mediaFrame}>
-				<Image
-					source={{ uri: photo.uri }}
-					style={styles.image}
-					contentFit="contain"
-					cachePolicy="memory-disk"
-					transition={100}
-				/>
+				{isHeavy ? (
+					<Image
+						source={{ uri: photo.uri }}
+						style={styles.image}
+						contentFit="contain"
+						cachePolicy="memory-disk"
+						transition={100}
+					/>
+				) : (
+					<View style={styles.image} />
+				)}
 			</TouchableOpacity>
 		</ScrollView>
 	);
@@ -154,7 +163,6 @@ export default function SelectionPhotoViewer({
 }: SelectionPhotoViewerProps) {
 	const insets = useSafeAreaInsets();
 	const [currentIndex, setCurrentIndex] = useState(initialIndex);
-	const flatListRef = useRef<FlatList>(null);
 
 	useEffect(() => {
 		if (visible) {
@@ -167,18 +175,6 @@ export default function SelectionPhotoViewer({
 		currentPhoto?.mediaType === "video" && currentPhoto.duration
 			? formatDurationHms(currentPhoto.duration)
 			: null;
-
-	const onViewableItemsChanged = useRef(
-		({ viewableItems }: { viewableItems: Array<{ index: number | null }> }) => {
-			if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-				setCurrentIndex(viewableItems[0].index);
-			}
-		}
-	).current;
-
-	const viewabilityConfig = useRef({
-		itemVisiblePercentThreshold: 50,
-	}).current;
 
 	if (!visible || !currentPhoto) return null;
 
@@ -248,24 +244,18 @@ export default function SelectionPhotoViewer({
 					<View style={styles.headerButtonPlaceholder} />
 				</View>
 
-				<FlatList
-					ref={flatListRef}
+				<MediaViewerPager
 					data={photos}
-					horizontal
-					pagingEnabled
-					showsHorizontalScrollIndicator={false}
+					initialIndex={initialIndex}
 					keyExtractor={(item) => item.id}
-					initialScrollIndex={initialIndex}
-					getItemLayout={(_, index) => ({
-						length: SCREEN_WIDTH,
-						offset: SCREEN_WIDTH * index,
-						index,
-					})}
-					onViewableItemsChanged={onViewableItemsChanged}
-					viewabilityConfig={viewabilityConfig}
-					renderItem={({ item }) => (
+					onIndexChange={setCurrentIndex}
+					renderPage={(item, _index, state) => (
 						<View style={styles.imageContainer}>
-							<ZoomableImage photo={item} />
+							<ZoomableImage
+								photo={item}
+								isActive={state.isActive}
+								isHeavy={state.isActive || state.isNeighbor}
+							/>
 						</View>
 					)}
 				/>

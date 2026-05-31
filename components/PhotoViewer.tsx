@@ -6,7 +6,6 @@ import {
 	Alert,
 	Animated,
 	Dimensions,
-	FlatList,
 	Modal,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent,
@@ -27,10 +26,16 @@ import {
 	useStorageUrl,
 } from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
+import MediaViewerPager, { type MediaViewerPagerHandle } from "./MediaViewerPager";
 import type { MergedMediaItem } from "./MomentCluster";
 import VideoPlayer from "./VideoPlayer";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+function getBlurhash(photo: MergedMediaItem): string | undefined {
+	const value = (photo as MergedMediaItem & { blurhash?: string | null }).blurhash;
+	return value ?? undefined;
+}
 
 interface PhotoViewerProps {
 	photos: MergedMediaItem[];
@@ -46,6 +51,7 @@ interface PhotoViewerProps {
 interface ZoomableImageProps {
 	photo: MergedMediaItem;
 	thumbnailUri?: string;
+	blurhash?: string;
 }
 
 function clampIndex(index: number, length: number): number {
@@ -53,7 +59,34 @@ function clampIndex(index: number, length: number): number {
 	return Math.max(0, Math.min(index, length - 1));
 }
 
-function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
+function PlaceholderFrame({
+	thumbnailUri,
+	blurhash,
+}: {
+	thumbnailUri?: string;
+	blurhash?: string;
+}) {
+	if (thumbnailUri) {
+		return (
+			<Image
+				source={{ uri: thumbnailUri }}
+				style={styles.mediaFill}
+				contentFit="contain"
+				cachePolicy="memory-disk"
+				placeholder={blurhash ? { blurhash } : undefined}
+				placeholderContentFit="contain"
+			/>
+		);
+	}
+
+	if (blurhash) {
+		return <Image placeholder={{ blurhash }} style={styles.mediaFill} contentFit="cover" />;
+	}
+
+	return <View style={styles.mediaFill} />;
+}
+
+function ZoomableImage({ photo, thumbnailUri, blurhash }: ZoomableImageProps) {
 	const scrollRef = useRef<ScrollView>(null);
 	const [isZoomed, setIsZoomed] = useState(false);
 	const signedPhotoUrl = useStorageUrl(photo.isPending ? null : photo.storage_path);
@@ -91,7 +124,9 @@ function ZoomableImage({ photo, thumbnailUri }: ZoomableImageProps) {
 						contentFit="contain"
 						cachePolicy="memory-disk"
 						enableLiveTextInteraction={false}
-						placeholder={thumbnailUri ? { uri: thumbnailUri } : undefined}
+						placeholder={
+							thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined
+						}
 						placeholderContentFit="contain"
 						transition={120}
 					/>
@@ -109,15 +144,18 @@ function PhotoPage({
 	photo,
 	initialThumbnailUri,
 	isInitial,
+	isActive,
 }: {
 	photo: MergedMediaItem;
 	initialThumbnailUri?: string;
 	isInitial: boolean;
+	isActive: boolean;
 }) {
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 	const signedPhotoUrl = usePhotoThumbnailUrl(
 		photo.isPending || photo.media_type !== "photo" ? null : photo.storage_path
 	);
+	const blurhash = getBlurhash(photo);
 	const thumbnailUri =
 		isInitial && initialThumbnailUri
 			? initialThumbnailUri
@@ -126,7 +164,11 @@ function PhotoPage({
 				(photo.isPending ? photo.localUri : signedPhotoUrl) ||
 				undefined;
 
-	return <ZoomableImage photo={photo} thumbnailUri={thumbnailUri} />;
+	if (!isActive) {
+		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;
+	}
+
+	return <ZoomableImage photo={photo} thumbnailUri={thumbnailUri} blurhash={blurhash} />;
 }
 
 function VideoPage({
@@ -141,10 +183,15 @@ function VideoPage({
 	isActive: boolean;
 }) {
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
+	const blurhash = getBlurhash(photo);
 	const thumbnailUri =
 		isInitial && initialThumbnailUri
 			? initialThumbnailUri
 			: photo.localThumbnailUri || signedThumbnailUrl || undefined;
+
+	if (!isActive) {
+		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;
+	}
 
 	return (
 		<View style={styles.mediaFill}>
@@ -171,7 +218,7 @@ export default function PhotoViewer({
 	initialThumbnailUri,
 }: PhotoViewerProps) {
 	const insets = useSafeAreaInsets();
-	const flatListRef = useRef<FlatList<MergedMediaItem>>(null);
+	const pagerRef = useRef<MediaViewerPagerHandle>(null);
 	const safeInitialIndex = clampIndex(initialIndex, photos.length);
 	const [currentIndex, setCurrentIndex] = useState(safeInitialIndex);
 	const [saving, setSaving] = useState(false);
@@ -200,10 +247,7 @@ export default function PhotoViewer({
 	const buttonBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.18)";
 
 	const scrollToPhoto = useCallback((index: number, animated: boolean) => {
-		flatListRef.current?.scrollToOffset({
-			offset: SCREEN_WIDTH * index,
-			animated,
-		});
+		pagerRef.current?.scrollToIndex(index, animated);
 	}, []);
 
 	useEffect(() => {
@@ -238,11 +282,9 @@ export default function PhotoViewer({
 		}
 	}, [visible, currentIndex, photos.length, onClose, scrollToPhoto]);
 
-	const handleMomentumEnd = useCallback(
-		(event: NativeSyntheticEvent<NativeScrollEvent>) => {
-			setCurrentIndex(
-				clampIndex(Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH), photos.length)
-			);
+	const handleIndexChange = useCallback(
+		(index: number) => {
+			setCurrentIndex(clampIndex(index, photos.length));
 		},
 		[photos.length]
 	);
@@ -395,37 +437,25 @@ export default function PhotoViewer({
 					]}
 					{...panResponder.panHandlers}
 				>
-					<FlatList
-						ref={flatListRef}
+					<MediaViewerPager
+						ref={pagerRef}
 						data={photos}
-						horizontal
-						pagingEnabled
-						showsHorizontalScrollIndicator={false}
+						initialIndex={safeInitialIndex}
 						keyExtractor={(item) => item.id}
-						initialScrollIndex={safeInitialIndex}
-						getItemLayout={(_, index) => ({
-							length: SCREEN_WIDTH,
-							offset: SCREEN_WIDTH * index,
-							index,
-						})}
-						onMomentumScrollEnd={handleMomentumEnd}
-						onScrollToIndexFailed={({ index }) => {
-							requestAnimationFrame(() => {
-								scrollToPhoto(index, false);
-							});
-						}}
-						renderItem={({ item, index }) => (
+						onIndexChange={handleIndexChange}
+						renderPage={(item, index, state) => (
 							<View style={styles.page}>
 								{item.media_type === "video" ? (
 									<VideoPage
 										photo={item}
-										isActive={index === currentIndex}
+										isActive={state.isActive}
 										isInitial={index === safeInitialIndex}
 										initialThumbnailUri={initialThumbnailUri}
 									/>
 								) : (
 									<PhotoPage
 										photo={item}
+										isActive={state.isActive}
 										isInitial={index === safeInitialIndex}
 										initialThumbnailUri={initialThumbnailUri}
 									/>
