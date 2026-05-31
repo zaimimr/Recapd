@@ -1,15 +1,14 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import type { ReactElement } from "react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
 	ActivityIndicator,
-	FlatList,
 	type RefreshControlProps,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
-	useWindowDimensions,
 	View,
 } from "react-native";
 import { getAvatarColor } from "@/lib/colors";
@@ -21,6 +20,7 @@ import {
 } from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
 import type { MergedMediaItem } from "./MomentCluster";
+import { useImageMemoryGuard } from "./useImageMemoryGuard";
 
 const GRID_GAP = 2;
 const GRID_PADDING = 2;
@@ -47,7 +47,6 @@ interface MasonryGridProps {
 function GridTile({
 	photo,
 	index,
-	tileSize,
 	isDark,
 	onPhotoPress,
 	onRetry,
@@ -56,7 +55,6 @@ function GridTile({
 }: {
 	photo: MergedMediaItem;
 	index: number;
-	tileSize: number;
 	isDark: boolean;
 	onPhotoPress: (photo: MergedMediaItem, index: number) => void;
 	onRetry?: (id: string) => void;
@@ -64,14 +62,15 @@ function GridTile({
 	onRemove?: (id: string) => void;
 }) {
 	const isVideo = photo.media_type === "video";
+	const blurhash = (photo as { blurhash?: string | null }).blurhash ?? null;
 	const [generatedThumbnailUri, setGeneratedThumbnailUri] = useState<string | null>(null);
 	const [pendingPhotoThumbnailUri, setPendingPhotoThumbnailUri] = useState<string | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
 
-		async function resolveVideoThumbnail() {
-			if (!isVideo || photo.thumbnail_path || photo.localThumbnailUri || !photo.localUri) {
+		async function resolvePendingVideoThumbnail() {
+			if (!isVideo || !photo.isPending || photo.localThumbnailUri || !photo.localUri) {
 				setGeneratedThumbnailUri(null);
 				return;
 			}
@@ -88,12 +87,12 @@ function GridTile({
 			}
 		}
 
-		void resolveVideoThumbnail();
+		void resolvePendingVideoThumbnail();
 
 		return () => {
 			cancelled = true;
 		};
-	}, [isVideo, photo.localThumbnailUri, photo.localUri, photo.thumbnail_path]);
+	}, [isVideo, photo.isPending, photo.localThumbnailUri, photo.localUri]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -118,7 +117,11 @@ function GridTile({
 	}, [isVideo, photo.isPending, photo.localThumbnailUri, photo.localUri, photo.id]);
 
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
-	const signedPhotoUrl = usePhotoThumbnailUrl(photo.isPending ? null : photo.storage_path);
+
+	const isHeic = /\.(heic|heif)$/i.test(photo.storage_path);
+	const legacyTransformPath =
+		!photo.isPending && !photo.thumbnail_path && !isHeic ? photo.storage_path : null;
+	const legacyTransformUrl = usePhotoThumbnailUrl(legacyTransformPath);
 
 	const imageUri = (() => {
 		if (photo.isPending) {
@@ -128,11 +131,7 @@ function GridTile({
 			return photo.localThumbnailUri || pendingPhotoThumbnailUri || null;
 		}
 
-		if (isVideo) {
-			return photo.localThumbnailUri || signedThumbnailUrl || generatedThumbnailUri;
-		}
-
-		return signedThumbnailUrl || signedPhotoUrl;
+		return signedThumbnailUrl || legacyTransformUrl;
 	})();
 
 	const isSyncing = photo.isPending && photo.syncStatus === "syncing";
@@ -142,21 +141,32 @@ function GridTile({
 	const uploaderInitial = photo.uploader?.display_name?.charAt(0).toUpperCase();
 
 	return (
-		<View style={[styles.tileShell, { width: tileSize }]}>
+		<View style={styles.tileShell}>
 			<TouchableOpacity
 				activeOpacity={0.9}
-				style={[styles.tile, { width: tileSize }, isDark ? styles.tileDark : styles.tileLight]}
+				style={[styles.tile, isDark ? styles.tileDark : styles.tileLight]}
 				onPress={() => onPhotoPress(photo, index)}
 			>
 				{imageUri ? (
 					<Image
 						source={{ uri: imageUri }}
 						style={[styles.media, photo.isPending && styles.pendingImage]}
+						placeholder={blurhash ? { blurhash } : undefined}
+						placeholderContentFit="cover"
 						contentFit="cover"
 						cachePolicy="disk"
 						priority="low"
 						recyclingKey={photo.id}
+						transition={120}
 						allowDownscaling
+					/>
+				) : blurhash ? (
+					<Image
+						style={styles.media}
+						placeholder={{ blurhash }}
+						placeholderContentFit="cover"
+						contentFit="cover"
+						recyclingKey={photo.id}
 					/>
 				) : (
 					<View style={[styles.media, styles.placeholder]}>
@@ -273,12 +283,9 @@ export default function MasonryGrid({
 	emptyComponent,
 	refreshControl,
 }: MasonryGridProps) {
-	const { width: screenWidth } = useWindowDimensions();
 	const [gridColumns, setGridColumns] = useState<GridColumns>(3);
-	const tileSize = useMemo(
-		() => Math.floor((screenWidth - GRID_PADDING * 2 - GRID_GAP * (gridColumns - 1)) / gridColumns),
-		[screenWidth, gridColumns]
-	);
+
+	useImageMemoryGuard();
 
 	const feedItems = useMemo(
 		() =>
@@ -295,7 +302,6 @@ export default function MasonryGrid({
 			<MemoizedGridTile
 				photo={item.photo}
 				index={item.index}
-				tileSize={tileSize}
 				isDark={isDark}
 				onPhotoPress={onPhotoPress}
 				onRetry={onRetry}
@@ -303,7 +309,12 @@ export default function MasonryGrid({
 				onRemove={onRemove}
 			/>
 		),
-		[isDark, onPhotoPress, onRemove, onRetry, onSkip, tileSize]
+		[isDark, onPhotoPress, onRemove, onRetry, onSkip]
+	);
+
+	const getItemType = useCallback(
+		(item: (typeof feedItems)[number]) => (item.photo.isPending ? "pending" : "uploaded"),
+		[]
 	);
 
 	const listHeader = (
@@ -347,22 +358,21 @@ export default function MasonryGrid({
 	);
 
 	return (
-		<FlatList
+		<FlashList
 			key={`grid-${gridColumns}`}
 			data={feedItems}
 			renderItem={renderItem}
 			keyExtractor={(item) => item.id}
+			getItemType={getItemType}
 			numColumns={gridColumns}
-			columnWrapperStyle={styles.row}
+			masonry
 			contentContainerStyle={styles.container}
 			showsVerticalScrollIndicator={false}
 			ListHeaderComponent={listHeader}
 			ListEmptyComponent={emptyComponent ?? null}
 			refreshControl={refreshControl}
-			initialNumToRender={9}
-			maxToRenderPerBatch={6}
-			windowSize={3}
-			removeClippedSubviews
+			drawDistance={250}
+			maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
 		/>
 	);
 }
@@ -428,12 +438,11 @@ const styles = StyleSheet.create({
 		paddingHorizontal: GRID_PADDING,
 		paddingBottom: 24,
 	},
-	row: {
-		gap: GRID_GAP,
-		marginBottom: GRID_GAP,
+	tileShell: {
+		padding: GRID_GAP / 2,
 	},
-	tileShell: {},
 	tile: {
+		width: "100%",
 		aspectRatio: 1,
 		overflow: "hidden",
 		position: "relative",
