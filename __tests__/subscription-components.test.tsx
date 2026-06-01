@@ -113,7 +113,7 @@ jest.mock("@/store/eventStore", () => ({
 }));
 
 let mockSubscriptionsEnabled = true;
-jest.mock("@/lib/subscription", () => ({
+jest.mock("@/lib/billing/config", () => ({
 	get SUBSCRIPTIONS_ENABLED() {
 		return mockSubscriptionsEnabled;
 	},

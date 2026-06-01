@@ -20,7 +20,7 @@ import {
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
 import { getAvatarColor } from "@/lib/colors";
-import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import {

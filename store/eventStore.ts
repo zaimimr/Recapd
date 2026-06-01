@@ -7,8 +7,8 @@ import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { addUploadBreadcrumb } from "@/lib/sentry";
 import type { UploadFailureReason } from "@/lib/storage";
-import { createVideoThumbnailUri } from "@/lib/storage";
-import { SUBSCRIPTIONS_ENABLED } from "@/lib/subscription";
+import { createVideoThumbnailUri, deletePhotoGridThumbnail } from "@/lib/storage";
+import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { supabase } from "@/lib/supabase";
 import {
 	generateUploadId,
@@ -399,6 +399,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			const remainingUploads = get().pendingUploads.filter((u) => u.id !== upload.id);
 			set({ pendingUploads: remainingUploads });
 			await persistPendingUploads(remainingUploads);
+			void deletePhotoGridThumbnail(upload.id);
 
 			if (!currentUpload) {
 				return;
@@ -1154,6 +1155,7 @@ export const useEventStore = create<EventState>((set, get) => {
 			const newUploads = get().pendingUploads.filter((u) => u.id !== id);
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
+			void deletePhotoGridThumbnail(id);
 		},
 
 		deletePhoto: async (mediaItemId: string, _eventId: string) => {
