@@ -99,7 +99,13 @@ function installListenersOnce() {
 			elapsedMs && elapsedMs > 0 && bytes > 0
 				? Math.round(((bytes * 8) / (elapsedMs / 1000) / 1e6) * 10) / 10
 				: null;
-		logger.info("[up] DONE", { uploadId, recorded: Boolean(recorded), elapsedMs, bytes, throughputMbps });
+		logger.info("[up] DONE", {
+			uploadId,
+			recorded: Boolean(recorded),
+			elapsedMs,
+			bytes,
+			throughputMbps,
+		});
 		addUploadBreadcrumb("recapd.timing", { uploadId, elapsedMs, bytes, mediaType, throughputMbps });
 		addUploadBreadcrumb("recapd.completed", {
 			uploadId,

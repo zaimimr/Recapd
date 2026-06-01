@@ -21,12 +21,12 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
+import { registerForPushNotifications, savePushToken } from "@/lib/notifications";
 import {
 	clearRecapdQueue,
 	getRecapdQueueCounts,
 	type RecapdQueueCounts,
 } from "@/lib/recapdUploaderBridge";
-import { registerForPushNotifications, savePushToken } from "@/lib/notifications";
 import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -90,8 +90,7 @@ function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boole
 
 	const peak = peakRef.current;
 	const done = Math.max(0, peak - outstanding);
-	const fraction =
-		peak > 0 ? Math.min(1, (done + counts.inFlightFraction) / peak) : 0;
+	const fraction = peak > 0 ? Math.min(1, (done + counts.inFlightFraction) / peak) : 0;
 
 	return (
 		<View style={[styles.uploadBar, isDark && styles.uploadBarDark]}>
