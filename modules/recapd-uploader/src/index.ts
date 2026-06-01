@@ -51,6 +51,12 @@ export interface UploadFailedEvent {
 	error: string;
 }
 
+export interface TokenRefreshedEvent {
+	accessToken: string;
+	refreshToken: string;
+	expiresIn: number;
+}
+
 export interface UploadQueueItem {
 	uploadId: string;
 	status: "queued" | "syncing" | "completed" | "failed";
@@ -124,5 +130,8 @@ export const RecapdUploader = {
 	},
 	addDrainedListener(listener: () => void) {
 		return emitter.addListener("onQueueDrained", listener);
+	},
+	addTokenRefreshedListener(listener: (e: TokenRefreshedEvent) => void) {
+		return emitter.addListener("onTokenRefreshed", listener);
 	},
 };

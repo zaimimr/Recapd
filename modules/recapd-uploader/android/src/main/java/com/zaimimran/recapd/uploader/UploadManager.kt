@@ -13,6 +13,10 @@ import expo.modules.kotlin.modules.Module
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -33,6 +37,14 @@ object UploadManager {
   @Volatile var chunkBytes: Int = 1 * 1024 * 1024
 
   private val queue = ConcurrentHashMap<String, UploadJob>()
+
+  private val refreshLock = Any()
+  @Volatile private var refreshInProgress = false
+  private val refreshClient by lazy {
+    OkHttpClient.Builder()
+      .callTimeout(30, TimeUnit.SECONDS)
+      .build()
+  }
 
   fun attach(ctx: Context, mod: Module) {
     context = ctx.applicationContext
@@ -199,10 +211,103 @@ object UploadManager {
     pingDrainIfEmpty()
   }
 
+  private fun emitTokenRefreshed(accessToken: String, refreshToken: String, expiresIn: Int) {
+    module?.sendEvent("onTokenRefreshed", mapOf(
+      "accessToken" to accessToken,
+      "refreshToken" to refreshToken,
+      "expiresIn" to expiresIn
+    ))
+  }
+
   private fun pingDrainIfEmpty() {
     val active = queue.values.any { it.status == JobStatus.QUEUED || it.status == JobStatus.SYNCING }
     if (!active) {
       module?.sendEvent("onQueueDrained", mapOf<String, Any>())
+    }
+  }
+
+  fun currentBearerToken(): String = bearerToken
+
+  fun isBearerStale(token: String): Boolean {
+    val expiry = jwtExpiryMillis(token) ?: return true
+    return expiry - System.currentTimeMillis() < 60_000
+  }
+
+  private fun jwtExpiryMillis(token: String): Long? {
+    val segments = token.split(".")
+    if (segments.size != 3) return null
+    return try {
+      var payload = segments[1].replace('-', '+').replace('_', '/')
+      while (payload.length % 4 != 0) payload += "="
+      val decoded = android.util.Base64.decode(payload, android.util.Base64.DEFAULT)
+      val json = JSONObject(String(decoded, Charsets.UTF_8))
+      if (!json.has("exp")) return null
+      json.getLong("exp") * 1000L
+    } catch (e: Exception) {
+      null
+    }
+  }
+
+  fun refreshAccessTokenIfStale(seenBearer: String): String? {
+    synchronized(refreshLock) {
+      while (refreshInProgress) {
+        try {
+          (refreshLock as Object).wait()
+        } catch (e: InterruptedException) {
+          Thread.currentThread().interrupt()
+          return null
+        }
+      }
+      val current = bearerToken
+      if (current.isNotEmpty() && current != seenBearer) {
+        return current
+      }
+      refreshInProgress = true
+    }
+
+    var result: String? = null
+    try {
+      result = performTokenRefresh()
+    } finally {
+      synchronized(refreshLock) {
+        refreshInProgress = false
+        (refreshLock as Object).notifyAll()
+      }
+    }
+    return result
+  }
+
+  private fun performTokenRefresh(): String? {
+    val base = supabaseUrl
+    val key = anonKey
+    val token = refreshToken
+    if (base.isEmpty() || token.isEmpty()) return null
+    return try {
+      val url = "$base/auth/v1/token?grant_type=refresh_token"
+      val payload = JSONObject().put("refresh_token", token).toString()
+      val req = Request.Builder()
+        .url(url)
+        .post(payload.toRequestBody("application/json".toMediaTypeOrNull()))
+        .header("apikey", key)
+        .header("Content-Type", "application/json")
+        .build()
+      refreshClient.newCall(req).execute().use { resp ->
+        if (!resp.isSuccessful) return null
+        val bodyStr = resp.body?.string() ?: return null
+        val json = JSONObject(bodyStr)
+        val access = json.optString("access_token", "")
+        if (access.isEmpty()) return null
+        bearerToken = access
+        val newRefresh = json.optString("refresh_token", "")
+        if (newRefresh.isNotEmpty()) {
+          refreshToken = newRefresh
+        }
+        val expiresIn = json.optInt("expires_in", 3600)
+        emitTokenRefreshed(access, refreshToken, expiresIn)
+        access
+      }
+    } catch (e: Exception) {
+      null
     }
   }
 

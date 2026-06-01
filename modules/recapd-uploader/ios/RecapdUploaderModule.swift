@@ -6,7 +6,7 @@ public class RecapdUploaderModule: Module {
   public func definition() -> ModuleDefinition {
     Name("RecapdUploader")
 
-    Events("onProgress", "onItemCompleted", "onItemFailed", "onQueueDrained")
+    Events("onProgress", "onItemCompleted", "onItemFailed", "onQueueDrained", "onTokenRefreshed")
 
     OnCreate {
       UploadManager.shared.bind(emitter: self)

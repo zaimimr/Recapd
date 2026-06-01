@@ -9,7 +9,7 @@ class RecapdUploaderModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("RecapdUploader")
 
-    Events("onProgress", "onItemCompleted", "onItemFailed", "onQueueDrained")
+    Events("onProgress", "onItemCompleted", "onItemFailed", "onQueueDrained", "onTokenRefreshed")
 
     OnCreate {
       val context = appContext.reactContext ?: return@OnCreate
