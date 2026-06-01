@@ -1,7 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { differenceInDays, differenceInHours, isPast } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -21,6 +21,11 @@ import { useColorScheme } from "@/components/useColorScheme";
 import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
+import {
+	clearRecapdQueue,
+	getRecapdQueueCounts,
+	type RecapdQueueCounts,
+} from "@/lib/recapdUploaderBridge";
 import { registerForPushNotifications, savePushToken } from "@/lib/notifications";
 import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
@@ -28,43 +33,80 @@ import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 
 function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boolean }) {
-	const pendingUploads = useEventStore((state) => state.pendingUploads);
 	const retryFailedUpload = useEventStore((state) => state.retryFailedUpload);
-	const progress = useMemo(() => {
-		let active = 0;
-		let failed = 0;
-		const failedIds: string[] = [];
-		for (const p of pendingUploads) {
-			if (p.eventId !== eventId) continue;
-			if (p.status === "pending" || p.status === "syncing") active++;
-			else if (p.status === "failed") {
-				failed++;
-				failedIds.push(p.id);
-			}
-		}
-		return { active, failed, failedIds, total: active + failed };
-	}, [pendingUploads, eventId]);
+	const clearAllPendingUploads = useEventStore((state) => state.clearAllPendingUploads);
+	const [counts, setCounts] = useState<RecapdQueueCounts | null>(null);
+	const peakRef = useRef(0);
+
+	const handleCancelAll = useCallback(() => {
+		const outstandingNow = (counts?.remaining ?? 0) + (counts?.failed ?? 0);
+		Alert.alert(
+			"Cancel all uploads?",
+			`This stops ${outstandingNow} pending upload${outstandingNow === 1 ? "" : "s"} across all events. Photos already uploaded are kept.`,
+			[
+				{ text: "Keep uploading", style: "cancel" },
+				{
+					text: "Cancel all",
+					style: "destructive",
+					onPress: () => {
+						peakRef.current = 0;
+						setCounts({ remaining: 0, failed: 0, failedIds: [], inFlightFraction: 0 });
+						void clearRecapdQueue();
+						void clearAllPendingUploads();
+					},
+				},
+			]
+		);
+	}, [counts, clearAllPendingUploads]);
+
+	useEffect(() => {
+		let cancelled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		const tick = async () => {
+			const next = await getRecapdQueueCounts(eventId);
+			if (cancelled) return;
+			setCounts(next);
+			timer = setTimeout(tick, 1200);
+		};
+
+		void tick();
+		return () => {
+			cancelled = true;
+			if (timer) clearTimeout(timer);
+		};
+	}, [eventId]);
 
 	const handleRetryAll = useCallback(() => {
-		for (const id of progress.failedIds) retryFailedUpload(id);
-	}, [progress.failedIds, retryFailedUpload]);
+		if (!counts) return;
+		for (const id of counts.failedIds) retryFailedUpload(id);
+	}, [counts, retryFailedUpload]);
 
-	if (progress.active === 0 && progress.failed === 0) return null;
+	const outstanding = (counts?.remaining ?? 0) + (counts?.failed ?? 0);
+	if (outstanding > peakRef.current) peakRef.current = outstanding;
+	if (outstanding === 0 && peakRef.current !== 0) peakRef.current = 0;
+
+	if (!counts || (counts.remaining === 0 && counts.failed === 0)) return null;
+
+	const peak = peakRef.current;
+	const done = Math.max(0, peak - outstanding);
+	const fraction =
+		peak > 0 ? Math.min(1, (done + counts.inFlightFraction) / peak) : 0;
 
 	return (
 		<View style={[styles.uploadBar, isDark && styles.uploadBarDark]}>
 			<View style={styles.uploadBarRow}>
-				{progress.active > 0 && (
+				{counts.remaining > 0 && (
 					<Text style={[styles.uploadBarText, isDark && styles.uploadBarTextDark]}>
-						{progress.active} left
+						Uploading {done} of {peak}
 					</Text>
 				)}
-				{progress.failed > 0 && (
+				{counts.failed > 0 && (
 					<Text style={[styles.uploadBarFailed, isDark && styles.uploadBarFailedDark]}>
-						{progress.failed} failed
+						{counts.failed} failed
 					</Text>
 				)}
-				{progress.failed > 0 && (
+				{counts.failed > 0 && (
 					<TouchableOpacity
 						style={styles.uploadBarRetry}
 						onPress={handleRetryAll}
@@ -74,7 +116,20 @@ function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boole
 						<Text style={styles.uploadBarRetryText}>Retry</Text>
 					</TouchableOpacity>
 				)}
+				<View style={styles.uploadBarSpacer} />
+				<TouchableOpacity
+					style={styles.uploadBarCancel}
+					onPress={handleCancelAll}
+					hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+				>
+					<Text style={styles.uploadBarCancelText}>Cancel all</Text>
+				</TouchableOpacity>
 			</View>
+			{counts.remaining > 0 && (
+				<View style={[styles.uploadBarTrack, isDark && styles.uploadBarTrackDark]}>
+					<View style={[styles.uploadBarFill, { width: `${Math.round(fraction * 100)}%` }]} />
+				</View>
+			)}
 		</View>
 	);
 }
@@ -531,7 +586,7 @@ export default function EventScreen() {
 							<View style={[styles.stats, isDark && styles.statsDark]}>
 								<View style={styles.stat}>
 									<Text style={[styles.statValue, isDark && styles.textDark]}>
-										{mergedPhotos.filter((p) => p.syncStatus !== "failed").length}
+										{mergedPhotos.filter((p) => !p.isPending).length}
 									</Text>
 									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
 								</View>
@@ -984,6 +1039,20 @@ const styles = StyleSheet.create({
 	uploadBarDark: {
 		backgroundColor: "rgba(20, 27, 40, 0.95)",
 	},
+	uploadBarSpacer: {
+		flex: 1,
+	},
+	uploadBarCancel: {
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+		borderRadius: 999,
+		backgroundColor: "rgba(255, 255, 255, 0.14)",
+	},
+	uploadBarCancelText: {
+		color: "#e5e7eb",
+		fontSize: 12,
+		fontWeight: "700",
+	},
 	uploadBarRow: {
 		flexDirection: "row",
 		alignItems: "center",
@@ -1022,6 +1091,7 @@ const styles = StyleSheet.create({
 	},
 	uploadBarTrack: {
 		height: 4,
+		marginTop: 10,
 		borderRadius: 999,
 		backgroundColor: "rgba(255, 255, 255, 0.18)",
 		overflow: "hidden",

@@ -21,6 +21,7 @@ const CLUSTER_THRESHOLD_MS = 60000;
 
 export interface MergedMediaItem extends MediaItemWithUser {
 	isPending?: boolean;
+	isSkeleton?: boolean;
 	localUri?: string;
 	localThumbnailUri?: string | null;
 	syncStatus?: string;

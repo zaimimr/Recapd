@@ -126,6 +126,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       queue[idx].lastError = nil
       queue[idx].attemptCount = 0
       queue[idx].authRetried = false
+      queue[idx].verifyAttempts = 0
     }
     persistLocked()
     queueLock.unlock()
@@ -550,6 +551,15 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
 
     case .verifying:
       guard (200..<300).contains(http.statusCode) else {
+        let attempts = bumpVerifyAttempts(uploadId)
+        if attempts <= 4 {
+          DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Double(attempts) * 1.5) {
+            [weak self] in
+            guard let self, let job = self.jobById(uploadId) else { return }
+            self.startVerify(job)
+          }
+          return
+        }
         finishFailure(uploadId: uploadId, error: UploaderError.tus("verify status \(http.statusCode)"))
         return
       }
@@ -665,6 +675,14 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       queue[idx].authRetried = true
     }
     queueLock.unlock()
+  }
+
+  private func bumpVerifyAttempts(_ uploadId: String) -> Int {
+    queueLock.lock(); defer { queueLock.unlock() }
+    guard let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) else { return Int.max }
+    queue[idx].verifyAttempts += 1
+    persistLocked()
+    return queue[idx].verifyAttempts
   }
 
   private func restartPhase(_ job: UploadJob, phase: UploadPhase) {
@@ -958,6 +976,7 @@ struct UploadJob {
   var lastError: String?
   var attemptCount: Int
   var authRetried: Bool = false
+  var verifyAttempts: Int = 0
 
   init(input: UploadItemInput) {
     self.uploadId = input.uploadId
@@ -1011,6 +1030,7 @@ struct UploadJob {
     stagedPath = (d["stagedPath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     lastError = (d["lastError"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     attemptCount = (d["attemptCount"] as? NSNumber)?.intValue ?? 0
+    verifyAttempts = (d["verifyAttempts"] as? NSNumber)?.intValue ?? 0
   }
 
   func toDict() -> [String: Any] {
@@ -1038,7 +1058,8 @@ struct UploadJob {
       "totalBytes": totalBytes,
       "stagedPath": stagedPath ?? "",
       "lastError": lastError ?? "",
-      "attemptCount": attemptCount
+      "attemptCount": attemptCount,
+      "verifyAttempts": verifyAttempts
     ]
   }
 

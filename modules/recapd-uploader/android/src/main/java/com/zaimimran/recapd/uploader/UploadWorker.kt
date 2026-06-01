@@ -309,17 +309,25 @@ class UploadWorker(
     bucket: String,
     objectName: String
   ) {
-    val url = "$supabaseUrl/storage/v1/object/info/$bucket/${java.net.URLEncoder.encode(objectName, "UTF-8").replace("+", "%20")}"
-    val req = Request.Builder()
-      .url(url)
-      .get()
-      .header("Authorization", "Bearer $bearerToken")
-      .header("apikey", anonKey)
-      .build()
-    val resp = client.newCall(req).execute()
-    resp.use {
-      if (!resp.isSuccessful) throw RuntimeException("verify ${resp.code}")
+    val encodedPath = objectName.split("/").joinToString("/") {
+      java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20")
     }
+    val url = "$supabaseUrl/storage/v1/object/info/$bucket/$encodedPath"
+    var lastCode = 0
+    for (attempt in 1..4) {
+      val req = Request.Builder()
+        .url(url)
+        .get()
+        .header("Authorization", "Bearer $bearerToken")
+        .header("apikey", anonKey)
+        .build()
+      client.newCall(req).execute().use { resp ->
+        if (resp.isSuccessful) return
+        lastCode = resp.code
+      }
+      Thread.sleep(attempt * 1500L)
+    }
+    throw RuntimeException("verify $lastCode")
   }
 
   private fun b64(s: String) = android.util.Base64.encodeToString(

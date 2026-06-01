@@ -2,9 +2,10 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import type { ReactElement } from "react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
+	Animated,
 	type RefreshControlProps,
 	StyleSheet,
 	Text,
@@ -272,6 +273,48 @@ function GridTile({
 
 const MemoizedGridTile = memo(GridTile);
 
+function SkeletonTile({ isDark, syncing }: { isDark: boolean; syncing: boolean }) {
+	const pulse = useRef(new Animated.Value(0.45)).current;
+
+	useEffect(() => {
+		const loop = Animated.loop(
+			Animated.sequence([
+				Animated.timing(pulse, { toValue: 1, duration: 760, useNativeDriver: true }),
+				Animated.timing(pulse, { toValue: 0.45, duration: 760, useNativeDriver: true }),
+			])
+		);
+		loop.start();
+		return () => loop.stop();
+	}, [pulse]);
+
+	return (
+		<View style={styles.tileShell}>
+			<View style={[styles.tile, isDark ? styles.tileDark : styles.tileLight]}>
+				<Animated.View
+					style={[
+						StyleSheet.absoluteFill,
+						isDark ? styles.skeletonFillDark : styles.skeletonFillLight,
+						{ opacity: pulse },
+					]}
+				/>
+				<View style={styles.skeletonCenter}>
+					<ActivityIndicator size="small" color={isDark ? "#aeb6c5" : "#6b7280"} />
+				</View>
+				<View style={styles.skeletonBadge}>
+					{syncing ? (
+						<ActivityIndicator size="small" color="#fff" />
+					) : (
+						<FontAwesome name="clock-o" size={12} color="#fff" />
+					)}
+					<Text style={styles.pendingText}>{syncing ? "Uploading" : "Waiting"}</Text>
+				</View>
+			</View>
+		</View>
+	);
+}
+
+const MemoizedSkeletonTile = memo(SkeletonTile);
+
 export default function MasonryGrid({
 	photos,
 	onPhotoPress,
@@ -298,22 +341,26 @@ export default function MasonryGrid({
 	);
 
 	const renderItem = useCallback(
-		({ item }: { item: (typeof feedItems)[number] }) => (
-			<MemoizedGridTile
-				photo={item.photo}
-				index={item.index}
-				isDark={isDark}
-				onPhotoPress={onPhotoPress}
-				onRetry={onRetry}
-				onSkip={onSkip}
-				onRemove={onRemove}
-			/>
-		),
+		({ item }: { item: (typeof feedItems)[number] }) =>
+			item.photo.isSkeleton ? (
+				<MemoizedSkeletonTile isDark={isDark} syncing={item.photo.syncStatus === "syncing"} />
+			) : (
+				<MemoizedGridTile
+					photo={item.photo}
+					index={item.index}
+					isDark={isDark}
+					onPhotoPress={onPhotoPress}
+					onRetry={onRetry}
+					onSkip={onSkip}
+					onRemove={onRemove}
+				/>
+			),
 		[isDark, onPhotoPress, onRemove, onRetry, onSkip]
 	);
 
 	const getItemType = useCallback(
-		(item: (typeof feedItems)[number]) => (item.photo.isPending ? "pending" : "uploaded"),
+		(item: (typeof feedItems)[number]) =>
+			item.photo.isSkeleton ? "skeleton" : item.photo.isPending ? "pending" : "uploaded",
 		[]
 	);
 
@@ -463,6 +510,29 @@ const styles = StyleSheet.create({
 	},
 	pendingImage: {
 		opacity: 0.68,
+	},
+	skeletonFillLight: {
+		backgroundColor: "#c2c7d0",
+	},
+	skeletonFillDark: {
+		backgroundColor: "#1b212c",
+	},
+	skeletonCenter: {
+		...StyleSheet.absoluteFillObject,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	skeletonBadge: {
+		position: "absolute",
+		top: 8,
+		left: 8,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+		paddingHorizontal: 8,
+		paddingVertical: 6,
+		backgroundColor: "rgba(0, 0, 0, 0.56)",
+		borderRadius: 999,
 	},
 	topRow: {
 		position: "absolute",

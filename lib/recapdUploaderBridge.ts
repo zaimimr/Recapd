@@ -1,7 +1,7 @@
 import { RecapdUploader, type UploadItemInput } from "recapd-uploader";
 import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
 import { logger } from "./logger";
-import { addUploadBreadcrumb } from "./sentry";
+import { addUploadBreadcrumb, captureSentryMessage } from "./sentry";
 import { supabase } from "./supabase";
 
 interface PendingMeta {
@@ -20,6 +20,47 @@ interface PendingMeta {
 }
 
 const pendingMeta = new Map<string, PendingMeta>();
+
+interface UploadTimingSample {
+	elapsedMs: number;
+	bytes: number;
+	mediaType: string;
+}
+
+let uploadTimingSamples: UploadTimingSample[] = [];
+let uploadBatchStartMs = 0;
+
+function recordUploadTiming(elapsedMs: number | null, bytes: number, mediaType: string) {
+	if (elapsedMs == null || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return;
+	if (uploadTimingSamples.length === 0) {
+		uploadBatchStartMs = Date.now() - elapsedMs;
+	}
+	uploadTimingSamples.push({ elapsedMs, bytes: Math.max(0, bytes), mediaType });
+}
+
+function flushUploadTimingSummary() {
+	if (uploadTimingSamples.length === 0) return;
+	const samples = uploadTimingSamples;
+	uploadTimingSamples = [];
+	const wallMs = Math.max(1, Date.now() - uploadBatchStartMs);
+	const totalBytes = samples.reduce((sum, s) => sum + s.bytes, 0);
+	const sortedMs = samples.map((s) => s.elapsedMs).sort((a, b) => a - b);
+	const percentile = (p: number) =>
+		sortedMs[Math.min(sortedMs.length - 1, Math.floor((p / 100) * sortedMs.length))];
+	const photos = samples.filter((s) => s.mediaType !== "video").length;
+	const avgMs = Math.round(sortedMs.reduce((a, b) => a + b, 0) / sortedMs.length);
+	captureSentryMessage("upload.batch.summary", "info", {
+		count: samples.length,
+		photos,
+		videos: samples.length - photos,
+		totalMB: Math.round((totalBytes / (1024 * 1024)) * 10) / 10,
+		wallSeconds: Math.round(wallMs / 100) / 10,
+		throughputMbps: Math.round(((totalBytes * 8) / (wallMs / 1000) / 1e6) * 10) / 10,
+		avgItemMs: avgMs,
+		medianItemMs: percentile(50),
+		p95ItemMs: percentile(95),
+	});
+}
 
 let progressHandler: ((uploadId: string, bytes: number, total: number) => void) | null = null;
 let completionHandler:
@@ -47,9 +88,19 @@ function installListenersOnce() {
 	});
 
 	RecapdUploader.addCompletedListener(async ({ uploadId, objectName, recorded, thumbnailPath }) => {
-		logger.info("[up] DONE", { uploadId, recorded: Boolean(recorded) });
+		const enqueuedAtMs = Number(uploadId.split("_")[1]);
+		const elapsedMs = Number.isFinite(enqueuedAtMs) ? Date.now() - enqueuedAtMs : null;
 		const meta = pendingMeta.get(uploadId);
 		pendingMeta.delete(uploadId);
+		const bytes = meta?.fileSize ?? 0;
+		const mediaType = meta?.mediaType ?? "photo";
+		recordUploadTiming(elapsedMs, bytes, mediaType);
+		const throughputMbps =
+			elapsedMs && elapsedMs > 0 && bytes > 0
+				? Math.round(((bytes * 8) / (elapsedMs / 1000) / 1e6) * 10) / 10
+				: null;
+		logger.info("[up] DONE", { uploadId, recorded: Boolean(recorded), elapsedMs, bytes, throughputMbps });
+		addUploadBreadcrumb("recapd.timing", { uploadId, elapsedMs, bytes, mediaType, throughputMbps });
 		addUploadBreadcrumb("recapd.completed", {
 			uploadId,
 			storagePath: objectName,
@@ -119,6 +170,10 @@ function installListenersOnce() {
 			"error"
 		);
 		completionHandler?.(uploadId, null, error);
+	});
+
+	RecapdUploader.addDrainedListener(() => {
+		flushUploadTimingSummary();
 	});
 }
 
@@ -291,6 +346,56 @@ export async function enqueueRecapdUploads(items: RecapdUploaderItemArgs[]): Pro
 	};
 	await logQueue("t0");
 	setTimeout(() => void logQueue("t6"), 6000);
+}
+
+export interface RecapdQueueCounts {
+	remaining: number;
+	failed: number;
+	failedIds: string[];
+	inFlightFraction: number;
+}
+
+export async function getRecapdQueueCounts(eventId: string): Promise<RecapdQueueCounts> {
+	const counts: RecapdQueueCounts = {
+		remaining: 0,
+		failed: 0,
+		failedIds: [],
+		inFlightFraction: 0,
+	};
+	try {
+		const state = await RecapdUploader.getQueueState();
+		for (const item of state.items) {
+			if (item.eventId !== eventId) continue;
+			if (item.status === "failed") {
+				counts.failed++;
+				counts.failedIds.push(item.uploadId);
+			} else if (item.status !== "completed") {
+				counts.remaining++;
+				if (item.totalBytes > 0) {
+					counts.inFlightFraction += Math.min(1, item.bytesUploaded / item.totalBytes);
+				}
+			}
+		}
+	} catch {
+		return counts;
+	}
+	return counts;
+}
+
+export async function clearRecapdQueue(): Promise<number> {
+	try {
+		const state = await RecapdUploader.getQueueState();
+		const ids = state.items.map((item) => item.uploadId);
+		await Promise.allSettled(
+			ids.map((id) => {
+				pendingMeta.delete(id);
+				return RecapdUploader.cancel(id);
+			})
+		);
+		return ids.length;
+	} catch {
+		return 0;
+	}
 }
 
 export async function retryRecapdUpload(uploadId: string): Promise<void> {

@@ -160,13 +160,15 @@ function upsertMediaItem(
 	return sortMediaItems([...items, newItem]);
 }
 
+const MAX_SKELETON_CARDS = 2;
+
 export function buildMergedTimeline(
 	mediaItems: MediaItemWithUser[],
 	pendingUploads: PendingUpload[],
 	eventId: string
 ) {
 	const pending = pendingUploads
-		.filter((p) => p.eventId === eventId && p.status === "failed")
+		.filter((p) => p.eventId === eventId && p.status !== "skipped")
 		.map((p) => ({
 			id: p.id,
 			event_id: p.eventId,
@@ -188,6 +190,7 @@ export function buildMergedTimeline(
 			longitude: p.longitude ?? null,
 			uploader: null,
 			isPending: true,
+			isSkeleton: p.status !== "failed",
 			localUri: p.localUri,
 			localThumbnailUri: p.thumbnailUri ?? null,
 			syncStatus: p.status,
@@ -203,14 +206,17 @@ export function buildMergedTimeline(
 		.map((m) => ({
 			...m,
 			isPending: false,
+			isSkeleton: false,
 			localUri: undefined,
 			syncStatus: undefined,
 		}))
 		.sort((a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime());
-	const pendingSection = [...pending].sort(
+	const sortedPending = [...pending].sort(
 		(a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
 	);
-	return [...uploadedSection, ...pendingSection];
+	const failedCards = sortedPending.filter((p) => !p.isSkeleton);
+	const skeletonCards = sortedPending.filter((p) => p.isSkeleton).slice(0, MAX_SKELETON_CARDS);
+	return [...uploadedSection, ...failedCards, ...skeletonCards];
 }
 
 function getCaptureTime(value: string | number | Date) {
@@ -323,11 +329,13 @@ interface EventState {
 	retryFailedUpload: (id: string) => void;
 	skipPendingUpload: (id: string) => Promise<void>;
 	removePendingUpload: (id: string) => void;
+	clearAllPendingUploads: () => Promise<void>;
 	deletePhoto: (mediaItemId: string, eventId: string) => Promise<boolean>;
 	deleteEvent: (eventId: string, userId: string) => Promise<boolean>;
 	fetchParticipantStats: (eventId: string) => Promise<ParticipantWithStats[]>;
 	getMergedTimeline: (eventId: string) => (MediaItemWithUser & {
 		isPending?: boolean;
+		isSkeleton?: boolean;
 		localUri?: string;
 		localThumbnailUri?: string | null;
 		syncStatus?: string;
@@ -1156,6 +1164,13 @@ export const useEventStore = create<EventState>((set, get) => {
 			set({ pendingUploads: newUploads });
 			await persistPendingUploads(newUploads);
 			void deletePhotoGridThumbnail(id);
+		},
+
+		clearAllPendingUploads: async () => {
+			const cleared = get().pendingUploads;
+			set({ pendingUploads: [] });
+			await persistPendingUploads([]);
+			for (const upload of cleared) void deletePhotoGridThumbnail(upload.id);
 		},
 
 		deletePhoto: async (mediaItemId: string, _eventId: string) => {
