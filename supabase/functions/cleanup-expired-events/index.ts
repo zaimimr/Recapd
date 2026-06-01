@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
 			}
 		}
 
-		// 7. Orphan storage sweep — delete files for events that no longer exist
+		// 7. Orphan storage sweep - delete files for events that no longer exist
 		console.log("Starting orphan storage sweep...");
 
 		const { data: activeEvents } = await supabase.from("events").select("id");
@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
 			for (const folder of topLevel) {
 				if (!folder.name || activeEventIds.has(folder.name)) continue;
 
-				// Orphaned event folder — recursively collect all file paths
+				// Orphaned event folder - recursively collect all file paths
 				const filePaths: string[] = [];
 				const collectFiles = async (prefix: string) => {
 					const { data: items } = await supabase.storage

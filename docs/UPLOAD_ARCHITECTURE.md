@@ -77,7 +77,7 @@ Speaks the Supabase Storage TUS resumable upload protocol exactly as the previou
 | PATCH | `<Location>` | `Tus-Resumable: 1.0.0`, `Content-Type: application/offset+octet-stream`, `Upload-Offset`, `Authorization`, `apikey` | chunk bytes |
 | GET | `/storage/v1/object/info/<bucket>/<encoded objectName>` | `Authorization`, `apikey` | verification probe |
 
-The trailing GET is the same "silent 204" guard we shipped in v1.8.2 — Supabase TUS occasionally PATCHes 204 without persisting; if the object isn't visible at the info endpoint we fail the upload loudly rather than insert a phantom DB row.
+The trailing GET is the same "silent 204" guard we shipped in v1.8.2. Supabase TUS occasionally PATCHes 204 without persisting; if the object isn't visible at the info endpoint we fail the upload loudly rather than insert a phantom DB row.
 
 ## JS integration
 
