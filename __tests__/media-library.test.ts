@@ -119,7 +119,7 @@ describe("getMediaInTimeRange", () => {
 		expect(result).toHaveLength(5);
 		result.forEach((photo, i) => {
 			expect(photo.id).toBe(`asset-${i}`);
-			expect(photo.uri).toBe(`file:///local/asset-${i}`);
+			expect(photo.uri).toBe(`ph://asset-${i}`);
 			expect(photo.filename).toBe(`IMG_${i}.jpg`);
 			expect(photo.creationTime).toBe(startMs + 1000 + i * 1000);
 			expect(photo.width).toBe(1920);
@@ -257,12 +257,12 @@ describe("getMediaInTimeRange", () => {
 		const result = await getMediaInTimeRange(start, end);
 
 		expect(mockGetAssets).toHaveBeenCalledTimes(10);
-		expect(mockGetAssetInfo).toHaveBeenCalledTimes(1000);
+		expect(mockGetAssetInfo).not.toHaveBeenCalled();
 		expect(result).toHaveLength(1000);
 
 		result.forEach((photo, i) => {
 			expect(photo.id).toBe(`asset-${i}`);
-			expect(photo.uri).toBe(`file:///local/asset-${i}`);
+			expect(photo.uri).toBe(`ph://asset-${i}`);
 		});
 	});
 
