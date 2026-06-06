@@ -34,6 +34,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   private let queueLock = NSLock()
   private var queue: [UploadJob] = []
   private var stagingInProgress = Set<String>()
+  private var resumeInProgress = Set<String>()
 
   // Set by the AppDelegate subscriber when iOS relaunches us for background events.
   private var backgroundCompletionHandler: (() -> Void)?
@@ -182,6 +183,40 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       budget -= 1
       Task { await stageAndStart(job) }
     }
+
+    resumeOrphans()
+  }
+
+  private func resumeOrphans() {
+    guard configReady() else { return }
+    session.getAllTasks { [weak self] tasks in
+      guard let self = self else { return }
+      let live = Set(tasks.compactMap { self.jobId(of: $0) })
+      self.queueLock.lock()
+      let candidates = self.queue.filter { job in
+        !live.contains(job.uploadId) &&
+        !self.stagingInProgress.contains(job.uploadId) &&
+        !self.resumeInProgress.contains(job.uploadId) &&
+        (job.phase == .staged || job.phase == .checking ||
+         job.phase == .uploading || job.phase == .verifying || job.phase == .recording)
+      }
+      candidates.forEach { self.resumeInProgress.insert($0.uploadId) }
+      self.queueLock.unlock()
+
+      for job in candidates {
+        if job.tusUrl != nil {
+          self.startHead(job)
+        } else {
+          self.startCreate(job)
+        }
+      }
+    }
+  }
+
+  private func clearResumeFlag(_ uploadId: String) {
+    queueLock.lock()
+    resumeInProgress.remove(uploadId)
+    queueLock.unlock()
   }
 
   // MARK: - Staging (PHAsset / file -> disk). Foreground / wake-window only.
@@ -358,8 +393,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   // MARK: - Background task chain (create -> patch -> verify -> record)
 
   private func startCreate(_ job: UploadJob) {
+    guard configReady() else { deferUntilConfigured(job.uploadId); return }
     setPhase(job.uploadId, .creating)
-    guard let url = URL(string: "\(supabaseUrl)/storage/v1/upload/resumable") else {
+    guard let url = apiURL("/storage/v1/upload/resumable") else {
       finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid supabaseUrl"))
       return
     }
@@ -379,8 +415,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func startHead(_ job: UploadJob) {
+    guard configReady() else { deferUntilConfigured(job.uploadId); return }
     setPhase(job.uploadId, .checking)
-    guard let tus = job.tusUrl, let url = URL(string: tus) else {
+    guard let tus = job.tusUrl, let url = URL(string: tus), url.scheme != nil else {
       // No tus url yet -> (re)create.
       startCreate(job)
       return
@@ -393,7 +430,8 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func startPatch(_ job: UploadJob) {
-    guard let tus = job.tusUrl, let url = URL(string: tus),
+    guard configReady() else { deferUntilConfigured(job.uploadId); return }
+    guard let tus = job.tusUrl, let url = URL(string: tus), url.scheme != nil,
           let stagedPath = job.stagedPath else {
       finishFailure(uploadId: job.uploadId, error: UploaderError.tus("missing tus url or staged file"))
       return
@@ -421,8 +459,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func startVerify(_ job: UploadJob) {
+    guard configReady() else { deferUntilConfigured(job.uploadId); return }
     setPhase(job.uploadId, .verifying)
-    guard let url = URL(string: "\(supabaseUrl)/storage/v1/object/info/\(bucket)/\(escape(job.objectName))") else {
+    guard let url = apiURL("/storage/v1/object/info/\(bucket)/\(escape(job.objectName))") else {
       finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid verify URL"))
       return
     }
@@ -433,8 +472,9 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
   }
 
   private func startRecord(_ job: UploadJob) {
+    guard configReady() else { deferUntilConfigured(job.uploadId); return }
     setPhase(job.uploadId, .recording)
-    guard let url = URL(string: "\(supabaseUrl)/rest/v1/media_items"),
+    guard let url = apiURL("/rest/v1/media_items"),
           let bodyFile = mediaItemBodyFile(job) else {
       finishFailure(uploadId: job.uploadId, error: UploaderError.config("invalid record request"))
       return
@@ -474,6 +514,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     let parts = desc.components(separatedBy: "|")
     guard parts.count == 2, let phase = UploadPhase(rawValue: parts[1]) else { return }
     let uploadId = parts[0]
+    clearResumeFlag(uploadId)
 
     queueLock.lock()
     guard let job = queue.first(where: { $0.uploadId == uploadId }) else {
@@ -599,6 +640,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     let objectName = queue.first(where: { $0.uploadId == uploadId })?.objectName ?? ""
     let job = queue.first(where: { $0.uploadId == uploadId })
     queue.removeAll { $0.uploadId == uploadId }
+    resumeInProgress.remove(uploadId)
     persistLocked()
     queueLock.unlock()
     if let job = job { removeStagedFile(job) }
@@ -617,6 +659,7 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       queue[idx].phase = .failed
       queue[idx].lastError = error.localizedDescription
     }
+    resumeInProgress.remove(uploadId)
     persistLocked()
     queueLock.unlock()
     emitter?.sendEvent("onItemFailed", [
@@ -876,6 +919,28 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     if free < required {
       throw UploaderError.disk("not enough free space (need \(required), have \(free))")
     }
+  }
+
+  private func configReady() -> Bool {
+    queueLock.lock(); defer { queueLock.unlock() }
+    return !supabaseUrl.isEmpty && !bearerToken.isEmpty
+  }
+
+  private func apiURL(_ path: String) -> URL? {
+    guard !supabaseUrl.isEmpty,
+          let url = URL(string: "\(supabaseUrl)\(path)"),
+          url.scheme != nil else { return nil }
+    return url
+  }
+
+  private func deferUntilConfigured(_ uploadId: String) {
+    queueLock.lock()
+    if let idx = queue.firstIndex(where: { $0.uploadId == uploadId }) {
+      queue[idx].phase = queue[idx].tusUrl != nil ? .checking : .staged
+    }
+    resumeInProgress.remove(uploadId)
+    persistLocked()
+    queueLock.unlock()
   }
 
   private func b64(_ s: String) -> String {
