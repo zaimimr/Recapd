@@ -27,7 +27,14 @@ import {
 	getRecapdQueueCounts,
 	type RecapdQueueCounts,
 } from "@/lib/recapdUploaderBridge";
-import { downloadPhoto, getDownloadedPhotoIds, markPhotoDownloaded } from "@/lib/storage";
+import {
+	classifyDownloadError,
+	describeDownloadFailure,
+	type DownloadFailureReason,
+	downloadPhoto,
+	getDownloadedPhotoIds,
+	markPhotoDownloaded,
+} from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
@@ -324,6 +331,10 @@ export default function EventScreen() {
 		setDownloadProgress({ current: 0, total: mediaToDownload.length });
 
 		let successCount = 0;
+		let failureCount = 0;
+		const failureReasons = new Set<DownloadFailureReason>();
+		let outOfSpace = false;
+
 		for (let i = 0; i < mediaToDownload.length; i++) {
 			const media = mediaToDownload[i];
 			setDownloadProgress({ current: i + 1, total: mediaToDownload.length });
@@ -331,14 +342,22 @@ export default function EventScreen() {
 			try {
 				const extension = media.media_type === "video" ? "mp4" : "jpg";
 				const localUri = await downloadPhoto(media.storage_path, `recapd_${media.id}.${extension}`);
-				if (localUri) {
-					const asset = await saveToLibrary(localUri);
-					if (asset) {
-						await markPhotoDownloaded(media.id);
-						successCount++;
-					}
+				const asset = await saveToLibrary(localUri);
+				if (asset) {
+					await markPhotoDownloaded(media.id);
+					successCount++;
+				} else {
+					failureCount++;
+					failureReasons.add("unknown");
 				}
 			} catch (error) {
+				failureCount++;
+				const reason = classifyDownloadError(error);
+				failureReasons.add(reason);
+				if (reason === "out_of_space") {
+					outOfSpace = true;
+					break;
+				}
 				logger.error(`Failed to download media ${media.id}`, error, {
 					eventId: id,
 					mediaId: media.id,
@@ -348,12 +367,31 @@ export default function EventScreen() {
 
 		setDownloadingAll(false);
 
-		const message =
+		const remaining = mediaToDownload.length - successCount;
+		const savedLine =
 			skippedCount > 0
 				? `Saved ${successCount} new media items. ${skippedCount} already in your camera roll.`
-				: `Saved ${successCount} of ${mediaToDownload.length} media items to your camera roll`;
+				: `Saved ${successCount} of ${mediaToDownload.length} media items to your camera roll.`;
 
-		Alert.alert("Download Complete", message);
+		if (failureCount === 0) {
+			Alert.alert("Download Complete", savedLine);
+			return;
+		}
+
+		const primaryReason: DownloadFailureReason = outOfSpace
+			? "out_of_space"
+			: failureReasons.has("network")
+				? "network"
+				: failureReasons.has("server")
+					? "server"
+					: "unknown";
+
+		const title = outOfSpace ? "Storage Full" : "Download Incomplete";
+		const failLine = outOfSpace
+			? `${describeDownloadFailure("out_of_space")} ${remaining} item${remaining === 1 ? "" : "s"} still need saving.`
+			: `${remaining} item${remaining === 1 ? "" : "s"} didn't save. ${describeDownloadFailure(primaryReason)}`;
+
+		Alert.alert(title, `${savedLine}\n\n${failLine}`);
 	}
 
 	async function handleSkipUpload(idToSkip: string) {

@@ -468,7 +468,7 @@ describe("storage", () => {
 			);
 		});
 
-		it("returns null on non-200 status", async () => {
+		it("throws DownloadError(server) on non-200 status", async () => {
 			mockedDownloadAsync.mockResolvedValue({
 				status: 404,
 				uri: "/cache/photo.jpg",
@@ -477,15 +477,30 @@ describe("storage", () => {
 				md5: undefined,
 			});
 
-			const result = await downloadPhoto("some/path.jpg", "photo.jpg");
-			expect(result).toBeNull();
+			await expect(downloadPhoto("some/path.jpg", "photo.jpg")).rejects.toMatchObject({
+				name: "DownloadError",
+				reason: "server",
+			});
 		});
 
-		it("returns null when downloadAsync throws", async () => {
-			mockedDownloadAsync.mockRejectedValue(new Error("Network error"));
+		it("throws DownloadError(network) when downloadAsync throws a network error", async () => {
+			mockedDownloadAsync.mockRejectedValue(new Error("Network request failed"));
 
-			const result = await downloadPhoto("some/path.jpg", "photo.jpg");
-			expect(result).toBeNull();
+			await expect(downloadPhoto("some/path.jpg", "photo.jpg")).rejects.toMatchObject({
+				name: "DownloadError",
+				reason: "network",
+			});
+		});
+
+		it("throws DownloadError(out_of_space) when the disk is full", async () => {
+			mockedDownloadAsync.mockRejectedValue(
+				new Error('NSCocoaErrorDomain Code=640 "there isn\'t enough space"')
+			);
+
+			await expect(downloadPhoto("some/path.jpg", "photo.jpg")).rejects.toMatchObject({
+				name: "DownloadError",
+				reason: "out_of_space",
+			});
 		});
 	});
 

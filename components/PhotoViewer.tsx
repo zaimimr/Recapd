@@ -19,6 +19,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
+	classifyDownloadError,
+	describeDownloadFailure,
 	downloadPhoto,
 	isPhotoDownloaded,
 	markPhotoDownloaded,
@@ -310,24 +312,18 @@ export default function PhotoViewer({
 				`recapd_${currentPhoto.id}.${extension}`
 			);
 
-			if (!localUri) {
-				Alert.alert("Error", `Failed to download ${mediaLabel}`);
-				return;
-			}
-
 			const asset = await saveToLibrary(localUri);
 			if (!asset) {
-				Alert.alert("Error", `Failed to save ${mediaLabel}`);
+				Alert.alert("Couldn't Save", `We couldn't save this ${mediaLabel} to your camera roll.`);
 				return;
 			}
 
 			await markPhotoDownloaded(currentPhoto.id);
 			Alert.alert("Saved", `${isVideo ? "Video" : "Photo"} saved to your camera roll`);
-		} catch {
-			Alert.alert(
-				"Error",
-				`Failed to download ${currentPhoto.media_type === "video" ? "video" : "photo"}`
-			);
+		} catch (error) {
+			const reason = classifyDownloadError(error);
+			const title = reason === "out_of_space" ? "Storage Full" : "Couldn't Download";
+			Alert.alert(title, describeDownloadFailure(reason));
 		} finally {
 			setSaving(false);
 		}

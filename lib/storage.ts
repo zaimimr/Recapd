@@ -64,6 +64,53 @@ export type UploadFailureReason =
 	| "thumbnail"
 	| "unknown";
 
+export type DownloadFailureReason = "out_of_space" | "network" | "server" | "unknown";
+
+export class DownloadError extends Error {
+	readonly reason: DownloadFailureReason;
+
+	constructor(reason: DownloadFailureReason, cause?: unknown) {
+		super(`Download failed: ${reason}`);
+		this.name = "DownloadError";
+		this.reason = reason;
+		if (cause !== undefined) {
+			(this as { cause?: unknown }).cause = cause;
+		}
+	}
+}
+
+function isOutOfSpaceMessage(message: string): boolean {
+	const lower = message.toLowerCase();
+	return (
+		lower.includes("no space left") ||
+		lower.includes("enough space") ||
+		lower.includes("nsposixerrordomain code=28") ||
+		lower.includes("code=640") ||
+		lower.includes("enospc") ||
+		lower.includes("disk full")
+	);
+}
+
+export function classifyDownloadError(error: unknown): DownloadFailureReason {
+	const message = error instanceof Error ? error.message : String(error);
+	if (isOutOfSpaceMessage(message)) return "out_of_space";
+	if (isNetworkErrorMessage(message)) return "network";
+	return "unknown";
+}
+
+export function describeDownloadFailure(reason: DownloadFailureReason): string {
+	switch (reason) {
+		case "out_of_space":
+			return "Your device is out of storage. Free up some space, then try again.";
+		case "network":
+			return "Your connection dropped. Reconnect to a stronger network and try again.";
+		case "server":
+			return "We couldn't reach the photo right now. Please try again in a moment.";
+		default:
+			return "Something went wrong. Please try again.";
+	}
+}
+
 function isNetworkErrorMessage(message: string): boolean {
 	const lower = message.toLowerCase();
 	return (
@@ -959,22 +1006,26 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 	return uri;
 }
 
-export async function downloadPhoto(storagePath: string, fileName: string): Promise<string | null> {
+export async function downloadPhoto(storagePath: string, fileName: string): Promise<string> {
+	let downloadResult: Awaited<ReturnType<typeof downloadAsync>>;
 	try {
 		const url = await resolveStorageUrl(storagePath);
 		const localUri = `${cacheDirectory}${fileName}`;
-
-		const downloadResult = await downloadAsync(url, localUri);
-
-		if (downloadResult.status === 200) {
-			return downloadResult.uri;
-		}
-
-		return null;
+		downloadResult = await downloadAsync(url, localUri);
 	} catch (error) {
-		logger.error("Download error", error, { storagePath });
-		return null;
+		const reason = classifyDownloadError(error);
+		if (reason !== "out_of_space") {
+			logger.error("Download error", error, { storagePath });
+		}
+		throw new DownloadError(reason, error);
 	}
+
+	if (downloadResult.status === 200) {
+		return downloadResult.uri;
+	}
+
+	logger.error("Download error", new Error(`status ${downloadResult.status}`), { storagePath });
+	throw new DownloadError("server");
 }
 
 export async function isPhotoDownloaded(mediaItemId: string): Promise<boolean> {
