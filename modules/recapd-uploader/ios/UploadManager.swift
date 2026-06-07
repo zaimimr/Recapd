@@ -1,3 +1,5 @@
+import AVFoundation
+import CoreGraphics
 import ExpoModulesCore
 import Foundation
 import ImageIO
@@ -268,7 +270,11 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
 
   private func generateAndUploadThumbnail(for job: UploadJob, stagedFile: URL) async -> String? {
     do {
-      guard let jpeg = downsampledJpeg(from: stagedFile, maxPixelSize: 512, quality: 0.6) else {
+      let isVideo = job.contentType.hasPrefix("video/")
+      let jpeg = isVideo
+        ? videoFrameJpeg(from: stagedFile, maxPixelSize: 512, quality: 0.6)
+        : downsampledJpeg(from: stagedFile, maxPixelSize: 512, quality: 0.6)
+      guard let jpeg = jpeg else {
         return nil
       }
       let path = thumbnailObjectName(for: job)
@@ -278,6 +284,29 @@ final class UploadManager: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
       NSLog("[recapd-uploader] thumbnail best-effort failed for %@: %@", job.uploadId, "\(error)")
       return nil
     }
+  }
+
+  private func videoFrameJpeg(from fileURL: URL, maxPixelSize: Int, quality: CGFloat) -> Data? {
+    let asset = AVURLAsset(url: fileURL)
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+    generator.requestedTimeToleranceBefore = CMTime(seconds: 1, preferredTimescale: 600)
+    generator.requestedTimeToleranceAfter = CMTime(seconds: 1, preferredTimescale: 600)
+    let time = CMTime(seconds: 0.1, preferredTimescale: 600)
+    guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
+      return nil
+    }
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(
+      data, UTType.jpeg.identifier as CFString, 1, nil
+    ) else {
+      return nil
+    }
+    let destOptions = [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary
+    CGImageDestinationAddImage(destination, cgImage, destOptions)
+    guard CGImageDestinationFinalize(destination) else { return nil }
+    return data as Data
   }
 
   private func downsampledJpeg(from fileURL: URL, maxPixelSize: Int, quality: CGFloat) -> Data? {
