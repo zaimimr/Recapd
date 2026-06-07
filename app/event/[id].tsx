@@ -18,6 +18,7 @@ import NotificationPromptModal from "@/components/NotificationPromptModal";
 import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
+import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
@@ -29,8 +30,9 @@ import {
 } from "@/lib/recapdUploaderBridge";
 import {
 	classifyDownloadError,
-	describeDownloadFailure,
 	type DownloadFailureReason,
+	deleteCachedDownload,
+	describeDownloadFailure,
 	downloadPhoto,
 	getDownloadedPhotoIds,
 	markPhotoDownloaded,
@@ -328,6 +330,21 @@ export default function EventScreen() {
 			return;
 		}
 
+		const estimatedBytes = mediaToDownload.reduce((sum, p) => sum + (p.file_size_bytes ?? 0), 0);
+		if (estimatedBytes > 0) {
+			const budget = await checkDiskBudget(estimatedBytes);
+			if (!budget.ok) {
+				setDownloadingAll(false);
+				Alert.alert(
+					"Storage Full",
+					`Saving these needs about ${formatBytes(budget.requiredBytes)}, but only ${formatBytes(
+						budget.freeBytes
+					)} is free. Free up some space, then try again.`
+				);
+				return;
+			}
+		}
+
 		setDownloadProgress({ current: 0, total: mediaToDownload.length });
 
 		let successCount = 0;
@@ -342,13 +359,17 @@ export default function EventScreen() {
 			try {
 				const extension = media.media_type === "video" ? "mp4" : "jpg";
 				const localUri = await downloadPhoto(media.storage_path, `recapd_${media.id}.${extension}`);
-				const asset = await saveToLibrary(localUri);
-				if (asset) {
-					await markPhotoDownloaded(media.id);
-					successCount++;
-				} else {
-					failureCount++;
-					failureReasons.add("unknown");
+				try {
+					const asset = await saveToLibrary(localUri);
+					if (asset) {
+						await markPhotoDownloaded(media.id);
+						successCount++;
+					} else {
+						failureCount++;
+						failureReasons.add("unknown");
+					}
+				} finally {
+					await deleteCachedDownload(localUri);
 				}
 			} catch (error) {
 				failureCount++;

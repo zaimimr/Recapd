@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
 	classifyDownloadError,
+	deleteCachedDownload,
 	describeDownloadFailure,
 	downloadPhoto,
 	isPhotoDownloaded,
@@ -126,9 +127,7 @@ function ZoomableImage({ photo, thumbnailUri, blurhash }: ZoomableImageProps) {
 						contentFit="contain"
 						cachePolicy="memory-disk"
 						enableLiveTextInteraction={false}
-						placeholder={
-							thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined
-						}
+						placeholder={thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined}
 						placeholderContentFit="contain"
 						transition={120}
 					/>
@@ -312,7 +311,12 @@ export default function PhotoViewer({
 				`recapd_${currentPhoto.id}.${extension}`
 			);
 
-			const asset = await saveToLibrary(localUri);
+			let asset: Awaited<ReturnType<typeof saveToLibrary>>;
+			try {
+				asset = await saveToLibrary(localUri);
+			} finally {
+				await deleteCachedDownload(localUri);
+			}
 			if (!asset) {
 				Alert.alert("Couldn't Save", `We couldn't save this ${mediaLabel} to your camera roll.`);
 				return;

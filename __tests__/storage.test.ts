@@ -16,6 +16,7 @@ jest.mock("expo-file-system/legacy", () => ({
 	copyAsync: jest.fn(),
 	deleteAsync: jest.fn(),
 	makeDirectoryAsync: jest.fn(),
+	readDirectoryAsync: jest.fn(),
 }));
 jest.mock("expo-media-library", () => ({
 	getAssetInfoAsync: jest.fn(),
@@ -54,21 +55,12 @@ jest.mock("@/lib/tusUpload", () => ({
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { renderHook, waitFor } from "@testing-library/react-native";
-import {
-	deleteAsync,
-	downloadAsync,
-	getInfoAsync,
-} from "expo-file-system/legacy";
+import { deleteAsync, downloadAsync, getInfoAsync } from "expo-file-system/legacy";
 import * as VideoThumbnails from "expo-video-thumbnails";
-
-import {
-	materializeUploadSource,
-	UploadSourceUnavailableError,
-} from "@/lib/uploadSource";
-import { uploadMediaResumable } from "@/lib/tusUpload";
 import {
 	buildByteRangeM3u8,
 	createVideoThumbnailUri,
+	deleteCachedDownload,
 	downloadPhoto,
 	getDownloadedPhotoIds,
 	isPhotoDownloaded,
@@ -79,6 +71,8 @@ import {
 	useVideoPlaybackUri,
 } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
+import { uploadMediaResumable } from "@/lib/tusUpload";
+import { materializeUploadSource, UploadSourceUnavailableError } from "@/lib/uploadSource";
 
 const mockedSupabase = supabase as any;
 const mockedDownloadAsync = downloadAsync as jest.MockedFunction<typeof downloadAsync>;
@@ -246,13 +240,16 @@ describe("storage", () => {
 				width: 320,
 				height: 240,
 			});
-			mockedGetInfoAsync.mockImplementation(async (uri: any) => ({
-				exists: true,
-				isDirectory: false,
-				uri,
-				size: 4096,
-				modificationTime: Date.now(),
-			} as any));
+			mockedGetInfoAsync.mockImplementation(
+				async (uri: any) =>
+					({
+						exists: true,
+						isDirectory: false,
+						uri,
+						size: 4096,
+						modificationTime: Date.now(),
+					}) as any
+			);
 
 			const result = await uploadMedia({
 				...baseUploadOptions,
@@ -351,7 +348,6 @@ describe("storage", () => {
 			expect(cleanup).toHaveBeenCalled();
 		});
 	});
-
 
 	describe("resolveStorageUrl", () => {
 		it("returns a signed URL for event photos", async () => {
@@ -501,6 +497,27 @@ describe("storage", () => {
 				name: "DownloadError",
 				reason: "out_of_space",
 			});
+		});
+	});
+
+	describe("deleteCachedDownload", () => {
+		it("deletes the cached file idempotently", async () => {
+			mockedDeleteAsync.mockResolvedValue(undefined as any);
+
+			await deleteCachedDownload("file:///cache/recapd_1.jpg");
+
+			expect(mockedDeleteAsync).toHaveBeenCalledWith("file:///cache/recapd_1.jpg", {
+				idempotent: true,
+			});
+		});
+
+		it("ignores empty uris and swallows delete errors", async () => {
+			mockedDeleteAsync.mockReset();
+			await deleteCachedDownload("");
+			expect(mockedDeleteAsync).not.toHaveBeenCalled();
+
+			mockedDeleteAsync.mockRejectedValue(new Error("gone"));
+			await expect(deleteCachedDownload("file:///cache/x.jpg")).resolves.toBeUndefined();
 		});
 	});
 
@@ -694,5 +711,4 @@ describe("storage", () => {
 			);
 		});
 	});
-
 });
