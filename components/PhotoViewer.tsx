@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
+	backfillVideoThumbnail,
 	classifyDownloadError,
 	describeDownloadFailure,
 	downloadPhoto,
@@ -126,9 +127,7 @@ function ZoomableImage({ photo, thumbnailUri, blurhash }: ZoomableImageProps) {
 						contentFit="contain"
 						cachePolicy="memory-disk"
 						enableLiveTextInteraction={false}
-						placeholder={
-							thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined
-						}
+						placeholder={thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined}
 						placeholderContentFit="contain"
 						transition={120}
 					/>
@@ -190,6 +189,11 @@ function VideoPage({
 		isInitial && initialThumbnailUri
 			? initialThumbnailUri
 			: photo.localThumbnailUri || signedThumbnailUrl || undefined;
+
+	useEffect(() => {
+		if (!isActive) return;
+		void backfillVideoThumbnail(photo);
+	}, [isActive, photo]);
 
 	if (!isActive) {
 		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;

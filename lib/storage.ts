@@ -245,8 +245,7 @@ async function uploadFileViaTus(args: {
 	mediaType: MediaType;
 	fileFingerprint: string;
 }): Promise<{ path: string }> {
-	const { bucket, storagePath, filePath, fileSize, contentType, mediaType, fileFingerprint } =
-		args;
+	const { bucket, storagePath, filePath, fileSize, contentType, mediaType, fileFingerprint } = args;
 	const timeoutMs = mediaType === "video" ? TUS_VIDEO_TIMEOUT_MS : TUS_PHOTO_TIMEOUT_MS;
 	return withTimeout(
 		uploadMediaResumable({
@@ -322,9 +321,7 @@ async function generatePhotoGridThumbnail(
 			}
 			const sourceInfo = await getInfoAsync(sourceUri.replace(/[?#].*$/, ""));
 			const usableUri =
-				sourceInfo.exists && !sourceInfo.isDirectory
-					? sourceUri.replace(/[?#].*$/, "")
-					: sourceUri;
+				sourceInfo.exists && !sourceInfo.isDirectory ? sourceUri.replace(/[?#].*$/, "") : sourceUri;
 			const result = await ImageManipulator.manipulateAsync(
 				usableUri,
 				[{ resize: { width: GRID_THUMB_TARGET_WIDTH } }],
@@ -407,6 +404,70 @@ export async function createVideoThumbnailUri(
 			},
 			"warning"
 		);
+		return null;
+	}
+}
+
+const videoThumbnailBackfillAttempted = new Set<string>();
+
+export async function backfillVideoThumbnail(media: {
+	id: string;
+	storage_path: string;
+	media_type?: MediaType | string;
+	thumbnail_path?: string | null;
+	isPending?: boolean;
+}): Promise<string | null> {
+	if (media.media_type !== "video" || media.thumbnail_path || media.isPending) {
+		return null;
+	}
+	if (videoThumbnailBackfillAttempted.has(media.id)) {
+		return null;
+	}
+	videoThumbnailBackfillAttempted.add(media.id);
+
+	try {
+		const signedUrl = await resolveStorageUrl(media.storage_path);
+		const thumbnailUri = await createVideoThumbnailUri(signedUrl);
+		if (!thumbnailUri) {
+			return null;
+		}
+
+		const thumbInfo = await getInfoAsync(thumbnailUri);
+		const thumbSize =
+			thumbInfo.exists && !thumbInfo.isDirectory && typeof thumbInfo.size === "number"
+				? thumbInfo.size
+				: 0;
+		if (thumbSize === 0) {
+			await deleteAsync(thumbnailUri, { idempotent: true });
+			return null;
+		}
+
+		const thumbnailPath = `${media.storage_path.replace(/\.[^./]+$/, "")}_thumb.jpg`;
+
+		await withTempFileCleanup(thumbnailUri, () =>
+			uploadFileViaTus({
+				bucket: "thumbnails",
+				storagePath: thumbnailPath,
+				filePath: thumbnailUri,
+				fileSize: thumbSize,
+				contentType: "image/jpeg",
+				mediaType: "photo",
+				fileFingerprint: `backfill:${media.id}:${thumbSize}`,
+			})
+		);
+
+		const { error } = await supabase
+			.from("media_items")
+			.update({ thumbnail_path: thumbnailPath })
+			.eq("id", media.id);
+		if (error) {
+			logger.warn("Video thumbnail backfill DB update failed", error, { mediaId: media.id });
+			return null;
+		}
+
+		return thumbnailPath;
+	} catch (error) {
+		logger.warn("Video thumbnail backfill failed", error, { mediaId: media.id });
 		return null;
 	}
 }
@@ -793,7 +854,9 @@ export async function resolveStorageUrl(
 				storagePath,
 				transformed: Boolean(options?.transform),
 				errCode:
-					error && typeof error === "object" && "code" in (error as unknown as Record<string, unknown>)
+					error &&
+					typeof error === "object" &&
+					"code" in (error as unknown as Record<string, unknown>)
 						? (error as unknown as { code?: string }).code
 						: undefined,
 				errName: error?.name,
