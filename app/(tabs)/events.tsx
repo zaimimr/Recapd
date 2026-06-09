@@ -23,18 +23,18 @@ function getEventStatus(event: Event): { label: string; color: string } {
 	const endsAt = new Date(event.ends_at);
 
 	if (event.status === "expired") {
-		return { label: "Expired", color: "#999" };
+		return { label: "Expired", color: "#A0A0B2" };
 	}
 	if (isPast(endsAt)) {
-		return { label: "Ended", color: "#666" };
+		return { label: "Ended", color: "#A0A0B2" };
 	}
 	if (isWithinInterval(now, { start: startsAt, end: endsAt })) {
-		return { label: "Live", color: "#22c55e" };
+		return { label: "Live", color: "#22C55E" };
 	}
 	if (isFuture(startsAt)) {
-		return { label: "Upcoming", color: "#3b82f6" };
+		return { label: "Upcoming", color: "#FF7A45" };
 	}
-	return { label: "Unknown", color: "#999" };
+	return { label: "Unknown", color: "#A0A0B2" };
 }
 
 function EventCard({
@@ -136,7 +136,7 @@ export default function EventsScreen() {
 		return (
 			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
 				<View style={[styles.welcomePanel, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
+					<Text style={styles.kicker}>Profile</Text>
 					<Text style={[styles.welcomeTitle, isDark && styles.textDark]}>
 						What should we call you?
 					</Text>
@@ -187,7 +187,7 @@ export default function EventsScreen() {
 				refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
 				ListHeaderComponent={
 					<View style={styles.sectionHeader}>
-						<Text style={[styles.kicker, isDark && styles.textMuted]}>Events</Text>
+						<Text style={styles.kicker}>Events</Text>
 						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your rooms</Text>
 					</View>
 				}
@@ -196,9 +196,9 @@ export default function EventsScreen() {
 						<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
 					) : (
 						<View style={[styles.emptyState, isDark && styles.panelDark]}>
-							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Events Yet</Text>
+							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No events yet</Text>
 							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Join an event or create your own to get started
+								Join a room or start your own and let the photos pile up
 							</Text>
 							<View style={styles.emptyActions}>
 								<TouchableOpacity
@@ -254,10 +254,10 @@ const styles = StyleSheet.create({
 	},
 	kicker: {
 		fontSize: 11,
-		fontWeight: "700",
+		fontWeight: "800",
 		letterSpacing: 1.2,
 		textTransform: "uppercase",
-		color: "#6b7280",
+		color: "#FF2D8E",
 	},
 	sectionTitle: {
 		fontSize: 22,
@@ -301,14 +301,14 @@ const styles = StyleSheet.create({
 		flexShrink: 1,
 	},
 	hostBadge: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingHorizontal: 9,
 		paddingVertical: 4,
 		borderRadius: 999,
 	},
 	hostBadgeText: {
 		fontSize: 11,
-		fontWeight: "600",
+		fontWeight: "700",
 		color: "#fff",
 	},
 	statusBadge: {
@@ -365,24 +365,24 @@ const styles = StyleSheet.create({
 		maxWidth: 280,
 	},
 	emptyButton: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 14,
 		paddingHorizontal: 24,
 		borderRadius: 999,
 		alignItems: "center",
 	},
 	emptyButtonSecondary: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
+		backgroundColor: "rgba(255,45,142,0.12)",
+		borderWidth: 1.5,
+		borderColor: "rgba(255,45,142,0.38)",
 	},
 	emptyButtonText: {
 		color: "#fff",
 		fontSize: 15,
-		fontWeight: "600",
+		fontWeight: "700",
 	},
 	emptyButtonTextSecondary: {
-		color: "#111827",
+		color: "#FF2D8E",
 	},
 	textDark: {
 		color: "#fff",
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
 		color: "#fff",
 	},
 	continueButton: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 16,
 		paddingHorizontal: 48,
 		borderRadius: 999,
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
 	continueButtonText: {
 		color: "#fff",
 		fontSize: 18,
-		fontWeight: "600",
+		fontWeight: "700",
 	},
 	buttonDisabled: {
 		opacity: 0.5,
