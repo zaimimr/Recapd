@@ -578,17 +578,17 @@ export default function EventScreen() {
 					refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
 					emptyComponent={
 						<View style={[styles.emptyState, isDark && styles.panelDark]}>
-							<FontAwesome name="camera" size={48} color={isDark ? "#444" : "#ccc"} />
+							<FontAwesome name="camera" size={48} color="#FF2D8E" />
 							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No media yet</Text>
 							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Photos and videos appear here as guests share them.
+								Be the first to drop a photo and kick things off.
 							</Text>
 						</View>
 					}
 					headerComponent={
 						<View style={styles.header}>
 							<View style={styles.eventInfo}>
-								<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Event</Text>
+								<Text style={styles.sectionEyebrow}>Event</Text>
 								<Text style={[styles.eventDate, isDark && styles.textDark]}>
 									{formatLocalizedDate(currentEvent.starts_at, {
 										weekday: "long",
@@ -622,16 +622,14 @@ export default function EventScreen() {
 
 							<View style={[styles.stats, isDark && styles.statsDark]}>
 								<View style={styles.stat}>
-									<Text style={[styles.statValue, isDark && styles.textDark]}>
+									<Text style={styles.statValue}>
 										{mergedPhotos.filter((p) => !p.isPending).length}
 									</Text>
 									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
 								</View>
 								<View style={[styles.statDivider, isDark && styles.statDividerDark]} />
 								<TouchableOpacity style={styles.stat} onPress={handleOpenGuestSheet}>
-									<Text style={[styles.statValue, isDark && styles.textDark]}>
-										{currentEvent.participant_count || 0}
-									</Text>
+									<Text style={styles.statValue}>{currentEvent.participant_count || 0}</Text>
 									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Guests</Text>
 								</TouchableOpacity>
 							</View>
@@ -652,12 +650,8 @@ export default function EventScreen() {
 									]}
 									onPress={handleContribute}
 								>
-									<FontAwesome name="plus" size={16} color={isDark ? "#0a0d12" : "#fff"} />
-									<Text
-										style={[styles.contributeButtonText, isDark && styles.contributeButtonTextDark]}
-									>
-										Add Your Media
-									</Text>
+									<FontAwesome name="plus" size={16} color="#fff" />
+									<Text style={styles.contributeButtonText}>Add Your Media</Text>
 								</TouchableOpacity>
 
 								{mediaItems.length > 0 ? (
@@ -729,7 +723,7 @@ export default function EventScreen() {
 
 							{mergedPhotos.length > 0 && (
 								<View style={styles.sectionHeader}>
-									<Text style={[styles.sectionEyebrow, isDark && styles.textMuted]}>Feed</Text>
+									<Text style={styles.sectionEyebrow}>Feed</Text>
 									<Text style={[styles.timelineTitle, isDark && styles.textDark]}>
 										Everyone's media
 									</Text>
@@ -816,10 +810,10 @@ const styles = StyleSheet.create({
 	},
 	sectionEyebrow: {
 		fontSize: 11,
-		fontWeight: "700",
+		fontWeight: "800",
 		letterSpacing: 1.2,
 		textTransform: "uppercase",
-		color: "#6b7280",
+		color: "#FF2D8E",
 	},
 	eventDate: {
 		fontSize: 24,
@@ -894,8 +888,8 @@ const styles = StyleSheet.create({
 	},
 	statValue: {
 		fontSize: 26,
-		fontWeight: "700",
-		color: "#111827",
+		fontWeight: "800",
+		color: "#FF2D8E",
 	},
 	statLabel: {
 		fontSize: 11,
@@ -919,10 +913,7 @@ const styles = StyleSheet.create({
 	contributeButtonText: {
 		color: "#fff",
 		fontSize: 15,
-		fontWeight: "600",
-	},
-	contributeButtonTextDark: {
-		color: "#0a0d12",
+		fontWeight: "700",
 	},
 	secondaryActionRow: {
 		flexDirection: "row",
@@ -951,12 +942,12 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	remindButton: {
-		backgroundColor: "#111827",
-		borderColor: "#111827",
+		backgroundColor: "#FF2D8E",
+		borderColor: "#FF2D8E",
 	},
 	remindButtonDark: {
-		backgroundColor: "#ffffff",
-		borderColor: "#ffffff",
+		backgroundColor: "#FF2D8E",
+		borderColor: "#FF2D8E",
 	},
 	remindButtonText: {
 		color: "#fff",
@@ -1119,7 +1110,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		paddingVertical: 6,
 		borderRadius: 999,
-		backgroundColor: "rgba(37, 99, 235, 0.9)",
+		backgroundColor: "#FF2D8E",
 	},
 	uploadBarRetryText: {
 		color: "#fff",
@@ -1138,7 +1129,7 @@ const styles = StyleSheet.create({
 	},
 	uploadBarFill: {
 		height: "100%",
-		backgroundColor: "#22c55e",
+		backgroundColor: "#FF2D8E",
 		borderRadius: 999,
 	},
 });

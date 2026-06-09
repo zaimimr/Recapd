@@ -150,7 +150,7 @@ export default function CreateEventScreen() {
 			keyboardShouldPersistTaps="handled"
 		>
 			<View style={[styles.heroPanel, isDark && styles.panelDark]}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>Create</Text>
+				<Text style={styles.kicker}>Create</Text>
 				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
 					Set the window for the shared recap
 				</Text>
@@ -350,10 +350,10 @@ const styles = StyleSheet.create({
 	},
 	kicker: {
 		fontSize: 11,
-		fontWeight: "700",
+		fontWeight: "800",
 		letterSpacing: 1.2,
 		textTransform: "uppercase",
-		color: "#6b7280",
+		color: "#FF2D8E",
 	},
 	heroTitle: {
 		fontSize: 24,
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
 		lineHeight: 20,
 	},
 	button: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 18,
 		borderRadius: 999,
 		alignItems: "center",
@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
 	buttonText: {
 		color: "#fff",
 		fontSize: 16,
-		fontWeight: "600",
+		fontWeight: "700",
 	},
 	textDark: {
 		color: "#fff",
@@ -498,12 +498,12 @@ const styles = StyleSheet.create({
 	},
 	pickerCancelText: {
 		fontSize: 17,
-		color: "#007AFF",
+		color: "#FF2D8E",
 	},
 	pickerDoneText: {
 		fontSize: 17,
-		fontWeight: "600",
-		color: "#007AFF",
+		fontWeight: "700",
+		color: "#FF2D8E",
 		textAlign: "right",
 	},
 	picker: {
@@ -521,8 +521,8 @@ const styles = StyleSheet.create({
 	},
 	proBadgeTitle: {
 		fontSize: 14,
-		fontWeight: "600",
-		color: "#111827",
+		fontWeight: "800",
+		color: "#FF2D8E",
 		marginBottom: 4,
 		textTransform: "uppercase",
 		letterSpacing: 0.8,
