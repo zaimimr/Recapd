@@ -80,6 +80,18 @@ jest.mock("expo-crypto", () => ({
 
 jest.mock("@/lib/dateUtils", () => ({
 	safeDate: (d: any) => (d instanceof Date ? d : new Date(d)),
+	computeEventExpiry: (endsAt: any, createdAt?: any) => {
+		const ends = endsAt instanceof Date ? endsAt : new Date(endsAt);
+		const created = createdAt
+			? createdAt instanceof Date
+				? createdAt
+				: new Date(createdAt)
+			: new Date(0);
+		const anchor = ends.getTime() >= created.getTime() ? ends : created;
+		const result = new Date(anchor);
+		result.setDate(result.getDate() + 14);
+		return result;
+	},
 }));
 
 jest.mock("@/lib/notifications", () => ({}));

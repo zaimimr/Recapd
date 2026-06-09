@@ -1,9 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { addDays } from "date-fns";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
-import { safeDate } from "@/lib/dateUtils";
+import { computeEventExpiry, safeDate } from "@/lib/dateUtils";
 import { logger } from "@/lib/logger";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { addUploadBreadcrumb } from "@/lib/sentry";
@@ -604,7 +603,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const eventId = await generateUuid();
 				const joinCode = generateJoinCode();
-				const expiresAt = addDays(new Date(eventData.ends_at), 14).toISOString();
+				const expiresAt = computeEventExpiry(eventData.ends_at).toISOString();
 
 				const insertData: EventInsert = {
 					id: eventId,
@@ -650,7 +649,15 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const updateData: EventUpdate = { ...updates };
 				if (updates.ends_at) {
-					updateData.expires_at = addDays(new Date(updates.ends_at), 14).toISOString();
+					const { data: existing } = await supabase
+						.from("events")
+						.select("created_at")
+						.eq("id", eventId)
+						.single();
+					updateData.expires_at = computeEventExpiry(
+						updates.ends_at,
+						existing?.created_at
+					).toISOString();
 				}
 
 				const { error } = await supabase.from("events").update(updateData).eq("id", eventId);

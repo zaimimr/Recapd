@@ -1,6 +1,6 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { addDays, isBefore } from "date-fns";
+import { isBefore } from "date-fns";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -17,6 +17,7 @@ import {
 	View,
 } from "react-native";
 import { useColorScheme } from "@/components/useColorScheme";
+import { computeEventExpiry } from "@/lib/dateUtils";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
@@ -179,7 +180,7 @@ export default function EditEventScreen() {
 		);
 	}
 
-	const newExpiryDate = addDays(endDate, 14);
+	const newExpiryDate = computeEventExpiry(endDate, currentEvent?.created_at);
 
 	return (
 		<>
