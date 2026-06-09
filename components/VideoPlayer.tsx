@@ -14,6 +14,9 @@ interface VideoPlayerProps {
 	isActive?: boolean;
 	nativeControls?: boolean;
 	allowTapToggle?: boolean;
+	muted?: boolean;
+	loop?: boolean;
+	onSurfaceTap?: () => void;
 }
 
 export default function VideoPlayer({
@@ -23,6 +26,9 @@ export default function VideoPlayer({
 	isActive = true,
 	nativeControls = true,
 	allowTapToggle = false,
+	muted = false,
+	loop = false,
+	onSurfaceTap,
 }: VideoPlayerProps) {
 	const videoUri = useVideoPlaybackUri(media);
 
@@ -48,6 +54,9 @@ export default function VideoPlayer({
 			isActive={isActive}
 			nativeControls={nativeControls}
 			allowTapToggle={allowTapToggle}
+			muted={muted}
+			loop={loop}
+			onSurfaceTap={onSurfaceTap}
 		/>
 	);
 }
@@ -59,6 +68,9 @@ interface VideoPlayerContentProps {
 	isActive: boolean;
 	nativeControls: boolean;
 	allowTapToggle: boolean;
+	muted: boolean;
+	loop: boolean;
+	onSurfaceTap?: () => void;
 }
 
 function VideoPlayerContent({
@@ -68,9 +80,13 @@ function VideoPlayerContent({
 	isActive,
 	nativeControls,
 	allowTapToggle,
+	muted,
+	loop,
+	onSurfaceTap,
 }: VideoPlayerContentProps) {
 	const player = useVideoPlayer(videoUri, (p) => {
-		p.loop = false;
+		p.loop = loop;
+		p.muted = muted;
 		p.timeUpdateEventInterval = 0.25;
 		p.bufferOptions = {
 			preferredForwardBufferDuration: 5,
@@ -104,6 +120,14 @@ function VideoPlayerContent({
 		player.pause();
 	}, [isActive, autoPlay, player]);
 
+	useEffect(() => {
+		player.muted = muted;
+	}, [muted, player]);
+
+	useEffect(() => {
+		player.loop = loop;
+	}, [loop, player]);
+
 	const isError = status === "error";
 	const isLoading = !isError && status !== "readyToPlay";
 	const isBuffering = status === "loading" && isPlaying;
@@ -123,6 +147,11 @@ function VideoPlayerContent({
 			player.play();
 		}
 	}, [isError, isPlaying, player]);
+
+	const handleSurfaceTap = useCallback(() => {
+		onSurfaceTap?.();
+		handlePlayPause();
+	}, [onSurfaceTap, handlePlayPause]);
 
 	return (
 		<View style={styles.container}>
@@ -146,7 +175,7 @@ function VideoPlayerContent({
 			/>
 
 			{!nativeControls && allowTapToggle && (
-				<Pressable style={styles.tapSurface} onPress={handlePlayPause} />
+				<Pressable style={styles.tapSurface} onPress={handleSurfaceTap} />
 			)}
 
 			{showSpinner && (
@@ -156,7 +185,7 @@ function VideoPlayerContent({
 			)}
 
 			{!nativeControls && showPlayButton && (
-				<Pressable style={styles.centerOverlay} onPress={handlePlayPause}>
+				<Pressable style={styles.centerOverlay} onPress={handleSurfaceTap}>
 					<View style={styles.playButton}>
 						<FontAwesome name="play" size={18} color="#fff" style={styles.playIcon} />
 					</View>
