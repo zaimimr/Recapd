@@ -307,7 +307,7 @@ export default function SettingsScreen() {
 			contentContainerStyle={styles.content}
 		>
 			<View style={[styles.hero, isDark && styles.sectionDark]}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>Settings</Text>
+				<Text style={styles.kicker}>Settings</Text>
 				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
 					Control your profile, access, and plan
 				</Text>
@@ -315,7 +315,7 @@ export default function SettingsScreen() {
 
 			{user && (
 				<View style={[styles.section, isDark && styles.sectionDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
+					<Text style={styles.kicker}>Profile</Text>
 					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your identity</Text>
 					<View style={styles.profileRow}>
 						<View
@@ -393,7 +393,7 @@ export default function SettingsScreen() {
 			)}
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>Subscription</Text>
+				<Text style={styles.kicker}>Subscription</Text>
 				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Plan</Text>
 				<View style={styles.subscriptionRow}>
 					<View style={[styles.subscriptionIcon, isPro && styles.subscriptionIconPro]}>
@@ -456,10 +456,8 @@ export default function SettingsScreen() {
 							accessibilityRole="button"
 							accessibilityLabel="Upgrade to Pro"
 						>
-							<FontAwesome name="star" size={16} color={isDark ? "#0a0d12" : "#fff"} />
-							<Text style={[styles.upgradeButtonText, isDark && styles.upgradeButtonTextDark]}>
-								Upgrade to Pro
-							</Text>
+							<FontAwesome name="star" size={16} color="#fff" />
+							<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
 						</TouchableOpacity>
 						<TouchableOpacity
 							style={styles.restoreButton}
@@ -490,7 +488,7 @@ export default function SettingsScreen() {
 			</View>
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>Feedback</Text>
+				<Text style={styles.kicker}>Feedback</Text>
 				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tell us what to fix</Text>
 				<TouchableOpacity
 					style={[styles.feedbackButton, isDark && styles.feedbackButtonDark]}
@@ -510,7 +508,7 @@ export default function SettingsScreen() {
 			<View style={[styles.section, isDark && styles.sectionDark]}>
 				<View style={styles.sectionHeader}>
 					<View style={styles.sectionHeadingBlock}>
-						<Text style={[styles.kicker, isDark && styles.textMuted]}>Permissions</Text>
+						<Text style={styles.kicker}>Permissions</Text>
 						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Access</Text>
 					</View>
 					{!allPermissionsGranted && (
@@ -577,7 +575,7 @@ export default function SettingsScreen() {
 			</View>
 
 			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>About</Text>
+				<Text style={styles.kicker}>About</Text>
 				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>App info</Text>
 				<View style={styles.aboutRow}>
 					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Version</Text>
@@ -652,10 +650,10 @@ const styles = StyleSheet.create({
 	},
 	kicker: {
 		fontSize: 11,
-		fontWeight: "700",
+		fontWeight: "800",
 		letterSpacing: 1.2,
 		textTransform: "uppercase",
-		color: "#6b7280",
+		color: "#FF2D8E",
 	},
 	heroTitle: {
 		fontSize: 26,
@@ -781,7 +779,7 @@ const styles = StyleSheet.create({
 		height: 36,
 		alignItems: "center",
 		justifyContent: "center",
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		borderRadius: 18,
 	},
 	saveButtonDisabled: {
@@ -939,7 +937,7 @@ const styles = StyleSheet.create({
 		marginTop: 2,
 	},
 	proBadge: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingHorizontal: 10,
 		paddingVertical: 5,
 		borderRadius: 999,
@@ -954,20 +952,17 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		gap: 8,
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 14,
 		borderRadius: 999,
 	},
 	upgradeButtonDark: {
-		backgroundColor: "#ffffff",
+		backgroundColor: "#FF2D8E",
 	},
 	upgradeButtonText: {
 		fontSize: 16,
-		fontWeight: "600",
+		fontWeight: "700",
 		color: "#fff",
-	},
-	upgradeButtonTextDark: {
-		color: "#0a0d12",
 	},
 	buttonDisabled: {
 		opacity: 0.45,

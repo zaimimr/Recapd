@@ -19,11 +19,11 @@ function getEventStatus(event: EventWithParticipants): {
 	const endsAt = new Date(event.ends_at);
 
 	if (isBefore(now, startsAt)) {
-		return { label: "Upcoming", color: "#3b82f6" };
+		return { label: "Upcoming", color: "#FF7A45" };
 	} else if (isAfter(now, endsAt)) {
-		return { label: "Ended", color: "#6b7280" };
+		return { label: "Ended", color: "#A0A0B2" };
 	} else {
-		return { label: "Live", color: "#22c55e" };
+		return { label: "Live", color: "#22C55E" };
 	}
 }
 
@@ -67,7 +67,7 @@ export default function HomeScreen() {
 		>
 			{!hasActiveEvents && (
 				<View style={[styles.header, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Recapd</Text>
+					<Text style={styles.kicker}>Recapd</Text>
 					<View style={styles.logoRow}>
 						<Text style={[styles.logo, isDark && styles.textDark]}>
 							See the night from every angle.
@@ -87,7 +87,7 @@ export default function HomeScreen() {
 			{hasActiveEvents && (
 				<View style={styles.eventsSection}>
 					<View style={styles.sectionHeader}>
-						<Text style={[styles.kicker, isDark && styles.textMuted]}>Your Events</Text>
+						<Text style={styles.kicker}>Your Events</Text>
 						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Active rooms</Text>
 					</View>
 					{activeEvents.map((event) => {
@@ -128,7 +128,7 @@ export default function HomeScreen() {
 			)}
 
 			<View style={styles.actions}>
-				<Text style={[styles.kicker, isDark && styles.textMuted]}>Start</Text>
+				<Text style={styles.kicker}>Start</Text>
 				<Text style={[styles.actionTitle, isDark && styles.textDark]}>
 					{hasActiveEvents
 						? "Join another room or start a new one"
@@ -136,29 +136,25 @@ export default function HomeScreen() {
 				</Text>
 				<View style={styles.actionRow}>
 					<TouchableOpacity
-						style={[styles.button, styles.primaryButton, isDark && styles.primaryButtonDark]}
+						style={[styles.button, styles.primaryButton]}
 						onPress={() => router.push("/event/join")}
 						accessibilityRole="button"
 						accessibilityLabel="Join Event"
 						accessibilityHint="Enter a code to join an existing event"
 					>
-						<FontAwesome name="sign-in" size={14} color={isDark ? "#0a0d12" : "#fff"} />
-						<Text style={[styles.primaryButtonText, isDark && styles.primaryButtonTextDark]}>
-							Join Event
-						</Text>
+						<FontAwesome name="sign-in" size={14} color="#fff" />
+						<Text style={styles.primaryButtonText}>Join Event</Text>
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						style={[styles.button, styles.secondaryButton, isDark && styles.secondaryButtonDark]}
+						style={[styles.button, styles.secondaryButton]}
 						onPress={() => router.push("/event/create")}
 						accessibilityRole="button"
 						accessibilityLabel="Create Event"
 						accessibilityHint="Create a new event to share photos"
 					>
-						<FontAwesome name="plus" size={14} color={isDark ? "#fff" : "#111827"} />
-						<Text style={[styles.secondaryButtonText, isDark && styles.textDark]}>
-							Create Event
-						</Text>
+						<FontAwesome name="plus" size={14} color="#FF2D8E" />
+						<Text style={styles.secondaryButtonText}>Create Event</Text>
 					</TouchableOpacity>
 				</View>
 			</View>
@@ -166,7 +162,7 @@ export default function HomeScreen() {
 			{!hasActiveEvents && (
 				<View style={styles.footer}>
 					<Text style={[styles.footerText, isDark && styles.textMuted]}>
-						Create an event to share photos with your group
+						Start an event and watch everyone's photos roll in
 					</Text>
 				</View>
 			)}
@@ -203,10 +199,10 @@ const styles = StyleSheet.create({
 	},
 	kicker: {
 		fontSize: 11,
-		fontWeight: "700",
+		fontWeight: "800",
 		letterSpacing: 1.2,
 		textTransform: "uppercase",
-		color: "#6b7280",
+		color: "#FF2D8E",
 	},
 	logoRow: {
 		flexDirection: "row",
@@ -223,7 +219,7 @@ const styles = StyleSheet.create({
 		lineHeight: 38,
 	},
 	proBadge: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingHorizontal: 10,
 		paddingVertical: 5,
 		borderRadius: 999,
@@ -331,32 +327,22 @@ const styles = StyleSheet.create({
 		gap: 8,
 	},
 	primaryButton: {
-		backgroundColor: "#111827",
-	},
-	primaryButtonDark: {
-		backgroundColor: "#ffffff",
+		backgroundColor: "#FF2D8E",
 	},
 	primaryButtonText: {
 		color: "#fff",
 		fontSize: 16,
-		fontWeight: "600",
-	},
-	primaryButtonTextDark: {
-		color: "#0a0d12",
+		fontWeight: "700",
 	},
 	secondaryButton: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-	},
-	secondaryButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
+		backgroundColor: "rgba(255,45,142,0.12)",
+		borderWidth: 1.5,
+		borderColor: "rgba(255,45,142,0.38)",
 	},
 	secondaryButtonText: {
-		color: "#111827",
+		color: "#FF2D8E",
 		fontSize: 16,
-		fontWeight: "600",
+		fontWeight: "700",
 	},
 	footer: {
 		alignItems: "center",

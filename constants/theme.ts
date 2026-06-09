@@ -1,26 +1,31 @@
 import type { ColorSchemeName } from "react-native";
 
 const palette = {
-	indigo: "#7c3aed",
-	indigoBright: "#a78bfa",
-	white: "#ffffff",
-	ink: "#0a0d12",
-	navy: "#111827",
-	slate: "#1c2230",
-	graphite: "#1f2530",
-	stone: "#6b7280",
-	mist: "#9ca3af",
-	hairline: "#e5e7eb",
-	hairlineDark: "#242833",
-	pageLight: "#f3f4f6",
-	cardLight: "#ffffff",
-	pageDark: "#05070b",
-	cardDark: "#0f1115",
-	cardElevatedDark: "#151821",
-	danger: "#ef4444",
-	success: "#22c55e",
-	warning: "#f59e0b",
+	coral: "#FF5E62",
+	hotPink: "#FF2D8E",
+	violet: "#8B2FE0",
+	warm: "#FF7A45",
+
+	white: "#FFFFFF",
+
+	pageDark: "#0B0B12",
+	cardDark: "#15151F",
+	cardElevatedDark: "#1E1E2B",
+	borderDark: "#2A2A38",
+	textMutedDark: "#A0A0B2",
+
+	pageLight: "#FFF9F6",
+	cardLight: "#FFFFFF",
+	borderLight: "#F0E6E0",
+	textPrimaryLight: "#1A1421",
+	textMutedLight: "#6B6478",
+
+	danger: "#EF4444",
+	success: "#22C55E",
+	warning: "#F59E0B",
 };
+
+export const brandGradient = ["#FF5E62", "#FF2D8E", "#8B2FE0"] as const;
 
 export interface AppTheme {
 	page: string;
@@ -31,9 +36,13 @@ export interface AppTheme {
 	textMuted: string;
 	textOnAccent: string;
 	accent: string;
+	accentSecondary: string;
+	accentWarm: string;
 	accentMuted: string;
 	accentSurface: string;
+	accentSurfaceStrong: string;
 	accentBorder: string;
+	gradient: readonly string[];
 	danger: string;
 	success: string;
 	warning: string;
@@ -41,42 +50,47 @@ export interface AppTheme {
 	pillBorder: string;
 }
 
+const sharedAccents = {
+	accent: palette.hotPink,
+	accentSecondary: palette.violet,
+	accentWarm: palette.warm,
+	gradient: brandGradient,
+	textOnAccent: palette.white,
+	danger: palette.danger,
+	success: palette.success,
+	warning: palette.warning,
+};
+
 const light: AppTheme = {
+	...sharedAccents,
 	page: palette.pageLight,
 	card: palette.cardLight,
 	cardElevated: palette.cardLight,
-	border: palette.hairline,
-	textPrimary: palette.navy,
-	textMuted: palette.stone,
-	textOnAccent: palette.white,
-	accent: palette.navy,
-	accentMuted: palette.slate,
-	accentSurface: palette.navy,
-	accentBorder: palette.navy,
-	danger: palette.danger,
-	success: palette.success,
-	warning: palette.warning,
-	pillSurface: palette.navy,
-	pillBorder: palette.navy,
+	border: palette.borderLight,
+	textPrimary: palette.textPrimaryLight,
+	textMuted: palette.textMutedLight,
+	accentMuted: palette.violet,
+	accentSurface: "rgba(255,45,142,0.10)",
+	accentSurfaceStrong: "rgba(255,45,142,0.16)",
+	accentBorder: "rgba(255,45,142,0.30)",
+	pillSurface: "rgba(255,45,142,0.10)",
+	pillBorder: "rgba(255,45,142,0.30)",
 };
 
 const dark: AppTheme = {
+	...sharedAccents,
 	page: palette.pageDark,
 	card: palette.cardDark,
 	cardElevated: palette.cardElevatedDark,
-	border: palette.hairlineDark,
+	border: palette.borderDark,
 	textPrimary: palette.white,
-	textMuted: palette.mist,
-	textOnAccent: palette.ink,
-	accent: palette.white,
-	accentMuted: palette.mist,
-	accentSurface: palette.white,
-	accentBorder: palette.white,
-	danger: palette.danger,
-	success: palette.success,
-	warning: palette.warning,
-	pillSurface: palette.cardElevatedDark,
-	pillBorder: palette.mist,
+	textMuted: palette.textMutedDark,
+	accentMuted: palette.coral,
+	accentSurface: "rgba(255,45,142,0.14)",
+	accentSurfaceStrong: "rgba(255,45,142,0.22)",
+	accentBorder: "rgba(255,45,142,0.38)",
+	pillSurface: "rgba(255,45,142,0.14)",
+	pillBorder: "rgba(255,45,142,0.38)",
 };
 
 export const themes = { light, dark, palette };
