@@ -1,13 +1,20 @@
 .page-container {
 	max-width: 800px;
 	margin: 0 auto;
-	padding: 24px;
+	padding: 48px 24px;
+	font-family: "Manrope", system-ui, sans-serif;
 }
 
 .page-container h1 {
-	font-size: 2rem;
-	font-weight: 700;
+	font-size: 2.4rem;
+	font-weight: 800;
+	letter-spacing: -0.03em;
 	margin-bottom: 8px;
+	background: var(--brand-gradient);
+	-webkit-background-clip: text;
+	background-clip: text;
+	-webkit-text-fill-color: transparent;
+	color: var(--pink, #ff2d8e);
 }
 
 .page-container .updated {
@@ -23,8 +30,9 @@
 }
 
 .page-container h2 {
-	font-size: 1.25rem;
-	font-weight: 600;
+	font-size: 1.3rem;
+	font-weight: 800;
+	letter-spacing: -0.02em;
 	margin-top: 2rem;
 	margin-bottom: 0.75rem;
 }
@@ -45,7 +53,8 @@
 }
 
 .page-container a {
-	color: var(--text, #000);
+	color: var(--pink, #ff2d8e);
+	font-weight: 700;
 }
 
 /* FAQ styles */
@@ -66,18 +75,22 @@
 /* Contact button */
 .page-container .contact-btn {
 	display: inline-block;
-	background: var(--text, #000);
-	color: var(--bg, #fff);
+	background: var(--brand-gradient, #ff2d8e);
+	color: #fff;
 	padding: 14px 28px;
-	border-radius: 12px;
+	border-radius: 999px;
 	text-decoration: none;
-	font-weight: 600;
+	font-weight: 800;
 	margin-bottom: 8px;
-	transition: background 0.2s;
+	box-shadow: 0 16px 40px rgba(255, 45, 142, 0.28);
+	transition:
+		transform 0.18s ease,
+		filter 0.18s ease;
 }
 
 .page-container .contact-btn:hover {
-	opacity: 0.8;
+	transform: translateY(-2px);
+	filter: brightness(1.05);
 }
 
 .page-container .email-hint {

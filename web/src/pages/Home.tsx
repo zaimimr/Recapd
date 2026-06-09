@@ -1,3 +1,4 @@
+import { LogoLockup, LogoMark } from "../components/Logo";
 import "../styles/Home.css";
 
 const features = [
@@ -117,6 +118,21 @@ export default function Home() {
 				Skip to main content
 			</a>
 
+			<header className="site-nav">
+				<div className="container site-nav-inner">
+					<a href="/" className="nav-brand" aria-label="Recapd home">
+						<LogoLockup size={34} />
+					</a>
+					<nav className="nav-links" aria-label="Primary">
+						<a href="#pricing">Pricing</a>
+						<a href="#faq">FAQ</a>
+						<a href="#download" className="nav-cta">
+							Get the app
+						</a>
+					</nav>
+				</div>
+			</header>
+
 			<main id="main-content">
 				<section className="hero" aria-label="Introduction">
 					<div className="hero-backdrop hero-backdrop-left" aria-hidden="true" />
@@ -127,15 +143,9 @@ export default function Home() {
 								<span className="eyebrow-dot" aria-hidden="true" />
 								Shared event memories, without the chaos
 							</div>
-							<img
-								src="/icon.png"
-								alt="Recapd app icon"
-								className="app-icon"
-								width="88"
-								height="88"
-								loading="eager"
-								fetchPriority="high"
-							/>
+							<div className="hero-mark" aria-hidden="true">
+								<LogoMark size={84} />
+							</div>
 							<h1>
 								See your party from everyone's eyes.{" "}
 								<span className="h1-fade">Not just yours.</span>
@@ -512,7 +522,7 @@ export default function Home() {
 					</div>
 				</section>
 
-				<section className="faq" aria-labelledby="faq-heading">
+				<section className="faq" id="faq" aria-labelledby="faq-heading">
 					<div className="container">
 						<div className="section-heading">
 							<div className="section-kicker">FAQ</div>
@@ -544,8 +554,8 @@ export default function Home() {
 
 			<footer className="footer">
 				<div className="container footer-content">
-					<div>
-						<img src="/icon.png" alt="Recapd" className="footer-icon" width="56" height="56" />
+					<div className="footer-brand">
+						<LogoLockup size={40} />
 						<p className="footer-tagline">Shared event memories, built for photos and videos.</p>
 					</div>
 					<nav aria-label="Footer links" className="footer-links">
