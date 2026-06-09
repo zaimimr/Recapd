@@ -865,7 +865,7 @@ const styles = StyleSheet.create({
 		marginBottom: 24,
 	},
 	errorButton: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 14,
 		paddingHorizontal: 32,
 		borderRadius: 999,
@@ -893,7 +893,7 @@ const styles = StyleSheet.create({
 	manualPickButton: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 14,
 		paddingHorizontal: 24,
 		borderRadius: 999,
@@ -1064,8 +1064,8 @@ const styles = StyleSheet.create({
 		borderRadius: 6,
 	},
 	selectOverlaySelected: {
-		borderColor: "#3b82f6",
-		backgroundColor: "rgba(59, 130, 246, 0.2)",
+		borderColor: "#FF2D8E",
+		backgroundColor: "rgba(255, 45, 142, 0.22)",
 	},
 	selectCheckmark: {
 		position: "absolute",
@@ -1074,7 +1074,7 @@ const styles = StyleSheet.create({
 		width: 20,
 		height: 20,
 		borderRadius: 10,
-		backgroundColor: "#3b82f6",
+		backgroundColor: "#FF2D8E",
 		justifyContent: "center",
 		alignItems: "center",
 	},
@@ -1111,16 +1111,16 @@ const styles = StyleSheet.create({
 		borderTopColor: "#242833",
 	},
 	uploadButton: {
-		backgroundColor: "#111827",
+		backgroundColor: "#FF2D8E",
 		paddingVertical: 18,
 		borderRadius: 999,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#111827",
+		shadowColor: "#FF2D8E",
 		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.18,
-		shadowRadius: 8,
+		shadowOpacity: 0.35,
+		shadowRadius: 12,
 		elevation: 8,
 	},
 	uploadButtonDisabled: {
