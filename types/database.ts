@@ -217,6 +217,7 @@ export interface Database {
 					created_at: string;
 					updated_at: string;
 					last_host_reminder_at: string | null;
+					deletion_delayed_at: string | null;
 				};
 				Insert: {
 					id?: string;
@@ -231,6 +232,7 @@ export interface Database {
 					created_at?: string;
 					updated_at?: string;
 					last_host_reminder_at?: string | null;
+					deletion_delayed_at?: string | null;
 				};
 				Update: {
 					id?: string;
@@ -245,6 +247,7 @@ export interface Database {
 					created_at?: string;
 					updated_at?: string;
 					last_host_reminder_at?: string | null;
+					deletion_delayed_at?: string | null;
 				};
 				Relationships: [
 					{
@@ -454,6 +457,7 @@ export interface EventPreviewResult {
 	created_at: string;
 	updated_at: string;
 	last_host_reminder_at: string | null;
+	deletion_delayed_at: string | null;
 	participant_count: number;
 	host_plan_id: string;
 	host_is_pro: boolean;

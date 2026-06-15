@@ -20,6 +20,8 @@ function handleNotificationResponse(response: Notifications.NotificationResponse
 	} else if (data?.type === "host_reminder" && data?.eventId) {
 		const target = data.reminder_type === "take_photos" ? "contribute" : "event";
 		router.push(`/${target}/${data.eventId}`);
+	} else if (data?.type === "deletion_warning" && data?.eventId) {
+		router.push(`/event/${data.eventId}`);
 	} else if (data?.eventId) {
 		router.push(`/contribute/${data.eventId}`);
 	}

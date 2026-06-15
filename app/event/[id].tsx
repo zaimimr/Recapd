@@ -18,6 +18,11 @@ import NotificationPromptModal from "@/components/NotificationPromptModal";
 import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
 import { useColorScheme } from "@/components/useColorScheme";
+import {
+	DELETION_DELAY_DAYS,
+	DELETION_DELAY_WINDOW_DAYS,
+	delayEventDeletion,
+} from "@/lib/eventDeletion";
 import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
@@ -29,8 +34,8 @@ import {
 } from "@/lib/recapdUploaderBridge";
 import {
 	classifyDownloadError,
-	describeDownloadFailure,
 	type DownloadFailureReason,
+	describeDownloadFailure,
 	downloadPhoto,
 	getDownloadedPhotoIds,
 	markPhotoDownloaded,
@@ -184,6 +189,7 @@ export default function EventScreen() {
 	const [notificationPromptVisible, setNotificationPromptVisible] = useState(false);
 	const [hasMarkedNoPhotos, setHasMarkedNoPhotos] = useState(false);
 	const [markingNoPhotos, setMarkingNoPhotos] = useState(false);
+	const [delayingDeletion, setDelayingDeletion] = useState(false);
 
 	const loadData = useCallback(async () => {
 		if (id) {
@@ -299,6 +305,46 @@ export default function EventScreen() {
 
 	function handleShare() {
 		router.push(`/event/share/${id}`);
+	}
+
+	function handleDelayDeletion() {
+		if (delayingDeletion) return;
+		Alert.alert(
+			"Delay deletion?",
+			`This pushes the deletion date back ${DELETION_DELAY_DAYS} days and notifies everyone to download their photos. You can only do this once.`,
+			[
+				{ text: "Not now", style: "cancel" },
+				{
+					text: `Delay ${DELETION_DELAY_DAYS} days`,
+					onPress: async () => {
+						setDelayingDeletion(true);
+						const result = await delayEventDeletion(id);
+						setDelayingDeletion(false);
+
+						if (result.ok) {
+							await fetchEventById(id);
+							Alert.alert(
+								"Deletion delayed",
+								`Photos now stay ${DELETION_DELAY_DAYS} more days. Everyone has been reminded to download.`
+							);
+							return;
+						}
+
+						const message =
+							result.reason === "already_delayed"
+								? "This event's deletion has already been delayed once."
+								: result.reason === "too_early"
+									? `You can only delay within ${DELETION_DELAY_WINDOW_DAYS} days of deletion.`
+									: result.reason === "unauthorized"
+										? "Only the event host can delay deletion."
+										: result.reason === "event_inactive"
+											? "This event is no longer active."
+											: "Something went wrong. Please try again.";
+						Alert.alert("Couldn't delay deletion", message);
+					},
+				},
+			]
+		);
 	}
 
 	async function handleDownloadAll() {
@@ -525,6 +571,11 @@ export default function EventScreen() {
 	const isHost = currentEvent.participants?.some(
 		(p) => p.user_id === user?.id && p.role === "host"
 	);
+	const canDelayDeletion =
+		isHost &&
+		!currentEvent.deletion_delayed_at &&
+		daysUntilExpiry > 0 &&
+		daysUntilExpiry <= DELETION_DELAY_WINDOW_DAYS;
 	const myMediaCount = mergedPhotos.filter((p) => p.uploaded_by_user_id === user?.id).length;
 
 	const getExpiryColor = () => {
@@ -617,6 +668,19 @@ export default function EventScreen() {
 												: `${daysUntilExpiry} days`}
 										</Text>
 									</View>
+									{canDelayDeletion && (
+										<TouchableOpacity
+											style={[styles.delayButton, isDark && styles.delayButtonDark]}
+											onPress={handleDelayDeletion}
+											disabled={delayingDeletion}
+										>
+											{delayingDeletion ? (
+												<ActivityIndicator size="small" color="#FF2D8E" />
+											) : (
+												<Text style={styles.delayButtonText}>Delay {DELETION_DELAY_DAYS}d</Text>
+											)}
+										</TouchableOpacity>
+									)}
 								</View>
 							)}
 
@@ -860,6 +924,24 @@ const styles = StyleSheet.create({
 	expiryValue: {
 		fontSize: 16,
 		fontWeight: "700",
+	},
+	delayButton: {
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderRadius: 999,
+		borderWidth: 1,
+		borderColor: "#FF2D8E",
+		justifyContent: "center",
+		alignItems: "center",
+		minWidth: 72,
+	},
+	delayButtonDark: {
+		backgroundColor: "rgba(255, 45, 142, 0.12)",
+	},
+	delayButtonText: {
+		fontSize: 13,
+		fontWeight: "700",
+		color: "#FF2D8E",
 	},
 	stats: {
 		flexDirection: "row",

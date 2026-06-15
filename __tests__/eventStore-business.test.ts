@@ -800,6 +800,7 @@ describe("deleteEvent", () => {
 					created_at: "",
 					updated_at: "",
 					last_host_reminder_at: null,
+					deletion_delayed_at: null,
 					userRole: "host" as const,
 				},
 			],
@@ -816,6 +817,7 @@ describe("deleteEvent", () => {
 				created_at: "",
 				updated_at: "",
 				last_host_reminder_at: null,
+				deletion_delayed_at: null,
 			},
 			pendingUploads: [
 				{
