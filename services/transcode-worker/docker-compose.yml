@@ -1,0 +1,31 @@
+services:
+  transcode-worker:
+    build: .
+    image: recapd-transcode-worker
+    container_name: recapd-transcode-worker
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    cpus: 1.5
+    mem_limit: 3g
+    volumes:
+      - transcode-scratch:/tmp
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  transcode-scratch:
