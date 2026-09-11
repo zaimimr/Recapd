@@ -1,0 +1,387 @@
+- generic [ref=e1]:
+  - banner "App Store Connect" [ref=e3]:
+    - generic [ref=e4]:
+      - heading "App Store Connect" [level=1] [ref=e6]:
+        - link "App Store Connect" [ref=e7] [cursor=pointer]:
+          - /url: /
+      - navigation "Global" [ref=e8]:
+        - list [ref=e10]:
+          - listitem [ref=e11]:
+            - link "Apps" [ref=e12] [cursor=pointer]:
+              - /url: /apps
+          - listitem [ref=e13]:
+            - link "Trends" [ref=e14] [cursor=pointer]:
+              - /url: /trends
+          - listitem [ref=e15]:
+            - link "Reports" [ref=e16] [cursor=pointer]:
+              - /url: /itc/payments_and_financial_reports
+          - listitem [ref=e17]:
+            - link "Business" [ref=e18] [cursor=pointer]:
+              - /url: /business
+          - listitem [ref=e19]:
+            - link "Users and Access" [ref=e20] [cursor=pointer]:
+              - /url: /access/users
+      - button "Zaim Imran Zaim Imran Account name menu" [ref=e22] [cursor=pointer]:
+        - generic:
+          - generic: Zaim Imran
+          - generic: Zaim Imran
+          - img [ref=e23]
+  - generic [ref=e28]:
+    - button "Apps menu, Recapd, selected" [ref=e33] [cursor=pointer]:
+      - generic [ref=e34]:
+        - generic "Recapd" [ref=e35]:
+          - img "Recapd" [ref=e36]
+        - generic [ref=e37]: Recapd
+      - img [ref=e39]
+    - navigation "Apps" [ref=e42]:
+      - list [ref=e43]:
+        - listitem [ref=e44]:
+          - link "Distribution" [ref=e45] [cursor=pointer]:
+            - /url: /apps/6758083751/distribution
+        - listitem [ref=e46]:
+          - link "Analytics" [ref=e47] [cursor=pointer]:
+            - /url: /apps/6758083751/analytics
+        - listitem [ref=e48]:
+          - link "TestFlight" [ref=e49] [cursor=pointer]:
+            - /url: /teams/a2d1bd8d-dc23-4161-904a-9f088eef8144/apps/6758083751/testflight
+        - listitem [ref=e50]:
+          - link "Xcode Cloud" [ref=e51] [cursor=pointer]:
+            - /url: /teams/a2d1bd8d-dc23-4161-904a-9f088eef8144/apps/6758083751/ci
+  - generic [ref=e55]:
+    - main [ref=e56]:
+      - generic [ref=e61]:
+        - navigation "Distribution" [ref=e63]:
+          - list [ref=e64]:
+            - listitem [ref=e65]:
+              - generic [ref=e66]:
+                - generic [ref=e67]:
+                  - heading "iOS App" [level=2] [ref=e68]
+                  - button "Add iOS App" [ref=e69] [cursor=pointer]:
+                    - img [ref=e70]
+                - list [ref=e72]:
+                  - listitem [ref=e73]:
+                    - link "1.4.0 Ready for Distribution" [ref=e74] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/ios/version/deliverable
+                      - generic [ref=e75]:
+                        - img [ref=e76]
+                        - text: 1.4.0 Ready for Distribution
+              - button "Add Platform" [ref=e78] [cursor=pointer]
+            - listitem [ref=e79]:
+              - separator [ref=e80]
+            - listitem [ref=e81]:
+              - heading "General" [level=2] [ref=e83]
+              - list [ref=e84]:
+                - listitem [ref=e85]:
+                  - link "App Information" [ref=e86] [cursor=pointer]:
+                    - /url: /apps/6758083751/distribution/info
+                    - generic [ref=e87]: App Information
+                - listitem [ref=e88]:
+                  - link "App Review" [ref=e89] [cursor=pointer]:
+                    - /url: /apps/6758083751/distribution/reviewsubmissions
+                    - generic [ref=e90]: App Review
+                - listitem [ref=e91]:
+                  - link "History" [ref=e92] [cursor=pointer]:
+                    - /url: /apps/6758083751/distribution/activity/ios/versions
+                    - generic [ref=e93]: History
+            - listitem [ref=e94]:
+              - separator [ref=e95]
+            - listitem [ref=e96]:
+              - heading "App Store" [level=2] [ref=e98]
+              - generic [ref=e99]:
+                - heading "Trust & Safety" [level=3] [ref=e101]
+                - list [ref=e102]:
+                  - listitem [ref=e103]:
+                    - link "App Privacy" [ref=e104] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/privacy
+                      - generic [ref=e105]: App Privacy
+                  - listitem [ref=e106]:
+                    - link "App Accessibility" [ref=e107] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/accessibility
+                      - generic [ref=e108]: App Accessibility
+                  - listitem [ref=e109]:
+                    - link "Ratings and Reviews" [ref=e110] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/ratings/ios
+                      - generic [ref=e111]: Ratings and Reviews
+              - generic [ref=e112]:
+                - heading "Growth & Marketing" [level=3] [ref=e114]
+                - list [ref=e115]:
+                  - listitem [ref=e116]:
+                    - link "In-App Events" [ref=e117] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/events
+                      - generic [ref=e118]: In-App Events
+                  - listitem [ref=e119]:
+                    - link "Custom Product Pages" [ref=e120] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/productpages
+                      - generic [ref=e121]: Custom Product Pages
+                  - listitem [ref=e122]:
+                    - link "Product Page Optimization" [ref=e123] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/optimization
+                      - generic [ref=e124]: Product Page Optimization
+                  - listitem [ref=e125]:
+                    - link "Promo Codes" [ref=e126] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/promo_codes/generate
+                      - generic [ref=e127]: Promo Codes
+                  - listitem [ref=e128]:
+                    - link "Game Center" [ref=e129] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/gamecenter
+                      - generic [ref=e130]: Game Center
+              - generic [ref=e131]:
+                - heading "Monetization" [level=3] [ref=e133]
+                - list [ref=e134]:
+                  - listitem [ref=e135]:
+                    - link "Pricing and Availability" [ref=e136] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/pricing
+                      - generic [ref=e137]: Pricing and Availability
+                  - listitem [ref=e138]:
+                    - link "In-App Purchases" [ref=e139] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/iaps
+                      - generic [ref=e140]: In-App Purchases
+                  - listitem [ref=e141]:
+                    - link "Subscriptions" [ref=e142] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/subscriptions
+                      - generic [ref=e143]: Subscriptions
+              - generic [ref=e144]:
+                - heading "Featuring" [level=3] [ref=e146]
+                - list [ref=e147]:
+                  - listitem [ref=e148]:
+                    - link "Nominations" [ref=e149] [cursor=pointer]:
+                      - /url: /apps/6758083751/distribution/nominations
+                      - generic [ref=e150]: Nominations
+        - generic [ref=e153]:
+          - generic [ref=e154]:
+            - generic [ref=e155]:
+              - heading "iOS App Version 1.4.0" [level=2] [ref=e158]
+              - button "Save" [disabled] [ref=e160]
+            - separator [ref=e161]
+          - generic [ref=e162]:
+            - generic [ref=e165]:
+              - paragraph [ref=e167]: The assets and metadata below appear on your app’s product page, when users install your app, and will be used for web engine search results once you release your app.
+              - generic [ref=e170]:
+                - button "English (U.S.)" [disabled] [ref=e171]
+                - button "?" [ref=e174] [cursor=pointer]
+            - separator [ref=e175]
+            - generic [ref=e176]:
+              - heading "Previews and Screenshots" [level=3] [ref=e177]
+              - button "More information" [ref=e179] [cursor=pointer]: "?"
+            - paragraph [ref=e180]: Adding accurate screenshots of your app on the newest devices can help you represent the app's user experience. Keep in mind that we'll use these screenshots for all display sizes and localizations. Screenshots are only required for iOS apps, and only the first 3 will be used on the app installation sheets.
+            - generic [ref=e181]:
+              - tablist [ref=e182]:
+                - tab "iPhone" [selected] [ref=e183] [cursor=pointer]:
+                  - generic [ref=e184]: iPhone
+                - tab "iPad" [ref=e185] [cursor=pointer]:
+                  - generic [ref=e186]: iPad
+              - paragraph [ref=e187]:
+                - link "View All Sizes in Media Manager" [ref=e188] [cursor=pointer]:
+                  - /url: /apps/6758083751/distribution/ios/version/deliverable/media-manager/iphone
+            - generic [ref=e190]:
+              - generic:
+                - alert
+              - tabpanel "iPhone" [ref=e191]:
+                - generic [ref=e192]:
+                  - generic [ref=e193]:
+                    - img [ref=e196]
+                    - generic [ref=e201]:
+                      - generic [ref=e202]: iPhone
+                      - generic [ref=e203]: 6.5" Display
+                  - region [ref=e204]:
+                    - tabpanel [ref=e205]:
+                      - generic [ref=e208]:
+                        - list "App Previews from 6.5\" Display"
+                        - list "Screenshots from 6.5\" Display" [ref=e209]:
+                          - listitem [ref=e210]:
+                            - img "Screenshot Apple iPhone 14 Plus Screenshot 1.png" [ref=e212] [cursor=pointer]:
+                              - img [ref=e214]
+                          - listitem [ref=e215]:
+                            - img "Screenshot Apple iPhone 14 Plus Screenshot 3.png" [ref=e217] [cursor=pointer]:
+                              - img [ref=e219]
+                          - listitem [ref=e220]:
+                            - img "Screenshot Apple iPhone 14 Plus Screenshot 5.png" [ref=e222] [cursor=pointer]:
+                              - img [ref=e224]
+                          - listitem [ref=e225]:
+                            - img "Screenshot Apple iPhone 14 Plus Screenshot 2.png" [ref=e227] [cursor=pointer]:
+                              - img [ref=e229]
+                          - listitem [ref=e230]:
+                            - img "Screenshot Apple iPhone 14 Plus Screenshot 4.png" [ref=e232] [cursor=pointer]:
+                              - img [ref=e234]
+            - generic [ref=e235]:
+              - generic [ref=e236]:
+                - generic [ref=e237]:
+                  - generic [ref=e238]:
+                    - generic [ref=e239]: Promotional Text
+                    - button "More information" [ref=e241] [cursor=pointer]: "?"
+                  - button "Edit" [ref=e242] [cursor=pointer]
+                - textbox "Promotional Text" [disabled] [ref=e244]
+                - status "Characters remaining" [ref=e246]: "170"
+              - separator [ref=e248]
+              - generic [ref=e249]:
+                - generic [ref=e251]:
+                  - generic [ref=e252]: Description
+                  - button "More information" [ref=e254] [cursor=pointer]: "?"
+                - textbox "Description" [disabled] [ref=e256]: "The photo sharing app that lets you live in the moment. Every event ends the same way: \"Send me your photos!\" followed by weeks of waiting, scattered messages, and expired links. Half the photos never get shared, and the memories fade. Recapd fixes this. We believe photo sharing shouldn't require effort while you are trying to enjoy the party. SET IT AND FORGET IT Create a private event with a start and end time. Invite your friends via link or QR code. Then, close the app. Seriously—put it away. USE YOUR OWN CAMERA We don't replace your camera. Use the iPhone camera, VSCO, or whatever app you love. Recapd works with the photos you are already taking. We aren't trying to change how you capture memories, just how you share them. THE MAGIC RECAP When the event ends, everyone gets a notification. Recapd finds the photos taken during the event timeframe and presents them to you. Review: You see the photos first. Deselect anything private. Upload: One tap adds your angle to the group. Relive: Watch the shared timeline fill up with everyone’s perspective. KEY FEATURES • Zero Friction: Join an event in seconds. No accounts required for guests. • Works with Any Camera: No need to take photos inside the app. Use your native camera and stay in the moment. • Total Privacy: We never upload anything automatically. You review every single photo before it joins the timeline. • No Digital Clutter: Photos are automatically deleted from our servers after 2 weeks. Save your favorites to your camera roll, and let the rest fade away. • Cross-Platform: Works seamlessly with friends on any device. • Full Resolution: Download original quality photos anytime before the event expires. WHY RECAPD? The best camera is the one you have with you. The best photo sharing app is the one you forget is there. Stop chasing friends for photos. Start enjoying the moment. Download Recapd and save the memories that matter. Terms: https://recapd.app/terms"
+                - status "Characters remaining" [ref=e258]: 2,033
+              - generic [ref=e259]:
+                - generic [ref=e261]:
+                  - generic [ref=e262]: What's New in This Version
+                  - button "More information" [ref=e264] [cursor=pointer]: "?"
+                - textbox "What's New in This Version" [disabled] [ref=e266]: Hosts can now nudge guests to upload or take more photos. Cleaner dark mode and small polish across the app.
+                - status "Characters remaining" [ref=e268]: 3,892
+              - generic [ref=e269]:
+                - generic [ref=e271]:
+                  - generic [ref=e272]: Keywords
+                  - button "More information" [ref=e274] [cursor=pointer]: "?"
+                - textbox "Keywords" [disabled] [ref=e276]: photo,share,group,album,event,wedding,party,birthday,sync,private,collect,gather,memories,camera
+                - status "Characters remaining" [ref=e278]: "4"
+              - generic [ref=e279]:
+                - generic [ref=e281]:
+                  - generic [ref=e282]: Support URL
+                  - button "More information" [ref=e284] [cursor=pointer]: "?"
+                - textbox "Support URL" [disabled] [ref=e286]: https://recapd.app/support.html
+              - generic [ref=e287]:
+                - generic [ref=e289]:
+                  - generic [ref=e290]: Marketing URL
+                  - button "More information" [ref=e292] [cursor=pointer]: "?"
+                - textbox "Marketing URL" [disabled] [ref=e294]
+              - generic [ref=e295]:
+                - generic [ref=e297]:
+                  - generic [ref=e298]: Version
+                  - button "More information" [ref=e300] [cursor=pointer]: "?"
+                - textbox "Version Version" [disabled] [ref=e468]: 1.4.0
+              - generic [ref=e303]:
+                - generic [ref=e304]:
+                  - generic [ref=e305]:
+                    - generic [ref=e306]: Copyright
+                    - button "More information" [ref=e308] [cursor=pointer]: "?"
+                  - button "Edit" [ref=e309] [cursor=pointer]
+                - textbox "Copyright" [disabled] [ref=e311]: 2026 Zaim Imran
+                - status "Characters remaining" [ref=e313]: "185"
+              - generic [ref=e314]:
+                - generic [ref=e316]:
+                  - generic [ref=e317]: Routing App Coverage File
+                  - button "More information" [ref=e319] [cursor=pointer]: "?"
+                - generic [ref=e321] [cursor=pointer]:
+                  - button "Choose File" [ref=e322]
+                  - generic [ref=e324]: Choose File
+            - separator [ref=e325]
+          - generic [ref=e326]:
+            - heading "Build" [level=3] [ref=e328]
+            - table [ref=e330]:
+              - rowgroup [ref=e331]:
+                - row "Build Version Has App Clip" [ref=e332]:
+                  - columnheader "Build" [ref=e333]:
+                    - generic [ref=e335]: Build
+                  - columnheader "Version" [ref=e336]:
+                    - generic [ref=e338]: Version
+                  - columnheader "Has App Clip" [ref=e339]:
+                    - generic [ref=e341]: Has App Clip
+              - rowgroup [ref=e342]:
+                - row "App Icon 22 1.4.0 No" [ref=e343]:
+                  - cell "App Icon 22" [ref=e344]:
+                    - generic [ref=e346]:
+                      - link "App Icon" [ref=e347] [cursor=pointer]:
+                        - /url: /apps/6758083751/testflight/ios/714f5e1d-6de7-468a-b726-15cac7f53c1b/metadata
+                        - generic "App Icon" [ref=e348]:
+                          - img "App Icon" [ref=e349]
+                      - link "22" [ref=e351] [cursor=pointer]:
+                        - /url: /apps/6758083751/testflight/ios/714f5e1d-6de7-468a-b726-15cac7f53c1b/metadata
+                  - cell "1.4.0" [ref=e352]:
+                    - generic [ref=e353]: 1.4.0
+                  - cell "No" [ref=e354]:
+                    - paragraph [ref=e356]: "No"
+            - paragraph [ref=e357]: Included Assets
+            - generic [ref=e359]:
+              - button "App Icon" [ref=e360] [cursor=pointer]:
+                - generic "App Icon" [ref=e361]:
+                  - img "App Icon" [ref=e362]
+              - paragraph [ref=e363]: App Icon
+          - generic [ref=e369]:
+            - checkbox "Game Center" [disabled] [ref=e371]
+            - text: Game Center
+          - separator [ref=e373]
+          - generic [ref=e374]:
+            - heading "App Review Information Edit" [level=3] [ref=e375]:
+              - text: App Review Information
+              - button "Edit" [ref=e376] [cursor=pointer]
+            - generic [ref=e377]:
+              - generic [ref=e379]:
+                - generic [ref=e381]:
+                  - generic [ref=e382]: Sign-In Information
+                  - button "More information" [ref=e384] [cursor=pointer]: "?"
+                - paragraph [ref=e385]: Provide a user name and password so we can sign in to your app. We’ll need this to complete your app review.
+                - generic [ref=e387]:
+                  - checkbox "Sign-in required" [disabled] [ref=e388]
+                  - generic [ref=e390]: Sign-in required
+              - generic [ref=e391]:
+                - generic [ref=e393]:
+                  - generic [ref=e394]: Contact Information
+                  - button "More information" [ref=e396] [cursor=pointer]: "?"
+                - textbox "First name" [disabled] [ref=e399]: Zaim
+                - textbox "Last name" [disabled] [ref=e402]: Imran
+                - textbox "Phone number" [disabled] [ref=e405]: "+4740170752"
+                - textbox "Email" [disabled] [ref=e408]: zaim.imran@gmail.com
+              - generic [ref=e409]:
+                - generic [ref=e411]:
+                  - generic [ref=e412]: Notes
+                  - button "More information" [ref=e414] [cursor=pointer]: "?"
+                - paragraph [ref=e415]:
+                  - generic [ref=e416]:
+                    - text: Chinese law requires apps with news, religious, book, and magazine content to have relevant permits in order to be available on the App Store in China mainland. If applicable, enter information about your permits below.
+                    - link "Learn More" [ref=e417] [cursor=pointer]:
+                      - /url: https://developer.apple.com/help/app-store-connect/reference/app-information
+                - textbox "Notes" [disabled] [ref=e419]: "Authentication / Account Access: This app is designed to be frictionless. There is no username/password login or account creation required. Users are authenticated anonymously (via Device ID/iCloud) to allow immediate access to creating and joining events. Functionality Overview: Recapd is a photo sharing app that allows users to create a private event with a start and end time. Users take photos with their native device camera during the event. When the event ends, the app queries the local Photo Library for assets created within that specific timeframe to create a shared timeline. Instructions for Testing the \"Recap\" Flow: Since the core functionality triggers when an event ends, please follow these steps to simulate a completed event immediately: Launch: Open the app (no login needed). Take a Photo: Briefly close the app and take 1-2 photos with the native iOS Camera app (to ensure there is recent media for the app to find). Create Event: Return to Recapd and tap \"Create Event.\" Set Time: Set the Start Time to 1 hour ago and the End Time to the current time (or 1 minute from now). Finish: Once the event \"ends,\" tap the notification or open the event view. Permissions: Accept the Photo Library permission when prompted. Upload: You will see the \"Review\" screen showing the photos you took in Step 2. Select them and tap Upload to see them appear on the shared timeline. Note on Permissions: We request Full Photo Library Access because the app relies on scanning metadata (timestamps) to auto-suggest relevant photos to the user. We do not automatically upload any content. The user must explicitly review and confirm which photos are uploaded to the server. Note on Ephemeral Content: Photos are deleted from the server after 2 weeks."
+                - status "Characters remaining" [ref=e421]: 2,233
+              - generic [ref=e422]:
+                - generic [ref=e424]:
+                  - generic [ref=e425]: Attachment
+                  - button "More information" [ref=e427] [cursor=pointer]: "?"
+                - paragraph [ref=e428]: –
+          - separator [ref=e429]
+          - generic [ref=e430]:
+            - heading "App Store Version Release" [level=3] [ref=e431]
+            - paragraph [ref=e432]: To make your app available on the App Store, you can automatically release it after it’s been approved by App Review. You can also manually release it on the App Store at a later date.
+            - generic [ref=e433]:
+              - generic [ref=e435]:
+                - generic [ref=e436]:
+                  - radio "Manually release this version" [disabled] [ref=e437]
+                  - generic [ref=e439]: Manually release this version
+                - generic [ref=e440]:
+                  - radio "Automatically release this version" [checked] [disabled] [ref=e441]
+                  - generic [ref=e443]: Automatically release this version
+                - generic [ref=e444]:
+                  - radio "Automatically release this version after App Review, no earlier than" [disabled] [ref=e445]
+                  - generic [ref=e447]: Automatically release this version after App Review, no earlier than
+              - paragraph [ref=e449]: Your local date and time.
+              - generic [ref=e452]:
+                - textbox "Automatically release this version after App Review, no earlier than" [disabled] [ref=e453]: Jun 1, 2026 18:00
+                - text: CEST
+    - dialog "New Version" [ref=e469]:
+      - generic [ref=e471]:
+        - generic [ref=e472]:
+          - heading "New Version" [level=2] [ref=e473]
+          - generic [ref=e476]:
+            - generic [ref=e478]:
+              - generic [ref=e479]: Version
+              - button "More information" [ref=e481] [cursor=pointer]: "?"
+            - textbox [ref=e483]
+            - status "Characters remaining" [ref=e485]: "64"
+        - generic [ref=e487]:
+          - button "Cancel" [active] [ref=e489] [cursor=pointer]
+          - button "Create" [disabled] [ref=e491]
+  - contentinfo [ref=e455]:
+    - generic [ref=e456]:
+      - list [ref=e457]:
+        - listitem [ref=e458]:
+          - link "App Store Connect" [ref=e459] [cursor=pointer]:
+            - /url: /apps
+      - list [ref=e460]:
+        - listitem [ref=e461]: Copyright © 2026 Apple Inc. All rights reserved. |
+        - listitem [ref=e462]:
+          - link "Terms of Service" [ref=e463] [cursor=pointer]:
+            - /url: /WebObjects/iTunesConnect.woa/wa/termsOfService
+          - text: "|"
+        - listitem [ref=e464]:
+          - link "Privacy Policy" [ref=e465] [cursor=pointer]:
+            - /url: https://www.apple.com/legal/privacy
+          - text: "|"
+        - listitem [ref=e466]:
+          - link "Contact Us" [ref=e467] [cursor=pointer]:
+            - /url: /contact-us

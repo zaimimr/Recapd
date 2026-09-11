@@ -182,7 +182,6 @@ export function buildMergedTimeline(
 			storage_path: "",
 			thumbnail_path: p.thumbnailPath ?? null,
 			blurhash: null,
-			hls_path: null,
 			video_processed_at: null,
 			visibility: "shared" as const,
 			deleted_at: null,

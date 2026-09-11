@@ -58,7 +58,6 @@ import { renderHook, waitFor } from "@testing-library/react-native";
 import { deleteAsync, downloadAsync, getInfoAsync } from "expo-file-system/legacy";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import {
-	buildByteRangeM3u8,
 	createVideoThumbnailUri,
 	deleteCachedDownload,
 	downloadPhoto,
@@ -588,48 +587,6 @@ describe("storage", () => {
 		});
 	});
 
-	describe("buildByteRangeM3u8", () => {
-		it("emits a VOD playlist with EXT-X-BYTERANGE per segment", () => {
-			const manifest = {
-				version: 1,
-				totalSize: 12000,
-				duration: 12.5,
-				segments: [
-					{ offset: 0, length: 4000, duration: 6.0 },
-					{ offset: 4000, length: 4500, duration: 6.0 },
-					{ offset: 8500, length: 3500, duration: 0.5 },
-				],
-			};
-			const m3u8 = buildByteRangeM3u8(manifest, "https://signed.example/video.mp4?token=abc");
-
-			expect(m3u8).toContain("#EXTM3U");
-			expect(m3u8).toContain("#EXT-X-VERSION:7");
-			expect(m3u8).toContain("#EXT-X-TARGETDURATION:6");
-			expect(m3u8).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
-			expect(m3u8).toContain("#EXT-X-INDEPENDENT-SEGMENTS");
-			expect(m3u8).toContain("#EXT-X-BYTERANGE:4000@0");
-			expect(m3u8).toContain("#EXT-X-BYTERANGE:4500");
-			expect(m3u8).toContain("#EXT-X-BYTERANGE:3500");
-			expect(m3u8).toContain("https://signed.example/video.mp4?token=abc");
-			expect(m3u8).toContain("#EXT-X-ENDLIST");
-		});
-
-		it("uses explicit offset when segments are not contiguous", () => {
-			const manifest = {
-				version: 1,
-				totalSize: 12000,
-				duration: 12,
-				segments: [
-					{ offset: 0, length: 2000, duration: 6 },
-					{ offset: 6000, length: 3000, duration: 6 },
-				],
-			};
-			const m3u8 = buildByteRangeM3u8(manifest, "https://signed.example/v.mp4");
-
-			expect(m3u8).toContain("#EXT-X-BYTERANGE:2000@0");
-			expect(m3u8).toContain("#EXT-X-BYTERANGE:3000@6000");
-		});
-	});
 
 	describe("useVideoPlaybackUri", () => {
 		beforeEach(() => {
@@ -650,7 +607,7 @@ describe("storage", () => {
 			});
 		});
 
-		it("falls back to mp4 signed URL when hls_path is null", async () => {
+		it("resolves to the signed mp4 URL", async () => {
 			const mockCreateSignedUrl = jest.fn().mockResolvedValue({
 				data: { signedUrl: "https://cdn.example.com/signed/video.mp4" },
 				error: null,
@@ -662,7 +619,6 @@ describe("storage", () => {
 			const { result } = renderHook(() =>
 				useVideoPlaybackUri({
 					storage_path: "event1/user1/video.mp4",
-					hls_path: null,
 				})
 			);
 
@@ -671,44 +627,5 @@ describe("storage", () => {
 			});
 		});
 
-		it("returns a data: HLS manifest URL when hls_path is set", async () => {
-			const mockCreateSignedUrl = jest.fn().mockImplementation((path: string) =>
-				Promise.resolve({
-					data: { signedUrl: `https://cdn.example.com/signed/${path}?token=t` },
-					error: null,
-				})
-			);
-			mockedSupabase.storage.from.mockReturnValue({
-				createSignedUrl: mockCreateSignedUrl,
-			});
-			(global.fetch as jest.Mock).mockResolvedValue({
-				ok: true,
-				json: () =>
-					Promise.resolve({
-						version: 1,
-						totalSize: 1000,
-						duration: 6,
-						segments: [{ offset: 0, length: 1000, duration: 6 }],
-					}),
-			});
-
-			const { result } = renderHook(() =>
-				useVideoPlaybackUri({
-					storage_path: "event-fresh/user-fresh/clip-hls.mp4",
-					hls_path: "event-fresh/user-fresh/clip-hls.mp4.hls.json",
-				})
-			);
-
-			await waitFor(() => {
-				expect(result.current).toMatch(/^data:application\/vnd\.apple\.mpegurl;base64,/);
-			});
-			const base64 = result.current!.split(",")[1];
-			const decoded = Buffer.from(base64, "base64").toString("utf-8");
-			expect(decoded).toContain("#EXTM3U");
-			expect(decoded).toContain("#EXT-X-BYTERANGE:1000@0");
-			expect(decoded).toContain(
-				"https://cdn.example.com/signed/event-fresh/user-fresh/clip-hls.mp4"
-			);
-		});
 	});
 });
