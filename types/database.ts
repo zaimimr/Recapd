@@ -4,7 +4,6 @@ export type EventStatus = "scheduled" | "live" | "ended" | "expired";
 export type ParticipantRole = "host" | "guest";
 export type MediaType = "photo" | "video";
 export type MediaVisibility = "shared" | "hidden" | "deleted";
-export type VideoStatus = "pending" | "processing" | "ready" | "failed";
 export type SubscriptionTier = "free" | "pro";
 export type SubscriptionPlatform = "ios" | "android" | "web";
 export type TelemetryEventKind = "error" | "trace";
@@ -321,9 +320,6 @@ export interface Database {
 					thumbnail_path: string | null;
 					blurhash: string | null;
 					hls_path: string | null;
-					playback_hls_path: string | null;
-					rendition_path: string | null;
-					video_status: VideoStatus;
 					video_processed_at: string | null;
 					visibility: MediaVisibility;
 					deleted_at: string | null;
@@ -345,9 +341,6 @@ export interface Database {
 					thumbnail_path?: string | null;
 					blurhash?: string | null;
 					hls_path?: string | null;
-					playback_hls_path?: string | null;
-					rendition_path?: string | null;
-					video_status?: VideoStatus;
 					video_processed_at?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
@@ -369,9 +362,6 @@ export interface Database {
 					thumbnail_path?: string | null;
 					blurhash?: string | null;
 					hls_path?: string | null;
-					playback_hls_path?: string | null;
-					rendition_path?: string | null;
-					video_status?: VideoStatus;
 					video_processed_at?: string | null;
 					visibility?: MediaVisibility;
 					deleted_at?: string | null;
