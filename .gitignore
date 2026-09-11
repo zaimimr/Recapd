@@ -11,5 +11,5 @@ expo-env.d.ts
 node_modules/
 .DS_Store
 .expo/
-ios/
-android/
+/ios/
+/android/
