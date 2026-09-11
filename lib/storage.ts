@@ -7,6 +7,7 @@ import {
 	downloadAsync,
 	getInfoAsync,
 	makeDirectoryAsync,
+	readDirectoryAsync,
 } from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as VideoThumbnails from "expo-video-thumbnails";
@@ -275,6 +276,11 @@ async function withTempFileCleanup<T>(uri: string, work: () => Promise<T>): Prom
 const GRID_THUMB_DIR = `${documentDirectory}grid-thumbs/`;
 const GRID_THUMB_TARGET_WIDTH = 512;
 const GRID_THUMB_MAX_CONCURRENT = 2;
+const GRID_THUMB_MAX_BYTES = 150 * 1024 * 1024;
+const GRID_THUMB_PRUNE_EVERY = 50;
+
+let gridThumbWritesSincePrune = 0;
+let gridThumbPruneInflight: Promise<void> | null = null;
 
 let gridThumbActive = 0;
 const gridThumbWaiters: Array<() => void> = [];
@@ -300,6 +306,46 @@ async function ensureGridThumbDir(): Promise<void> {
 	if (!info.exists) {
 		await makeDirectoryAsync(GRID_THUMB_DIR, { intermediates: true });
 	}
+}
+
+async function pruneGridThumbsToBudget(): Promise<void> {
+	try {
+		const dirInfo = await getInfoAsync(GRID_THUMB_DIR);
+		if (!dirInfo.exists) return;
+
+		const names = await readDirectoryAsync(GRID_THUMB_DIR);
+		const entries = await Promise.all(
+			names.map(async (name) => {
+				const uri = `${GRID_THUMB_DIR}${name}`;
+				const info = await getInfoAsync(uri);
+				return info.exists && !info.isDirectory
+					? { uri, size: info.size ?? 0, modificationTime: info.modificationTime ?? 0 }
+					: null;
+			})
+		);
+
+		const files = entries.filter((e): e is NonNullable<typeof e> => e !== null);
+		let total = files.reduce((sum, f) => sum + f.size, 0);
+		if (total <= GRID_THUMB_MAX_BYTES) return;
+
+		files.sort((a, b) => a.modificationTime - b.modificationTime);
+		for (const file of files) {
+			if (total <= GRID_THUMB_MAX_BYTES) break;
+			await deleteAsync(file.uri, { idempotent: true });
+			total -= file.size;
+		}
+	} catch (error) {
+		logger.warn("Grid thumbnail prune failed", error);
+	}
+}
+
+function scheduleGridThumbPrune(): void {
+	gridThumbWritesSincePrune++;
+	if (gridThumbWritesSincePrune < GRID_THUMB_PRUNE_EVERY || gridThumbPruneInflight) return;
+	gridThumbWritesSincePrune = 0;
+	gridThumbPruneInflight = pruneGridThumbsToBudget().finally(() => {
+		gridThumbPruneInflight = null;
+	});
 }
 
 async function generatePhotoGridThumbnail(
@@ -330,6 +376,7 @@ async function generatePhotoGridThumbnail(
 			try {
 				await copyAsync({ from: result.uri, to: target });
 				await deleteAsync(result.uri, { idempotent: true });
+				scheduleGridThumbPrune();
 				return target;
 			} catch {
 				return result.uri;
@@ -1131,6 +1178,15 @@ export async function downloadPhoto(storagePath: string, fileName: string): Prom
 
 	logger.error("Download error", new Error(`status ${downloadResult.status}`), { storagePath });
 	throw new DownloadError("server");
+}
+
+export async function deleteCachedDownload(uri: string): Promise<void> {
+	if (!uri) return;
+	try {
+		await deleteAsync(uri, { idempotent: true });
+	} catch (error) {
+		logger.warn("Cached download cleanup failed", error, { uri });
+	}
 }
 
 export async function isPhotoDownloaded(mediaItemId: string): Promise<boolean> {

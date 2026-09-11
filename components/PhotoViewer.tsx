@@ -22,6 +22,7 @@ import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
 	backfillVideoThumbnail,
 	classifyDownloadError,
+	deleteCachedDownload,
 	describeDownloadFailure,
 	downloadPhoto,
 	isPhotoDownloaded,
@@ -424,7 +425,12 @@ export default function PhotoViewer({
 				`recapd_${currentPhoto.id}.${extension}`
 			);
 
-			const asset = await saveToLibrary(localUri);
+			let asset: Awaited<ReturnType<typeof saveToLibrary>>;
+			try {
+				asset = await saveToLibrary(localUri);
+			} finally {
+				await deleteCachedDownload(localUri);
+			}
 			if (!asset) {
 				Alert.alert("Couldn't Save", `We couldn't save this ${mediaLabel} to your camera roll.`);
 				return;
