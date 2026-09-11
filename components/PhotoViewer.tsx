@@ -6,6 +6,7 @@ import {
 	Alert,
 	Animated,
 	Dimensions,
+	type GestureResponderEvent,
 	Modal,
 	type NativeScrollEvent,
 	type NativeSyntheticEvent,
@@ -19,6 +20,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
+	backfillVideoThumbnail,
 	classifyDownloadError,
 	describeDownloadFailure,
 	downloadPhoto,
@@ -54,7 +56,11 @@ interface ZoomableImageProps {
 	photo: MergedMediaItem;
 	thumbnailUri?: string;
 	blurhash?: string;
+	onSingleTap?: () => void;
 }
+
+const DOUBLE_TAP_DELAY = 250;
+const DOUBLE_TAP_ZOOM = 2.5;
 
 function clampIndex(index: number, length: number): number {
 	if (length <= 0) return 0;
@@ -88,20 +94,83 @@ function PlaceholderFrame({
 	return <View style={styles.mediaFill} />;
 }
 
-function ZoomableImage({ photo, thumbnailUri, blurhash }: ZoomableImageProps) {
+function ZoomableImage({ photo, thumbnailUri, blurhash, onSingleTap }: ZoomableImageProps) {
 	const scrollRef = useRef<ScrollView>(null);
-	const [isZoomed, setIsZoomed] = useState(false);
+	const isZoomedRef = useRef(false);
+	const lastTapRef = useRef(0);
+	const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const signedPhotoUrl = useStorageUrl(photo.isPending ? null : photo.storage_path);
 	const photoUri = photo.isPending && photo.localUri ? photo.localUri : signedPhotoUrl;
 
-	const handlePress = useCallback(() => {
-		if (isZoomed) {
-			scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
-		}
-	}, [isZoomed]);
+	const zoomToRect = useCallback((x: number, y: number, width: number, height: number) => {
+		(
+			scrollRef.current as unknown as {
+				scrollResponderZoomTo?: (rect: {
+					x: number;
+					y: number;
+					width: number;
+					height: number;
+					animated: boolean;
+				}) => void;
+			}
+		)?.scrollResponderZoomTo?.({ x, y, width, height, animated: true });
+	}, []);
+
+	const zoomOut = useCallback(() => {
+		zoomToRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+		scrollRef.current?.scrollTo({ x: 0, y: 0, animated: true });
+	}, [zoomToRect]);
+
+	const handleDoubleTap = useCallback(
+		(locationX: number, locationY: number) => {
+			if (isZoomedRef.current) {
+				zoomOut();
+				return;
+			}
+			const width = SCREEN_WIDTH / DOUBLE_TAP_ZOOM;
+			const height = SCREEN_HEIGHT / DOUBLE_TAP_ZOOM;
+			zoomToRect(locationX - width / 2, locationY - height / 2, width, height);
+		},
+		[zoomOut, zoomToRect]
+	);
+
+	const handlePress = useCallback(
+		(event: GestureResponderEvent) => {
+			const now = Date.now();
+			const { locationX, locationY } = event.nativeEvent;
+
+			if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+				lastTapRef.current = 0;
+				if (singleTapTimer.current) {
+					clearTimeout(singleTapTimer.current);
+					singleTapTimer.current = null;
+				}
+				handleDoubleTap(locationX, locationY);
+				return;
+			}
+
+			lastTapRef.current = now;
+			singleTapTimer.current = setTimeout(() => {
+				singleTapTimer.current = null;
+				if (isZoomedRef.current) {
+					zoomOut();
+				} else {
+					onSingleTap?.();
+				}
+			}, DOUBLE_TAP_DELAY);
+		},
+		[handleDoubleTap, zoomOut, onSingleTap]
+	);
+
+	useEffect(
+		() => () => {
+			if (singleTapTimer.current) clearTimeout(singleTapTimer.current);
+		},
+		[]
+	);
 
 	const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-		setIsZoomed(event.nativeEvent.zoomScale > 1);
+		isZoomedRef.current = event.nativeEvent.zoomScale > 1;
 	}, []);
 
 	return (
@@ -126,9 +195,7 @@ function ZoomableImage({ photo, thumbnailUri, blurhash }: ZoomableImageProps) {
 						contentFit="contain"
 						cachePolicy="memory-disk"
 						enableLiveTextInteraction={false}
-						placeholder={
-							thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined
-						}
+						placeholder={thumbnailUri ? { uri: thumbnailUri } : blurhash ? { blurhash } : undefined}
 						placeholderContentFit="contain"
 						transition={120}
 					/>
@@ -147,11 +214,13 @@ function PhotoPage({
 	initialThumbnailUri,
 	isInitial,
 	isActive,
+	onSingleTap,
 }: {
 	photo: MergedMediaItem;
 	initialThumbnailUri?: string;
 	isInitial: boolean;
 	isActive: boolean;
+	onSingleTap?: () => void;
 }) {
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 	const signedPhotoUrl = usePhotoThumbnailUrl(
@@ -170,7 +239,14 @@ function PhotoPage({
 		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;
 	}
 
-	return <ZoomableImage photo={photo} thumbnailUri={thumbnailUri} blurhash={blurhash} />;
+	return (
+		<ZoomableImage
+			photo={photo}
+			thumbnailUri={thumbnailUri}
+			blurhash={blurhash}
+			onSingleTap={onSingleTap}
+		/>
+	);
 }
 
 function VideoPage({
@@ -178,11 +254,15 @@ function VideoPage({
 	initialThumbnailUri,
 	isInitial,
 	isActive,
+	muted,
+	onSurfaceTap,
 }: {
 	photo: MergedMediaItem;
 	initialThumbnailUri?: string;
 	isInitial: boolean;
 	isActive: boolean;
+	muted: boolean;
+	onSurfaceTap?: () => void;
 }) {
 	const signedThumbnailUrl = useStorageUrl(photo.isPending ? null : photo.thumbnail_path);
 	const blurhash = getBlurhash(photo);
@@ -190,6 +270,11 @@ function VideoPage({
 		isInitial && initialThumbnailUri
 			? initialThumbnailUri
 			: photo.localThumbnailUri || signedThumbnailUrl || undefined;
+
+	useEffect(() => {
+		if (!isActive) return;
+		void backfillVideoThumbnail(photo);
+	}, [isActive, photo]);
 
 	if (!isActive) {
 		return <PlaceholderFrame thumbnailUri={thumbnailUri} blurhash={blurhash} />;
@@ -200,9 +285,12 @@ function VideoPage({
 			<VideoPlayer
 				media={photo}
 				autoPlay
+				loop
 				isActive={isActive}
 				nativeControls={false}
 				allowTapToggle
+				muted={muted}
+				onSurfaceTap={onSurfaceTap}
 				thumbnailUri={thumbnailUri}
 			/>
 		</View>
@@ -225,6 +313,9 @@ export default function PhotoViewer({
 	const [currentIndex, setCurrentIndex] = useState(safeInitialIndex);
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const [controlsVisible, setControlsVisible] = useState(true);
+	const [muted, setMuted] = useState(false);
+	const controlsOpacity = useRef(new Animated.Value(1)).current;
 	const translateY = useRef(new Animated.Value(0)).current;
 	const backdropOpacity = translateY.interpolate({
 		inputRange: [0, SCREEN_HEIGHT * 0.7, SCREEN_HEIGHT],
@@ -233,6 +324,9 @@ export default function PhotoViewer({
 	});
 
 	const currentPhoto = photos[currentIndex];
+	const isVideo = currentPhoto?.media_type === "video";
+	const uploaderName = currentPhoto?.uploader?.display_name ?? null;
+	const counterLabel = photos.length > 0 ? `${currentIndex + 1} / ${photos.length}` : null;
 	const canDelete =
 		currentPhoto && !currentPhoto.isPending && currentPhoto.uploaded_by_user_id === currentUserId;
 	const capturedAt = currentPhoto?.captured_at;
@@ -252,6 +346,22 @@ export default function PhotoViewer({
 		pagerRef.current?.scrollToIndex(index, animated);
 	}, []);
 
+	const toggleControls = useCallback(() => {
+		setControlsVisible((visible) => !visible);
+	}, []);
+
+	const toggleMuted = useCallback(() => {
+		setMuted((value) => !value);
+	}, []);
+
+	useEffect(() => {
+		Animated.timing(controlsOpacity, {
+			toValue: controlsVisible ? 1 : 0,
+			duration: 180,
+			useNativeDriver: true,
+		}).start();
+	}, [controlsVisible, controlsOpacity]);
+
 	useEffect(() => {
 		if (!visible) {
 			setSaving(false);
@@ -260,6 +370,7 @@ export default function PhotoViewer({
 		}
 
 		translateY.setValue(0);
+		setControlsVisible(true);
 		const nextIndex = clampIndex(initialIndex, photos.length);
 		setCurrentIndex(nextIndex);
 
@@ -287,6 +398,7 @@ export default function PhotoViewer({
 	const handleIndexChange = useCallback(
 		(index: number) => {
 			setCurrentIndex(clampIndex(index, photos.length));
+			setControlsVisible(true);
 		},
 		[photos.length]
 	);
@@ -447,6 +559,8 @@ export default function PhotoViewer({
 										isActive={state.isActive}
 										isInitial={index === safeInitialIndex}
 										initialThumbnailUri={initialThumbnailUri}
+										muted={muted}
+										onSurfaceTap={toggleControls}
 									/>
 								) : (
 									<PhotoPage
@@ -454,13 +568,17 @@ export default function PhotoViewer({
 										isActive={state.isActive}
 										isInitial={index === safeInitialIndex}
 										initialThumbnailUri={initialThumbnailUri}
+										onSingleTap={toggleControls}
 									/>
 								)}
 							</View>
 						)}
 					/>
 
-					<View pointerEvents="box-none" style={styles.overlay}>
+					<Animated.View
+						pointerEvents={controlsVisible ? "box-none" : "none"}
+						style={[styles.overlay, { opacity: controlsOpacity }]}
+					>
 						<Pressable
 							onPress={animateClose}
 							hitSlop={12}
@@ -476,7 +594,38 @@ export default function PhotoViewer({
 							<FontAwesome name="chevron-down" size={18} color="#fff" />
 						</Pressable>
 
-						{captureDateLabel && captureTimeLabel ? (
+						{counterLabel ? (
+							<View pointerEvents="none" style={[styles.counterRow, { top: insets.top + 12 }]}>
+								<View
+									style={[
+										styles.counterBadge,
+										{ backgroundColor: buttonSurface, borderColor: buttonBorder },
+									]}
+								>
+									<Text style={styles.counterText}>{counterLabel}</Text>
+								</View>
+							</View>
+						) : null}
+
+						{isVideo ? (
+							<Pressable
+								onPress={toggleMuted}
+								hitSlop={12}
+								style={[
+									styles.topButton,
+									styles.muteButton,
+									{
+										top: insets.top + 12,
+										backgroundColor: buttonSurface,
+										borderColor: buttonBorder,
+									},
+								]}
+							>
+								<FontAwesome name={muted ? "volume-off" : "volume-up"} size={18} color="#fff" />
+							</Pressable>
+						) : null}
+
+						{uploaderName || (captureDateLabel && captureTimeLabel) ? (
 							<View
 								style={[
 									styles.timestampBadge,
@@ -488,8 +637,12 @@ export default function PhotoViewer({
 									},
 								]}
 							>
-								<Text style={styles.timestampDate}>{captureDateLabel}</Text>
-								<Text style={styles.timestampTime}>{captureTimeLabel}</Text>
+								{uploaderName ? <Text style={styles.uploaderName}>{uploaderName}</Text> : null}
+								{captureDateLabel && captureTimeLabel ? (
+									<Text style={styles.timestampDate}>
+										{captureDateLabel} · {captureTimeLabel}
+									</Text>
+								) : null}
 							</View>
 						) : null}
 
@@ -541,7 +694,7 @@ export default function PhotoViewer({
 								</Pressable>
 							) : null}
 						</View>
-					</View>
+					</Animated.View>
 				</Animated.View>
 			</View>
 		</Modal>
@@ -588,6 +741,28 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 	},
+	muteButton: {
+		left: undefined,
+		right: 16,
+	},
+	counterRow: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		alignItems: "center",
+	},
+	counterBadge: {
+		paddingHorizontal: 14,
+		height: 46,
+		justifyContent: "center",
+		borderRadius: 23,
+		borderWidth: 1,
+	},
+	counterText: {
+		color: "#fff",
+		fontSize: 14,
+		fontWeight: "600",
+	},
 	timestampBadge: {
 		position: "absolute",
 		maxWidth: SCREEN_WIDTH - 108,
@@ -596,12 +771,12 @@ const styles = StyleSheet.create({
 		borderRadius: 16,
 		borderWidth: 1,
 	},
-	timestampDate: {
+	uploaderName: {
 		color: "#fff",
 		fontSize: 14,
 		fontWeight: "600",
 	},
-	timestampTime: {
+	timestampDate: {
 		marginTop: 2,
 		color: "rgba(255, 255, 255, 0.8)",
 		fontSize: 13,
