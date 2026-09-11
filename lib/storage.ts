@@ -12,7 +12,7 @@ import {
 import * as ImageManipulator from "expo-image-manipulator";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useEffect, useState } from "react";
-import type { MediaItemInsert, MediaItemWithUser, VideoStatus } from "@/types/database";
+import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
 import { safeDate } from "./dateUtils";
 import { logger } from "./logger";
 import { addUploadBreadcrumb } from "./sentry";
@@ -1036,12 +1036,9 @@ export function buildByteRangeM3u8(manifest: HlsByteRangeManifest, mp4SignedUrl:
 	return lines.join("\n");
 }
 
-async function fetchHlsManifest(
-	hlsPath: string,
-	bucket?: string
-): Promise<HlsByteRangeManifest | null> {
+async function fetchHlsManifest(hlsPath: string): Promise<HlsByteRangeManifest | null> {
 	try {
-		const manifestUrl = await resolveStorageUrl(hlsPath, bucket ? { bucket } : undefined);
+		const manifestUrl = await resolveStorageUrl(hlsPath);
 		const response = await withTimeout(fetch(manifestUrl), 10000);
 		if (!response.ok) return null;
 		const data = (await response.json()) as HlsByteRangeManifest;
@@ -1053,24 +1050,18 @@ async function fetchHlsManifest(
 	}
 }
 
-const VIDEO_RENDITIONS_BUCKET = "video-renditions";
-
 export interface VideoPlaybackSource {
 	storage_path: string;
 	hls_path?: string | null;
-	playback_hls_path?: string | null;
-	rendition_path?: string | null;
-	video_status?: VideoStatus | null;
 	isPending?: boolean;
 	localUri?: string;
 }
 
 async function buildByteRangeDataUri(
 	manifestPath: string,
-	mediaSignedUrl: string,
-	bucket?: string
+	mediaSignedUrl: string
 ): Promise<string | null> {
-	const manifest = await fetchHlsManifest(manifestPath, bucket);
+	const manifest = await fetchHlsManifest(manifestPath);
 	if (!manifest) return null;
 	const m3u8 = buildByteRangeM3u8(manifest, mediaSignedUrl);
 	return `data:application/vnd.apple.mpegurl;base64,${base64EncodeAscii(m3u8)}`;
@@ -1079,9 +1070,6 @@ async function buildByteRangeDataUri(
 export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefined): string | null {
 	const storagePath = media?.storage_path ?? null;
 	const hlsPath = media?.hls_path ?? null;
-	const renditionPath = media?.video_status === "ready" ? (media?.rendition_path ?? null) : null;
-	const playbackHlsPath =
-		media?.video_status === "ready" ? (media?.playback_hls_path ?? null) : null;
 	const isPending = media?.isPending ?? false;
 	const pendingLocalUri = isPending ? (media?.localUri ?? null) : null;
 
@@ -1105,30 +1093,6 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 
 		(async () => {
 			try {
-				// Preferred: the lightweight transcoded rendition, streamed in chunks
-				// via a byte-range manifest over the small 720p file.
-				if (renditionPath) {
-					const renditionUrl = await resolveStorageUrl(renditionPath, {
-						bucket: VIDEO_RENDITIONS_BUCKET,
-					});
-					if (cancelled) return;
-					if (playbackHlsPath) {
-						const dataUri = await buildByteRangeDataUri(
-							playbackHlsPath,
-							renditionUrl,
-							VIDEO_RENDITIONS_BUCKET
-						);
-						if (cancelled) return;
-						if (dataUri) {
-							setUri(dataUri);
-							return;
-						}
-					}
-					setUri(renditionUrl);
-					return;
-				}
-
-				// Fallback: byte-range manifest over the original, then the raw original.
 				const mp4SignedUrl = await resolveStorageUrl(storagePath);
 				if (cancelled) return;
 
@@ -1153,7 +1117,7 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 		return () => {
 			cancelled = true;
 		};
-	}, [storagePath, hlsPath, renditionPath, playbackHlsPath, pendingLocalUri]);
+	}, [storagePath, hlsPath, pendingLocalUri]);
 
 	return uri;
 }
