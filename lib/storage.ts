@@ -990,86 +990,14 @@ interface HlsSegment {
 	duration: number;
 }
 
-interface HlsByteRangeManifest {
-	version: number;
-	totalSize: number;
-	duration: number;
-	segments: HlsSegment[];
-}
-
-function base64EncodeAscii(input: string): string {
-	if (typeof btoa === "function") {
-		return btoa(input);
-	}
-	const bytes = new TextEncoder().encode(input);
-	let binary = "";
-	for (let i = 0; i < bytes.length; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return (globalThis as { btoa?: (s: string) => string }).btoa?.(binary) ?? "";
-}
-
-export function buildByteRangeM3u8(manifest: HlsByteRangeManifest, mp4SignedUrl: string): string {
-	const targetDuration = Math.max(
-		1,
-		Math.ceil(manifest.segments.reduce((max, s) => Math.max(max, s.duration), 0))
-	);
-	const lines: string[] = [
-		"#EXTM3U",
-		"#EXT-X-VERSION:7",
-		`#EXT-X-TARGETDURATION:${targetDuration}`,
-		"#EXT-X-PLAYLIST-TYPE:VOD",
-		"#EXT-X-INDEPENDENT-SEGMENTS",
-	];
-	let previousOffsetEnd = -1;
-	for (const segment of manifest.segments) {
-		lines.push(`#EXTINF:${segment.duration.toFixed(3)},`);
-		if (segment.offset === previousOffsetEnd) {
-			lines.push(`#EXT-X-BYTERANGE:${segment.length}`);
-		} else {
-			lines.push(`#EXT-X-BYTERANGE:${segment.length}@${segment.offset}`);
-		}
-		lines.push(mp4SignedUrl);
-		previousOffsetEnd = segment.offset + segment.length;
-	}
-	lines.push("#EXT-X-ENDLIST");
-	return lines.join("\n");
-}
-
-async function fetchHlsManifest(hlsPath: string): Promise<HlsByteRangeManifest | null> {
-	try {
-		const manifestUrl = await resolveStorageUrl(hlsPath);
-		const response = await withTimeout(fetch(manifestUrl), 10000);
-		if (!response.ok) return null;
-		const data = (await response.json()) as HlsByteRangeManifest;
-		if (!data?.segments || data.segments.length === 0) return null;
-		return data;
-	} catch (error) {
-		logger.warn("HLS manifest fetch failed", error, { hlsPath });
-		return null;
-	}
-}
-
 export interface VideoPlaybackSource {
 	storage_path: string;
-	hls_path?: string | null;
 	isPending?: boolean;
 	localUri?: string;
 }
 
-async function buildByteRangeDataUri(
-	manifestPath: string,
-	mediaSignedUrl: string
-): Promise<string | null> {
-	const manifest = await fetchHlsManifest(manifestPath);
-	if (!manifest) return null;
-	const m3u8 = buildByteRangeM3u8(manifest, mediaSignedUrl);
-	return `data:application/vnd.apple.mpegurl;base64,${base64EncodeAscii(m3u8)}`;
-}
-
 export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefined): string | null {
 	const storagePath = media?.storage_path ?? null;
-	const hlsPath = media?.hls_path ?? null;
 	const isPending = media?.isPending ?? false;
 	const pendingLocalUri = isPending ? (media?.localUri ?? null) : null;
 
@@ -1095,16 +1023,6 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 			try {
 				const mp4SignedUrl = await resolveStorageUrl(storagePath);
 				if (cancelled) return;
-
-				if (hlsPath) {
-					const dataUri = await buildByteRangeDataUri(hlsPath, mp4SignedUrl);
-					if (cancelled) return;
-					if (dataUri) {
-						setUri(dataUri);
-						return;
-					}
-				}
-
 				setUri(mp4SignedUrl);
 			} catch (error) {
 				logger.warn("Video playback URI resolution failed", error, { storagePath });
@@ -1117,7 +1035,7 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 		return () => {
 			cancelled = true;
 		};
-	}, [storagePath, hlsPath, pendingLocalUri]);
+	}, [storagePath, pendingLocalUri]);
 
 	return uri;
 }
