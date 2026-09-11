@@ -7,11 +7,12 @@ import {
 	downloadAsync,
 	getInfoAsync,
 	makeDirectoryAsync,
+	readDirectoryAsync,
 } from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useEffect, useState } from "react";
-import type { MediaItemInsert, MediaItemWithUser } from "@/types/database";
+import type { MediaItemInsert, MediaItemWithUser, VideoStatus } from "@/types/database";
 import { safeDate } from "./dateUtils";
 import { logger } from "./logger";
 import { addUploadBreadcrumb } from "./sentry";
@@ -245,8 +246,7 @@ async function uploadFileViaTus(args: {
 	mediaType: MediaType;
 	fileFingerprint: string;
 }): Promise<{ path: string }> {
-	const { bucket, storagePath, filePath, fileSize, contentType, mediaType, fileFingerprint } =
-		args;
+	const { bucket, storagePath, filePath, fileSize, contentType, mediaType, fileFingerprint } = args;
 	const timeoutMs = mediaType === "video" ? TUS_VIDEO_TIMEOUT_MS : TUS_PHOTO_TIMEOUT_MS;
 	return withTimeout(
 		uploadMediaResumable({
@@ -276,6 +276,11 @@ async function withTempFileCleanup<T>(uri: string, work: () => Promise<T>): Prom
 const GRID_THUMB_DIR = `${documentDirectory}grid-thumbs/`;
 const GRID_THUMB_TARGET_WIDTH = 512;
 const GRID_THUMB_MAX_CONCURRENT = 2;
+const GRID_THUMB_MAX_BYTES = 150 * 1024 * 1024;
+const GRID_THUMB_PRUNE_EVERY = 50;
+
+let gridThumbWritesSincePrune = 0;
+let gridThumbPruneInflight: Promise<void> | null = null;
 
 let gridThumbActive = 0;
 const gridThumbWaiters: Array<() => void> = [];
@@ -303,6 +308,46 @@ async function ensureGridThumbDir(): Promise<void> {
 	}
 }
 
+async function pruneGridThumbsToBudget(): Promise<void> {
+	try {
+		const dirInfo = await getInfoAsync(GRID_THUMB_DIR);
+		if (!dirInfo.exists) return;
+
+		const names = await readDirectoryAsync(GRID_THUMB_DIR);
+		const entries = await Promise.all(
+			names.map(async (name) => {
+				const uri = `${GRID_THUMB_DIR}${name}`;
+				const info = await getInfoAsync(uri);
+				return info.exists && !info.isDirectory
+					? { uri, size: info.size ?? 0, modificationTime: info.modificationTime ?? 0 }
+					: null;
+			})
+		);
+
+		const files = entries.filter((e): e is NonNullable<typeof e> => e !== null);
+		let total = files.reduce((sum, f) => sum + f.size, 0);
+		if (total <= GRID_THUMB_MAX_BYTES) return;
+
+		files.sort((a, b) => a.modificationTime - b.modificationTime);
+		for (const file of files) {
+			if (total <= GRID_THUMB_MAX_BYTES) break;
+			await deleteAsync(file.uri, { idempotent: true });
+			total -= file.size;
+		}
+	} catch (error) {
+		logger.warn("Grid thumbnail prune failed", error);
+	}
+}
+
+function scheduleGridThumbPrune(): void {
+	gridThumbWritesSincePrune++;
+	if (gridThumbWritesSincePrune < GRID_THUMB_PRUNE_EVERY || gridThumbPruneInflight) return;
+	gridThumbWritesSincePrune = 0;
+	gridThumbPruneInflight = pruneGridThumbsToBudget().finally(() => {
+		gridThumbPruneInflight = null;
+	});
+}
+
 async function generatePhotoGridThumbnail(
 	photoId: string,
 	sourceUri: string
@@ -322,9 +367,7 @@ async function generatePhotoGridThumbnail(
 			}
 			const sourceInfo = await getInfoAsync(sourceUri.replace(/[?#].*$/, ""));
 			const usableUri =
-				sourceInfo.exists && !sourceInfo.isDirectory
-					? sourceUri.replace(/[?#].*$/, "")
-					: sourceUri;
+				sourceInfo.exists && !sourceInfo.isDirectory ? sourceUri.replace(/[?#].*$/, "") : sourceUri;
 			const result = await ImageManipulator.manipulateAsync(
 				usableUri,
 				[{ resize: { width: GRID_THUMB_TARGET_WIDTH } }],
@@ -333,6 +376,7 @@ async function generatePhotoGridThumbnail(
 			try {
 				await copyAsync({ from: result.uri, to: target });
 				await deleteAsync(result.uri, { idempotent: true });
+				scheduleGridThumbPrune();
 				return target;
 			} catch {
 				return result.uri;
@@ -407,6 +451,70 @@ export async function createVideoThumbnailUri(
 			},
 			"warning"
 		);
+		return null;
+	}
+}
+
+const videoThumbnailBackfillAttempted = new Set<string>();
+
+export async function backfillVideoThumbnail(media: {
+	id: string;
+	storage_path: string;
+	media_type?: MediaType | string;
+	thumbnail_path?: string | null;
+	isPending?: boolean;
+}): Promise<string | null> {
+	if (media.media_type !== "video" || media.thumbnail_path || media.isPending) {
+		return null;
+	}
+	if (videoThumbnailBackfillAttempted.has(media.id)) {
+		return null;
+	}
+	videoThumbnailBackfillAttempted.add(media.id);
+
+	try {
+		const signedUrl = await resolveStorageUrl(media.storage_path);
+		const thumbnailUri = await createVideoThumbnailUri(signedUrl);
+		if (!thumbnailUri) {
+			return null;
+		}
+
+		const thumbInfo = await getInfoAsync(thumbnailUri);
+		const thumbSize =
+			thumbInfo.exists && !thumbInfo.isDirectory && typeof thumbInfo.size === "number"
+				? thumbInfo.size
+				: 0;
+		if (thumbSize === 0) {
+			await deleteAsync(thumbnailUri, { idempotent: true });
+			return null;
+		}
+
+		const thumbnailPath = `${media.storage_path.replace(/\.[^./]+$/, "")}_thumb.jpg`;
+
+		await withTempFileCleanup(thumbnailUri, () =>
+			uploadFileViaTus({
+				bucket: "thumbnails",
+				storagePath: thumbnailPath,
+				filePath: thumbnailUri,
+				fileSize: thumbSize,
+				contentType: "image/jpeg",
+				mediaType: "photo",
+				fileFingerprint: `backfill:${media.id}:${thumbSize}`,
+			})
+		);
+
+		const { error } = await supabase
+			.from("media_items")
+			.update({ thumbnail_path: thumbnailPath })
+			.eq("id", media.id);
+		if (error) {
+			logger.warn("Video thumbnail backfill DB update failed", error, { mediaId: media.id });
+			return null;
+		}
+
+		return thumbnailPath;
+	} catch (error) {
+		logger.warn("Video thumbnail backfill failed", error, { mediaId: media.id });
 		return null;
 	}
 }
@@ -744,6 +852,7 @@ export interface StorageUrlTransformOptions {
 
 interface ResolveStorageUrlOptions {
 	transform?: StorageUrlTransformOptions;
+	bucket?: string;
 }
 
 export function isHeicPath(storagePath?: string | null): boolean {
@@ -763,7 +872,7 @@ function supportsPhotoThumbnailTransform(storagePath?: string | null): boolean {
 }
 
 function getSignedUrlCacheKey(storagePath: string, options?: ResolveStorageUrlOptions): string {
-	return JSON.stringify([storagePath, options?.transform ?? null]);
+	return JSON.stringify([storagePath, options?.transform ?? null, options?.bucket ?? null]);
 }
 
 export async function resolveStorageUrl(
@@ -780,7 +889,7 @@ export async function resolveStorageUrl(
 		return cached.url;
 	}
 
-	const bucket = getBucketForPath(storagePath);
+	const bucket = options?.bucket ?? getBucketForPath(storagePath);
 	const { data, error } = await supabase.storage
 		.from(bucket)
 		.createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS, options);
@@ -793,7 +902,9 @@ export async function resolveStorageUrl(
 				storagePath,
 				transformed: Boolean(options?.transform),
 				errCode:
-					error && typeof error === "object" && "code" in (error as unknown as Record<string, unknown>)
+					error &&
+					typeof error === "object" &&
+					"code" in (error as unknown as Record<string, unknown>)
 						? (error as unknown as { code?: string }).code
 						: undefined,
 				errName: error?.name,
@@ -925,9 +1036,12 @@ export function buildByteRangeM3u8(manifest: HlsByteRangeManifest, mp4SignedUrl:
 	return lines.join("\n");
 }
 
-async function fetchHlsManifest(hlsPath: string): Promise<HlsByteRangeManifest | null> {
+async function fetchHlsManifest(
+	hlsPath: string,
+	bucket?: string
+): Promise<HlsByteRangeManifest | null> {
 	try {
-		const manifestUrl = await resolveStorageUrl(hlsPath);
+		const manifestUrl = await resolveStorageUrl(hlsPath, bucket ? { bucket } : undefined);
 		const response = await withTimeout(fetch(manifestUrl), 10000);
 		if (!response.ok) return null;
 		const data = (await response.json()) as HlsByteRangeManifest;
@@ -939,16 +1053,35 @@ async function fetchHlsManifest(hlsPath: string): Promise<HlsByteRangeManifest |
 	}
 }
 
+const VIDEO_RENDITIONS_BUCKET = "video-renditions";
+
 export interface VideoPlaybackSource {
 	storage_path: string;
 	hls_path?: string | null;
+	playback_hls_path?: string | null;
+	rendition_path?: string | null;
+	video_status?: VideoStatus | null;
 	isPending?: boolean;
 	localUri?: string;
+}
+
+async function buildByteRangeDataUri(
+	manifestPath: string,
+	mediaSignedUrl: string,
+	bucket?: string
+): Promise<string | null> {
+	const manifest = await fetchHlsManifest(manifestPath, bucket);
+	if (!manifest) return null;
+	const m3u8 = buildByteRangeM3u8(manifest, mediaSignedUrl);
+	return `data:application/vnd.apple.mpegurl;base64,${base64EncodeAscii(m3u8)}`;
 }
 
 export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefined): string | null {
 	const storagePath = media?.storage_path ?? null;
 	const hlsPath = media?.hls_path ?? null;
+	const renditionPath = media?.video_status === "ready" ? (media?.rendition_path ?? null) : null;
+	const playbackHlsPath =
+		media?.video_status === "ready" ? (media?.playback_hls_path ?? null) : null;
 	const isPending = media?.isPending ?? false;
 	const pendingLocalUri = isPending ? (media?.localUri ?? null) : null;
 
@@ -972,24 +1105,43 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 
 		(async () => {
 			try {
+				// Preferred: the lightweight transcoded rendition, streamed in chunks
+				// via a byte-range manifest over the small 720p file.
+				if (renditionPath) {
+					const renditionUrl = await resolveStorageUrl(renditionPath, {
+						bucket: VIDEO_RENDITIONS_BUCKET,
+					});
+					if (cancelled) return;
+					if (playbackHlsPath) {
+						const dataUri = await buildByteRangeDataUri(
+							playbackHlsPath,
+							renditionUrl,
+							VIDEO_RENDITIONS_BUCKET
+						);
+						if (cancelled) return;
+						if (dataUri) {
+							setUri(dataUri);
+							return;
+						}
+					}
+					setUri(renditionUrl);
+					return;
+				}
+
+				// Fallback: byte-range manifest over the original, then the raw original.
 				const mp4SignedUrl = await resolveStorageUrl(storagePath);
 				if (cancelled) return;
 
-				if (!hlsPath) {
-					setUri(mp4SignedUrl);
-					return;
+				if (hlsPath) {
+					const dataUri = await buildByteRangeDataUri(hlsPath, mp4SignedUrl);
+					if (cancelled) return;
+					if (dataUri) {
+						setUri(dataUri);
+						return;
+					}
 				}
 
-				const manifest = await fetchHlsManifest(hlsPath);
-				if (cancelled) return;
-				if (!manifest) {
-					setUri(mp4SignedUrl);
-					return;
-				}
-
-				const m3u8 = buildByteRangeM3u8(manifest, mp4SignedUrl);
-				const dataUri = `data:application/vnd.apple.mpegurl;base64,${base64EncodeAscii(m3u8)}`;
-				setUri(dataUri);
+				setUri(mp4SignedUrl);
 			} catch (error) {
 				logger.warn("Video playback URI resolution failed", error, { storagePath });
 				if (!cancelled) {
@@ -1001,7 +1153,7 @@ export function useVideoPlaybackUri(media: VideoPlaybackSource | null | undefine
 		return () => {
 			cancelled = true;
 		};
-	}, [storagePath, hlsPath, pendingLocalUri]);
+	}, [storagePath, hlsPath, renditionPath, playbackHlsPath, pendingLocalUri]);
 
 	return uri;
 }
@@ -1026,6 +1178,15 @@ export async function downloadPhoto(storagePath: string, fileName: string): Prom
 
 	logger.error("Download error", new Error(`status ${downloadResult.status}`), { storagePath });
 	throw new DownloadError("server");
+}
+
+export async function deleteCachedDownload(uri: string): Promise<void> {
+	if (!uri) return;
+	try {
+		await deleteAsync(uri, { idempotent: true });
+	} catch (error) {
+		logger.warn("Cached download cleanup failed", error, { uri });
+	}
 }
 
 export async function isPhotoDownloaded(mediaItemId: string): Promise<boolean> {

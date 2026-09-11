@@ -5,3 +5,11 @@ credentials/android/*.json
 
 expo-env.d.ts
 # @end expo-cli/node_modules
+
+.env
+.env.local
+node_modules/
+.DS_Store
+.expo/
+ios/
+android/

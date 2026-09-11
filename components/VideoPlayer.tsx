@@ -1,9 +1,9 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { useEvent, useEventListener } from "expo";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
-import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlaybackUri } from "@/lib/storage";
 import type { MergedMediaItem } from "./MomentCluster";
 
@@ -14,6 +14,9 @@ interface VideoPlayerProps {
 	isActive?: boolean;
 	nativeControls?: boolean;
 	allowTapToggle?: boolean;
+	muted?: boolean;
+	loop?: boolean;
+	onSurfaceTap?: () => void;
 }
 
 export default function VideoPlayer({
@@ -23,14 +26,23 @@ export default function VideoPlayer({
 	isActive = true,
 	nativeControls = true,
 	allowTapToggle = false,
+	muted = false,
+	loop = false,
+	onSurfaceTap,
 }: VideoPlayerProps) {
-	const [showPoster, setShowPoster] = useState(Boolean(thumbnailUri));
-	const [showPlayOverlay, setShowPlayOverlay] = useState(!autoPlay);
-	const [isPlaying, setIsPlaying] = useState(autoPlay);
 	const videoUri = useVideoPlaybackUri(media);
 
 	if (!videoUri) {
-		return <View style={styles.container} />;
+		return (
+			<View style={styles.container}>
+				{thumbnailUri && (
+					<Image source={{ uri: thumbnailUri }} style={styles.thumbnail} contentFit="cover" />
+				)}
+				<View style={styles.centerOverlay} pointerEvents="none">
+					<ActivityIndicator size="large" color="#fff" />
+				</View>
+			</View>
+		);
 	}
 
 	return (
@@ -42,12 +54,9 @@ export default function VideoPlayer({
 			isActive={isActive}
 			nativeControls={nativeControls}
 			allowTapToggle={allowTapToggle}
-			showPoster={showPoster}
-			showPlayOverlay={showPlayOverlay}
-			isPlaying={isPlaying}
-			setShowPoster={setShowPoster}
-			setShowPlayOverlay={setShowPlayOverlay}
-			setIsPlaying={setIsPlaying}
+			muted={muted}
+			loop={loop}
+			onSurfaceTap={onSurfaceTap}
 		/>
 	);
 }
@@ -59,12 +68,9 @@ interface VideoPlayerContentProps {
 	isActive: boolean;
 	nativeControls: boolean;
 	allowTapToggle: boolean;
-	showPoster: boolean;
-	showPlayOverlay: boolean;
-	isPlaying: boolean;
-	setShowPoster: Dispatch<SetStateAction<boolean>>;
-	setShowPlayOverlay: Dispatch<SetStateAction<boolean>>;
-	setIsPlaying: Dispatch<SetStateAction<boolean>>;
+	muted: boolean;
+	loop: boolean;
+	onSurfaceTap?: () => void;
 }
 
 function VideoPlayerContent({
@@ -74,63 +80,78 @@ function VideoPlayerContent({
 	isActive,
 	nativeControls,
 	allowTapToggle,
-	showPoster,
-	showPlayOverlay,
-	isPlaying,
-	setShowPoster,
-	setShowPlayOverlay,
-	setIsPlaying,
+	muted,
+	loop,
+	onSurfaceTap,
 }: VideoPlayerContentProps) {
-	const player = useVideoPlayer(videoUri, (player) => {
-		player.loop = false;
+	const player = useVideoPlayer(videoUri, (p) => {
+		p.loop = loop;
+		p.muted = muted;
+		p.timeUpdateEventInterval = 0.25;
+		p.bufferOptions = {
+			preferredForwardBufferDuration: 5,
+			minBufferForPlayback: 1,
+			waitsToMinimizeStalling: false,
+		};
 		if (autoPlay && isActive) {
-			player.play();
+			p.play();
 		}
 	});
 
+	const [hasRenderedFrame, setHasRenderedFrame] = useState(false);
+	const [progress, setProgress] = useState(0);
+
+	const { status } = useEvent(player, "statusChange", { status: player.status });
+	const { isPlaying } = useEvent(player, "playingChange", { isPlaying: player.playing });
+
+	useEventListener(player, "timeUpdate", ({ currentTime }) => {
+		const duration = player.duration;
+		setProgress(duration > 0 ? Math.min(1, currentTime / duration) : 0);
+	});
+
 	useEffect(() => {
-		setShowPoster(Boolean(thumbnailUri));
-		setShowPlayOverlay(!autoPlay);
-		setIsPlaying(autoPlay && isActive);
-	}, [autoPlay, isActive, setIsPlaying, setShowPlayOverlay, setShowPoster, thumbnailUri]);
-
-	const handleStartPlayback = useCallback(() => {
-		setShowPoster(false);
-		setShowPlayOverlay(false);
-		setIsPlaying(true);
-		player.play();
-	}, [player, setIsPlaying, setShowPlayOverlay, setShowPoster]);
-
-	const handleTogglePlayback = useCallback(() => {
-		if (!allowTapToggle) return;
-
-		if (isPlaying) {
-			player.pause();
-			setIsPlaying(false);
-			setShowPlayOverlay(true);
+		if (isActive) {
+			if (autoPlay) {
+				player.currentTime = 0;
+				player.play();
+			}
 			return;
 		}
-
-		handleStartPlayback();
-	}, [allowTapToggle, handleStartPlayback, isPlaying, player, setIsPlaying, setShowPlayOverlay]);
-
-	useEffect(() => {
-		if (isActive) return;
-
 		player.pause();
-		setIsPlaying(false);
-		setShowPlayOverlay(true);
-	}, [isActive, player, setIsPlaying, setShowPlayOverlay]);
+	}, [isActive, autoPlay, player]);
 
 	useEffect(() => {
-		if (!isActive || !autoPlay) return;
+		player.muted = muted;
+	}, [muted, player]);
 
-		player.currentTime = 0;
-		setShowPoster(false);
-		setShowPlayOverlay(false);
-		setIsPlaying(true);
-		player.play();
-	}, [autoPlay, isActive, player, setIsPlaying, setShowPlayOverlay, setShowPoster]);
+	useEffect(() => {
+		player.loop = loop;
+	}, [loop, player]);
+
+	const isError = status === "error";
+	const isLoading = !isError && status !== "readyToPlay";
+	const isBuffering = status === "loading" && isPlaying;
+	const showPoster = Boolean(thumbnailUri) && !hasRenderedFrame;
+	const showPlayButton = !isError && !isLoading && !isPlaying;
+	const showSpinner = isLoading || isBuffering;
+
+	const handlePlayPause = useCallback(() => {
+		if (isError) {
+			player.replay();
+			player.play();
+			return;
+		}
+		if (isPlaying) {
+			player.pause();
+		} else {
+			player.play();
+		}
+	}, [isError, isPlaying, player]);
+
+	const handleSurfaceTap = useCallback(() => {
+		onSurfaceTap?.();
+		handlePlayPause();
+	}, [onSurfaceTap, handlePlayPause]);
 
 	return (
 		<View style={styles.container}>
@@ -142,6 +163,7 @@ function VideoPlayerContent({
 					pointerEvents="none"
 				/>
 			)}
+
 			<VideoView
 				player={player}
 				style={styles.video}
@@ -149,15 +171,41 @@ function VideoPlayerContent({
 				nativeControls={nativeControls}
 				allowsVideoFrameAnalysis={false}
 				fullscreenOptions={{ enable: true }}
-				onFirstFrameRender={() => setShowPoster(false)}
+				onFirstFrameRender={() => setHasRenderedFrame(true)}
 			/>
-			{allowTapToggle && <Pressable style={styles.tapSurface} onPress={handleTogglePlayback} />}
-			{showPlayOverlay && (
-				<Pressable style={styles.playOverlay} onPress={handleStartPlayback}>
+
+			{!nativeControls && allowTapToggle && (
+				<Pressable style={styles.tapSurface} onPress={handleSurfaceTap} />
+			)}
+
+			{showSpinner && (
+				<View style={styles.centerOverlay} pointerEvents="none">
+					<ActivityIndicator size="large" color="#fff" />
+				</View>
+			)}
+
+			{!nativeControls && showPlayButton && (
+				<Pressable style={styles.centerOverlay} onPress={handleSurfaceTap}>
 					<View style={styles.playButton}>
 						<FontAwesome name="play" size={18} color="#fff" style={styles.playIcon} />
 					</View>
 				</Pressable>
+			)}
+
+			{isError && (
+				<Pressable style={styles.centerOverlay} onPress={handlePlayPause}>
+					<View style={styles.errorBox}>
+						<FontAwesome name="exclamation-triangle" size={20} color="#fff" />
+						<Text style={styles.errorText}>Couldn't play video</Text>
+						<Text style={styles.errorRetry}>Tap to retry</Text>
+					</View>
+				</Pressable>
+			)}
+
+			{!nativeControls && !isError && (
+				<View style={styles.progressTrack} pointerEvents="none">
+					<View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
+				</View>
 			)}
 		</View>
 	);
@@ -179,7 +227,7 @@ const styles = StyleSheet.create({
 	tapSurface: {
 		...StyleSheet.absoluteFillObject,
 	},
-	playOverlay: {
+	centerOverlay: {
 		...StyleSheet.absoluteFillObject,
 		justifyContent: "center",
 		alignItems: "center",
@@ -194,5 +242,35 @@ const styles = StyleSheet.create({
 	},
 	playIcon: {
 		marginLeft: 3,
+	},
+	errorBox: {
+		alignItems: "center",
+		paddingHorizontal: 24,
+		paddingVertical: 18,
+		borderRadius: 14,
+		backgroundColor: "rgba(0, 0, 0, 0.7)",
+	},
+	errorText: {
+		color: "#fff",
+		fontSize: 15,
+		fontWeight: "600",
+		marginTop: 10,
+	},
+	errorRetry: {
+		color: "rgba(255, 255, 255, 0.7)",
+		fontSize: 13,
+		marginTop: 4,
+	},
+	progressTrack: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: 0,
+		height: 3,
+		backgroundColor: "rgba(255, 255, 255, 0.2)",
+	},
+	progressFill: {
+		height: 3,
+		backgroundColor: "#fff",
 	},
 });

@@ -60,7 +60,8 @@ class UploadWorker(
       anonKey = anonKey,
       bearerToken = bearerToken,
       objectName = objectName,
-      staged = staged
+      staged = staged,
+      contentType = contentType
     )
 
     return try {
@@ -176,10 +177,13 @@ class UploadWorker(
     anonKey: String,
     bearerToken: String,
     objectName: String,
-    staged: File
+    staged: File,
+    contentType: String
   ): String? {
     return try {
-      val jpeg = downsampledJpeg(staged, 512, 60) ?: return null
+      val isVideo = contentType.startsWith("video/")
+      val jpeg = (if (isVideo) videoFrameJpeg(staged, 512, 60) else downsampledJpeg(staged, 512, 60))
+        ?: return null
       val path = thumbnailObjectName(objectName)
       val url = "$supabaseUrl/storage/v1/object/thumbnails/" +
         java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")
@@ -198,6 +202,44 @@ class UploadWorker(
     } catch (e: Exception) {
       android.util.Log.w("recapd-uploader", "thumbnail best-effort failed: ${e.message}")
       null
+    }
+  }
+
+  private fun videoFrameJpeg(file: File, maxPixelSize: Int, quality: Int): ByteArray? {
+    val retriever = android.media.MediaMetadataRetriever()
+    return try {
+      retriever.setDataSource(file.absolutePath)
+      val srcW = retriever
+        .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+        ?.toIntOrNull() ?: maxPixelSize
+      val srcH = retriever
+        .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+        ?.toIntOrNull() ?: maxPixelSize
+      val largest = maxOf(srcW, srcH, 1)
+      val scale = minOf(1.0, maxPixelSize.toDouble() / largest)
+      val dstW = maxOf(1, (srcW * scale).toInt())
+      val dstH = maxOf(1, (srcH * scale).toInt())
+      val frame = retriever.getScaledFrameAtTime(
+        100_000L,
+        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+        dstW,
+        dstH
+      ) ?: retriever.frameAtTime ?: return null
+      try {
+        java.io.ByteArrayOutputStream().use { out ->
+          frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+          out.toByteArray()
+        }
+      } finally {
+        frame.recycle()
+      }
+    } catch (e: Exception) {
+      android.util.Log.w("recapd-uploader", "video thumbnail failed: ${e.message}")
+      null
+    } finally {
+      try {
+        retriever.release()
+      } catch (_: Exception) {}
     }
   }
 
