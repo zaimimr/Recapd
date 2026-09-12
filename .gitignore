@@ -14,5 +14,5 @@ node_modules/
 /ios/
 /android/
 
-# Impeccable local design review evidence
-.impeccable/
+# Impeccable local design review evidence (the design sidecar itself is tracked)
+.impeccable/review/

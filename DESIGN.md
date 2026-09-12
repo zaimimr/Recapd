@@ -209,7 +209,7 @@ A near-black grey-violet ladder with a single three-stop sunset ramp laid across
 ### Neutral
 
 - **Ink** (`#0B0B12`): the page ground and the splash background, so launch does not flash a different dark.
-- **Deep Ink** (`#07070C`): reserved darker ground; it is what the overlay and image scrims are mixed from.
+- **Deep Ink** (`#07070C`): the darker ground, used as the base of the modal overlay (`rgba(7,7,12,0.82)`) that dims a screen behind a dialog.
 - **Card** (`#15151F`): every card, every panel, and the fill a disabled button falls back to.
 - **Raised Card** (`#1E1E2B`): the surface one step above a card — input shells, stat tiles, grid-tile backing, the secondary button.
 - **Edge** (`#2A2A38`): the 1px border that does the structural work in this system, and the hairline divider between list rows.
@@ -254,7 +254,7 @@ The six-character album code is the one bespoke type treatment: 34px / weight 80
 
 ### Named Rules
 
-**The Weight-Not-Family Rule.** Hierarchy is expressed through weight (500 → 700 → 800) and tracking. Do not introduce a second font family, a serif, or a display webfont. (`SpaceMono` is loaded at boot as an Expo leftover and is applied to nothing — leave it that way or remove it; do not start using it.)
+**The Weight-Not-Family Rule.** One platform system face carries the entire hierarchy, and it is expressed through weight (500 → 700 → 800) and tracking. Do not introduce a second font family, a serif, or a display webfont. The app loads exactly one font at boot — the Feather icon set — and ships no text font of its own.
 
 **The Tightening Rule.** The bigger the type, the tighter the tracking: -1px at 30px, -0.3px at 16px, 0 at 13.5px and below. Eyebrows invert this and open to +1.4px, which is what makes them read as labels instead of as small headlines.
 
@@ -287,7 +287,7 @@ This system separates surfaces with **tonal layering and a hairline edge**, not 
 - **Card seat** (`0 8px 18px rgba(0,0,0,0.35)`, Android elevation 6): on every `Card` and `AlbumCard`. Perceptible only at the card's bottom edge.
 - **Accent glow** (`0 10px 20px rgba(255,45,142,0.45)`, Android elevation 10): on the gradient primary button only. This is the one place a shadow is meant to be *seen* — it is the halo under the lit door, and it disappears the moment the button is disabled.
 
-`shadow.sheet` is defined in the token file but currently applied nowhere.
+Those two are the entire shadow vocabulary. There is no third depth step and no sheet shadow; a modal or sheet separates itself with the overlay behind it, not with a shadow of its own.
 
 ### Named Rules
 
