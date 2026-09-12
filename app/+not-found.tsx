@@ -1,5 +1,5 @@
 import { Link, Stack } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { Screen } from "@/components/ui";
 import { space, theme, type } from "@/constants/theme";
 

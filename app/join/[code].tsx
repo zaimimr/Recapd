@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
 	ActivityIndicator,
@@ -7,8 +7,6 @@ import {
 	Platform,
 	StyleSheet,
 	Text,
-	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
 import {

@@ -3,7 +3,6 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	KeyboardAvoidingView,
 	Modal,
@@ -11,7 +10,6 @@ import {
 	StyleSheet,
 	Text,
 	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
 import {
@@ -216,8 +214,8 @@ export default function JoinEventScreen() {
 								<View style={styles.fullRow}>
 									<Feather name="alert-circle" size={18} color={theme.danger} />
 									<Text style={styles.fullText}>
-										This album is at its {participantLimit}-guest limit. Ask the host to upgrade
-										for more spots.
+										This album is at its {participantLimit}-guest limit. Ask the host to upgrade for
+										more spots.
 									</Text>
 								</View>
 							</Card>
@@ -250,12 +248,7 @@ export default function JoinEventScreen() {
 							disabled={!canJoin || isEventFull}
 							onPress={handleJoin}
 						/>
-						<Button
-							label="Use a different code"
-							variant="ghost"
-							size="md"
-							onPress={handleBack}
-						/>
+						<Button label="Use a different code" variant="ghost" size="md" onPress={handleBack} />
 					</ScreenScroll>
 				</KeyboardAvoidingView>
 			</Screen>
@@ -270,10 +263,7 @@ export default function JoinEventScreen() {
 				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<ScreenScroll contentContainerStyle={styles.content}>
-					<SectionHeader
-						eyebrow="10 seconds to join"
-						title="Got a code from the host?"
-					/>
+					<SectionHeader eyebrow="10 seconds to join" title="Got a code from the host?" />
 					<Text style={styles.lede}>
 						Type the six characters, or scan the QR they're holding up. No account needed.
 					</Text>

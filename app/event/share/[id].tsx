@@ -84,12 +84,7 @@ export default function ShareEventScreen() {
 					<Eyebrow style={styles.centerText}>Scan to join</Eyebrow>
 
 					<View style={styles.qrPlate}>
-						<QRCode
-							value={deepLink}
-							size={188}
-							backgroundColor="#FFFFFF"
-							color={theme.pageDeep}
-						/>
+						<QRCode value={deepLink} size={188} backgroundColor="#FFFFFF" color={theme.pageDeep} />
 					</View>
 
 					<Text style={styles.codeLabel}>Or enter the code</Text>
@@ -129,9 +124,7 @@ export default function ShareEventScreen() {
 								title={participant.nickname || "Guest"}
 								subtitle={participant.role === "host" ? "Host" : undefined}
 								trailing={
-									<Text style={styles.joinedAt}>
-										{formatRelativeJoin(participant.joined_at)}
-									</Text>
+									<Text style={styles.joinedAt}>{formatRelativeJoin(participant.joined_at)}</Text>
 								}
 								last={index === recentGuests.length - 1}
 							/>
