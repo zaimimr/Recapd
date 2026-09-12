@@ -40,7 +40,6 @@ interface MasonryGridProps {
 	onRetry?: (id: string) => void;
 	onSkip?: (id: string) => void;
 	onRemove?: (id: string) => void;
-	isDark: boolean;
 	headerComponent?: ReactElement | null;
 	emptyComponent?: ReactElement | null;
 	refreshControl?: ReactElement<RefreshControlProps>;
@@ -49,7 +48,6 @@ interface MasonryGridProps {
 function GridTile({
 	photo,
 	index,
-	isDark,
 	onPhotoPress,
 	onRetry,
 	onSkip,
@@ -57,7 +55,6 @@ function GridTile({
 }: {
 	photo: MergedMediaItem;
 	index: number;
-	isDark: boolean;
 	onPhotoPress: (photo: MergedMediaItem, index: number) => void;
 	onRetry?: (id: string) => void;
 	onSkip?: (id: string) => void;
@@ -312,7 +309,6 @@ export default function MasonryGrid({
 	onRetry,
 	onSkip,
 	onRemove,
-	isDark,
 	headerComponent,
 	emptyComponent,
 	refreshControl,
@@ -339,14 +335,13 @@ export default function MasonryGrid({
 				<MemoizedGridTile
 					photo={item.photo}
 					index={item.index}
-					isDark={isDark}
 					onPhotoPress={onPhotoPress}
 					onRetry={onRetry}
 					onSkip={onSkip}
 					onRemove={onRemove}
 				/>
 			),
-		[isDark, onPhotoPress, onRemove, onRetry, onSkip]
+		[onPhotoPress, onRemove, onRetry, onSkip]
 	);
 
 	const getItemType = useCallback(

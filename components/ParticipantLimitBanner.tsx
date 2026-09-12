@@ -9,7 +9,6 @@ interface ParticipantLimitBannerProps {
 	participantCount: number;
 	hostIsPro: boolean;
 	isHost: boolean;
-	isDark?: boolean;
 }
 
 export default function ParticipantLimitBanner({

@@ -51,7 +51,6 @@ interface PhotoViewerProps {
 	onClose: () => void;
 	onDelete?: (photoId: string) => Promise<boolean>;
 	currentUserId?: string;
-	isDark: boolean;
 	initialThumbnailUri?: string;
 }
 
@@ -307,7 +306,6 @@ export default function PhotoViewer({
 	onClose,
 	onDelete,
 	currentUserId,
-	isDark,
 	initialThumbnailUri,
 }: PhotoViewerProps) {
 	const insets = useSafeAreaInsets();

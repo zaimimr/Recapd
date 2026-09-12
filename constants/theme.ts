@@ -165,14 +165,6 @@ const dark: AppTheme = {
 	glassBorder: "rgba(255,255,255,0.18)",
 };
 
-export const themes = { light: dark, dark, palette };
-
-/**
- * Recapd ships a single dark appearance. The scheme argument is accepted so
- * existing call sites keep compiling, but it never changes the result.
- */
-export function getTheme(_scheme?: unknown): AppTheme {
-	return dark;
-}
-
+/** Recapd ships a single dark appearance. */
 export const theme = dark;
+export { palette };

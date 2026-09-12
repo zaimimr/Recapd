@@ -25,7 +25,6 @@ interface GuestSheetProps {
 	visible: boolean;
 	onClose: () => void;
 	participants: ParticipantWithStats[];
-	isDark: boolean;
 	isHost: boolean;
 	currentUserId: string;
 	eventId: string;
@@ -37,7 +36,6 @@ export default function GuestSheet({
 	visible,
 	onClose,
 	participants,
-	isDark,
 	isHost,
 	currentUserId,
 	eventId,

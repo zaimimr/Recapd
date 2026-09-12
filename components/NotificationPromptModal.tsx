@@ -11,14 +11,12 @@ interface NotificationPromptModalProps {
 	visible: boolean;
 	onEnable: () => void;
 	onMaybeLater: () => void;
-	isDark: boolean;
 }
 
 export default function NotificationPromptModal({
 	visible,
 	onEnable,
 	onMaybeLater,
-	isDark,
 }: NotificationPromptModalProps) {
 	const insets = useSafeAreaInsets();
 	const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;

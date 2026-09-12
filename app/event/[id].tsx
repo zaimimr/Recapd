@@ -650,7 +650,6 @@ export default function EventScreen() {
 				onRetry={retryFailedUpload}
 				onSkip={handleSkipUpload}
 				onRemove={handleRemoveUpload}
-				isDark
 				refreshControl={
 					<RefreshControl
 						refreshing={isRefreshing}
@@ -761,7 +760,6 @@ export default function EventScreen() {
 							participantCount={currentEvent.participant_count || 0}
 							hostIsPro={currentEvent.hostIsPro || false}
 							isHost={isHost || false}
-							isDark
 						/>
 
 						{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos ? (
@@ -801,7 +799,6 @@ export default function EventScreen() {
 				onClose={handleCloseViewer}
 				onDelete={handleDeletePhoto}
 				currentUserId={user?.id}
-				isDark
 				initialThumbnailUri={selectedThumbnailUri}
 			/>
 
@@ -809,7 +806,6 @@ export default function EventScreen() {
 				visible={guestSheetVisible}
 				onClose={() => setGuestSheetVisible(false)}
 				participants={participants}
-				isDark
 				isHost={isHost || false}
 				currentUserId={user?.id || ""}
 				eventId={id}
@@ -821,7 +817,6 @@ export default function EventScreen() {
 				visible={notificationPromptVisible}
 				onEnable={handleEnableNotifications}
 				onMaybeLater={handleMaybeLater}
-				isDark
 			/>
 
 			{id ? (
