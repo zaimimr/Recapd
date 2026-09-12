@@ -824,7 +824,11 @@ export default function EventScreen() {
 				isDark
 			/>
 
-			{id ? <UploadProgressBar eventId={id} /> : null}
+			{id ? (
+				<View style={styles.uploadBarDock} pointerEvents="box-none">
+					<UploadProgressBar eventId={id} />
+				</View>
+			) : null}
 		</Screen>
 	);
 }
@@ -928,13 +932,17 @@ const styles = StyleSheet.create({
 		marginTop: space.sm,
 	},
 
-	uploadBar: {
+	uploadBarDock: {
 		position: "absolute",
-		alignSelf: "center",
-		maxWidth: CONTENT_MAX_WIDTH,
-		left: space.md,
-		right: space.md,
+		left: 0,
+		right: 0,
 		bottom: space.xl,
+		alignItems: "center",
+		paddingHorizontal: space.md,
+	},
+	uploadBar: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
 		backgroundColor: theme.cardElevated,
 		borderRadius: radius.lg,
 		borderWidth: 1,
