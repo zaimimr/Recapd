@@ -341,7 +341,7 @@ export default function PhotoViewer({
 	const captureTimeLabel = capturedAt ? formatLocalizedTime(capturedAt) : null;
 
 	const megapixels =
-		currentPhoto.width && currentPhoto.height
+		currentPhoto?.width && currentPhoto?.height
 			? (currentPhoto.width * currentPhoto.height) / 1_000_000
 			: null;
 	const qualityLabel =
@@ -641,7 +641,7 @@ export default function PhotoViewer({
 								</Pressable>
 							) : null}
 
-							{!currentPhoto.isPending ? (
+							{currentPhoto && !currentPhoto.isPending ? (
 								<Pressable
 									onPress={handleDownload}
 									disabled={saving}
