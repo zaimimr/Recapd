@@ -96,11 +96,7 @@ export default function EventsScreen() {
 				}
 				showsVerticalScrollIndicator={false}
 				ListHeaderComponent={
-					<SectionHeader
-						eyebrow="Your albums"
-						title="Every night, kept"
-						style={styles.header}
-					/>
+					<SectionHeader eyebrow="Your albums" title="Every night, kept" style={styles.header} />
 				}
 				ListEmptyComponent={
 					isLoading ? (

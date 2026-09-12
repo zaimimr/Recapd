@@ -24,7 +24,7 @@ interface FieldProps extends TextInputProps {
  */
 const Field = forwardRef<TextInput, FieldProps>(function Field(
 	{ label, hint, error, icon, containerStyle, style, ...props },
-	ref,
+	ref
 ) {
 	return (
 		<View style={[styles.wrap, containerStyle]}>

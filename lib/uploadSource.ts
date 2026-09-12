@@ -169,7 +169,7 @@ async function copyToSources(
 		);
 	}
 	const detectedSize =
-		typeof sourceInfo.size === "number" && sourceInfo.size > 0 ? sourceInfo.size : knownSize ?? 0;
+		typeof sourceInfo.size === "number" && sourceInfo.size > 0 ? sourceInfo.size : (knownSize ?? 0);
 	if (detectedSize > 0) {
 		await ensureFreeDiskFor(detectedSize);
 	}
@@ -206,10 +206,7 @@ async function copyToSources(
 				? detectedSize
 				: 0;
 	if (finalSize === 0) {
-		throw new UploadSourceUnavailableError(
-			"missing",
-			`Copied source is empty: ${target}`
-		);
+		throw new UploadSourceUnavailableError("missing", `Copied source is empty: ${target}`);
 	}
 
 	addUploadBreadcrumb("materialize.copy.ok", {
@@ -238,19 +235,12 @@ async function copyToSources(
 	};
 }
 
-async function useInPlace(
-	uri: string,
-	knownSize: number | undefined
-): Promise<MaterializedSource> {
+async function useInPlace(uri: string, knownSize: number | undefined): Promise<MaterializedSource> {
 	const info = await getInfoAsync(stripUriDecorations(uri));
 	if (!info.exists || info.isDirectory) {
-		throw new UploadSourceUnavailableError(
-			"missing",
-			`In-place source missing: ${uri}`
-		);
+		throw new UploadSourceUnavailableError("missing", `In-place source missing: ${uri}`);
 	}
-	const size =
-		typeof info.size === "number" && info.size > 0 ? info.size : knownSize ?? 0;
+	const size = typeof info.size === "number" && info.size > 0 ? info.size : (knownSize ?? 0);
 	if (size === 0) {
 		throw new UploadSourceUnavailableError("missing", `In-place source is empty: ${uri}`);
 	}

@@ -262,10 +262,7 @@ function RootLayoutNav() {
 			<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 			<Stack screenOptions={stackScreenOptions}>
 				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-				<Stack.Screen
-					name="event/create"
-					options={{ headerShown: false, presentation: "modal" }}
-				/>
+				<Stack.Screen name="event/create" options={{ headerShown: false, presentation: "modal" }} />
 				<Stack.Screen name="event/join" options={{ headerShown: false, presentation: "modal" }} />
 				<Stack.Screen name="event/[id]" options={{ headerShown: false }} />
 				<Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />

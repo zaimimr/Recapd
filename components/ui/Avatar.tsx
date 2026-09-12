@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
-import { getAvatarColor } from "@/lib/colors";
 import { theme } from "@/constants/theme";
+import { getAvatarColor } from "@/lib/colors";
 
 function initial(name: string) {
 	return (name?.trim()?.[0] ?? "?").toUpperCase();

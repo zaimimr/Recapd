@@ -83,12 +83,7 @@ export default function AlbumCard({
 				</View>
 			</View>
 
-			<Feather
-				name="chevron-right"
-				size={18}
-				color={theme.textDisabled}
-				style={styles.chevron}
-			/>
+			<Feather name="chevron-right" size={18} color={theme.textDisabled} style={styles.chevron} />
 		</Pressable>
 	);
 }

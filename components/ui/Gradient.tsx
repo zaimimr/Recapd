@@ -46,8 +46,7 @@ export default function Gradient({
 					<LinearGradient id={id} x1={x1} y1={y1} x2={x2} y2={y2}>
 						{stops.map((color, index) => (
 							<Stop
-								// biome-ignore lint/suspicious/noArrayIndexKey: gradient stops are positional
-								key={index}
+								key={`${color}-${index}`}
 								offset={`${(index / (stops.length - 1)) * 100}%`}
 								stopColor={color}
 								stopOpacity={1}

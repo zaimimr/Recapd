@@ -1,9 +1,10 @@
-export { default as Button } from "./Button";
+export { Avatar, AvatarStack } from "./Avatar";
 export type { ButtonSize, ButtonVariant } from "./Button";
+export { default as Button } from "./Button";
 export { default as Field } from "./Field";
 export { default as Gradient } from "./Gradient";
-export { Avatar, AvatarStack } from "./Avatar";
 export { NavBar, Screen, ScreenScroll } from "./Screen";
+export type { PillTone } from "./Surface";
 export {
 	Card,
 	EmptyState,
@@ -14,4 +15,3 @@ export {
 	SectionHeader,
 	StatRow,
 } from "./Surface";
-export type { PillTone } from "./Surface";

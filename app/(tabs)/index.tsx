@@ -61,11 +61,7 @@ export default function HomeScreen() {
 						<SectionHeader
 							eyebrow="Open now"
 							title="Your albums"
-							trailing={
-								events.length > 3 ? (
-									<Pill label={`${events.length} total`} />
-								) : null
-							}
+							trailing={events.length > 3 ? <Pill label={`${events.length} total`} /> : null}
 						/>
 						<View style={styles.cards}>
 							{activeEvents.map((event) => (

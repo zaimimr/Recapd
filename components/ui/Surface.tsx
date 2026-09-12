@@ -59,7 +59,13 @@ export function Card({
 
 /* -------------------------------------------------------------- Eyebrow + SectionHeader */
 
-export function Eyebrow({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
+export function Eyebrow({
+	children,
+	style,
+}: {
+	children: ReactNode;
+	style?: StyleProp<TextStyle>;
+}) {
 	return <Text style={[styles.eyebrow, style]}>{String(children).toUpperCase()}</Text>;
 }
 
@@ -134,7 +140,12 @@ export function StatRow({ items }: { items: { value: string | number; label: str
 		<View style={styles.statRow}>
 			{items.map((item) => (
 				<View key={item.label} style={styles.statTile}>
-					<Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+					<Text
+						style={styles.statValue}
+						numberOfLines={1}
+						adjustsFontSizeToFit
+						minimumFontScale={0.7}
+					>
 						{item.value}
 					</Text>
 					<Text style={styles.statLabel} numberOfLines={1}>
@@ -228,7 +239,11 @@ export function ListRow({
 				? "rgba(255,255,255,0.07)"
 				: theme.accentSurface;
 	const iconFg =
-		iconTone === "danger" ? theme.danger : iconTone === "neutral" ? theme.textMuted : theme.accentSoft;
+		iconTone === "danger"
+			? theme.danger
+			: iconTone === "neutral"
+				? theme.textMuted
+				: theme.accentSoft;
 
 	const content = (
 		<>
@@ -238,10 +253,7 @@ export function ListRow({
 				</View>
 			) : null}
 			<View style={styles.rowText}>
-				<Text
-					style={[styles.rowTitle, destructive && { color: theme.danger }]}
-					numberOfLines={1}
-				>
+				<Text style={[styles.rowTitle, destructive && { color: theme.danger }]} numberOfLines={1}>
 					{title}
 				</Text>
 				{subtitle ? (
@@ -250,7 +262,8 @@ export function ListRow({
 					</Text>
 				) : null}
 			</View>
-			{trailing ?? (onPress ? <Feather name="chevron-right" size={17} color={theme.textDisabled} /> : null)}
+			{trailing ??
+				(onPress ? <Feather name="chevron-right" size={17} color={theme.textDisabled} /> : null)}
 		</>
 	);
 

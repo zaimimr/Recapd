@@ -19,7 +19,9 @@ const STATUS: Record<EventStatusKey, EventStatus> = {
 	expired: { key: "expired", label: "Expired", tone: "neutral", dot: false },
 };
 
-export function getEventStatus(event: Pick<Event, "starts_at" | "ends_at" | "status">): EventStatus {
+export function getEventStatus(
+	event: Pick<Event, "starts_at" | "ends_at" | "status">
+): EventStatus {
 	if (event.status === "expired") return STATUS.expired;
 
 	const now = new Date();

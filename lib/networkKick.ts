@@ -1,5 +1,5 @@
-import { AppState, type AppStateStatus } from "react-native";
 import * as Network from "expo-network";
+import { AppState, type AppStateStatus } from "react-native";
 import { logger } from "./logger";
 
 const FOREGROUND_KICK_DEBOUNCE_MS = 1500;

@@ -67,10 +67,7 @@ export default function Button({
 	) : (
 		<View style={styles.content}>
 			{icon ? <Feather name={icon} size={dims.icon} color={contentColor} /> : null}
-			<Text
-				style={[styles.label, { color: contentColor, fontSize: dims.font }]}
-				numberOfLines={1}
-			>
+			<Text style={[styles.label, { color: contentColor, fontSize: dims.font }]} numberOfLines={1}>
 				{label}
 			</Text>
 			{iconRight ? <Feather name={iconRight} size={dims.icon} color={contentColor} /> : null}

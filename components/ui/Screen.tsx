@@ -3,8 +3,8 @@ import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import {
 	Pressable,
-	type ScrollViewProps,
 	ScrollView,
+	type ScrollViewProps,
 	StyleSheet,
 	Text,
 	View,
@@ -75,7 +75,7 @@ export function NavBar({
 }: {
 	title?: string;
 	subtitle?: string;
-	onBack?: () => void | null;
+	onBack?: () => void;
 	right?: ReactNode;
 	transparent?: boolean;
 }) {

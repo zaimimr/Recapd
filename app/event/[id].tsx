@@ -133,13 +133,7 @@ function UploadProgressBar({ eventId }: { eventId: string }) {
 				) : null}
 				<View style={styles.uploadBarSpacer} />
 				{counts.failed > 0 ? (
-					<Button
-						label="Retry"
-						icon="refresh-cw"
-						size="sm"
-						full={false}
-						onPress={handleRetryAll}
-					/>
+					<Button label="Retry" icon="refresh-cw" size="sm" full={false} onPress={handleRetryAll} />
 				) : null}
 				<Button
 					label="Cancel all"
@@ -635,9 +629,7 @@ export default function EventScreen() {
 					month: "short",
 					day: "numeric",
 				})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}`}
-				onBack={() =>
-					router.canGoBack() ? router.back() : router.replace("/(tabs)/events")
-				}
+				onBack={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/events"))}
 				right={
 					<>
 						{isHost ? (

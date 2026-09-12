@@ -42,11 +42,7 @@ export default function BrandButton({
 	const isOutline = variant === "outline";
 
 	const containerStyle: ViewStyle = {
-		backgroundColor: isSolid
-			? theme.accent
-			: isOutline
-				? "transparent"
-				: theme.accentSurface,
+		backgroundColor: isSolid ? theme.accent : isOutline ? "transparent" : theme.accentSurface,
 		borderWidth: isOutline ? 1.5 : 0,
 		borderColor: isOutline ? theme.accentBorder : "transparent",
 		opacity: disabled ? 0.5 : 1,
