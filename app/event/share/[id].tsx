@@ -1,17 +1,19 @@
 import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-	ActivityIndicator,
-	Alert,
-	Share,
-	StyleSheet,
-	Text,
-	TouchableOpacity,
-	View,
-} from "react-native";
+import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import { useColorScheme } from "@/components/useColorScheme";
+import {
+	Button,
+	Card,
+	Eyebrow,
+	ListRow,
+	NavBar,
+	Pill,
+	Screen,
+	ScreenScroll,
+} from "@/components/ui";
+import { radius, space, theme, type } from "@/constants/theme";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useEventStore } from "@/store/eventStore";
 
@@ -19,8 +21,6 @@ export default function ShareEventScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	const router = useRouter();
 	const { fetchEventById, currentEvent, isLoading } = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
 	const [copied, setCopied] = useState(false);
 
@@ -63,203 +63,191 @@ export default function ShareEventScreen() {
 
 	if (isLoading || !currentEvent) {
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-			</View>
+			<Screen style={styles.centered}>
+				<ActivityIndicator size="large" color={theme.accent} />
+			</Screen>
 		);
 	}
 
-	// Deep link for QR code (opens app directly if installed)
+	// Deep link for the QR; the web URL redirects to the app or the store.
 	const deepLink = `recapd://join/${currentEvent.join_code}`;
-	// Web URL for sharing (has smart redirect to app or store)
-	const _shareUrl = `https://recapd.app/join/${currentEvent.join_code}`;
+	const recentGuests = [...(currentEvent.participants ?? [])]
+		.sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime())
+		.slice(0, 4);
 
 	return (
-		<View style={[styles.container, isDark && styles.containerDark]}>
-			<View style={styles.content}>
-				<View style={[styles.header, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Invite</Text>
-					<Text style={[styles.title, isDark && styles.textDark]}>{currentEvent.title}</Text>
-					<Text style={[styles.subtitle, isDark && styles.textMuted]}>
-						{formatLocalizedDate(currentEvent.starts_at, {
-							weekday: "short",
-							month: "short",
-							day: "numeric",
-						})}{" "}
-						• {formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}
-					</Text>
-				</View>
+		<Screen edges="both">
+			<NavBar title="Invite guests" subtitle={currentEvent.title} onBack={handleDone} />
 
-				<View style={[styles.qrContainer, isDark && styles.panelDark]}>
-					<View style={styles.qrWrapper}>
-						<QRCode value={deepLink} size={200} backgroundColor="#fff" color="#000" />
+			<ScreenScroll contentContainerStyle={styles.content}>
+				<Card style={styles.qrCard}>
+					<Eyebrow style={styles.centerText}>Scan to join</Eyebrow>
+
+					<View style={styles.qrPlate}>
+						<QRCode
+							value={deepLink}
+							size={188}
+							backgroundColor="#FFFFFF"
+							color={theme.pageDeep}
+						/>
 					</View>
-				</View>
 
-				<View style={[styles.codeSection, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Join Code</Text>
-					<TouchableOpacity style={styles.codeButton} onPress={handleCopyCode}>
-						<Text style={[styles.codeText, isDark && styles.textDark]}>
-							{currentEvent.join_code}
-						</Text>
-						<Text style={styles.copyHint}>{copied ? "Copied!" : "Tap to copy"}</Text>
-					</TouchableOpacity>
-				</View>
-
-				<View style={styles.actions}>
-					<TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-						<Text style={styles.shareButtonText}>Share Invite</Text>
-					</TouchableOpacity>
-
-					<TouchableOpacity
-						style={[styles.doneButton, isDark && styles.doneButtonDark]}
-						onPress={handleDone}
+					<Text style={styles.codeLabel}>Or enter the code</Text>
+					<Pressable
+						onPress={handleCopyCode}
+						accessibilityRole="button"
+						accessibilityLabel={`Join code ${currentEvent.join_code}`}
+						accessibilityHint="Copies the code to your clipboard"
+						style={({ pressed }) => [styles.codeRow, pressed && { opacity: 0.7 }]}
 					>
-						<Text style={[styles.doneButtonText, isDark && styles.textDark]}>Done</Text>
-					</TouchableOpacity>
-				</View>
-			</View>
-		</View>
+						{currentEvent.join_code.split("").map((character, index) => (
+							<View key={`${character}-${index}`} style={styles.codeCell}>
+								<Text style={styles.codeChar}>{character}</Text>
+							</View>
+						))}
+					</Pressable>
+					<Text style={[styles.copyHint, copied && styles.copyHintDone]}>
+						{copied ? "Copied" : "Tap the code to copy"}
+					</Text>
+				</Card>
+
+				<Button label="Share the link" icon="share" onPress={handleShare} />
+
+				<Card padded={false}>
+					<View style={styles.guestHeader}>
+						<Eyebrow>Joined so far</Eyebrow>
+						<Pill
+							label={`${currentEvent.participant_count ?? recentGuests.length}`}
+							tone="live"
+							dot
+						/>
+					</View>
+					{recentGuests.length > 0 ? (
+						recentGuests.map((participant, index) => (
+							<ListRow
+								key={participant.id}
+								title={participant.nickname || "Guest"}
+								subtitle={participant.role === "host" ? "Host" : undefined}
+								trailing={
+									<Text style={styles.joinedAt}>
+										{formatRelativeJoin(participant.joined_at)}
+									</Text>
+								}
+								last={index === recentGuests.length - 1}
+							/>
+						))
+					) : (
+						<View style={styles.noGuests}>
+							<Text style={styles.noGuestsText}>
+								Nobody has scanned yet. Hold the code up and they will appear here.
+							</Text>
+						</View>
+					)}
+				</Card>
+
+				<Text style={styles.footnote}>
+					Guests type a first name and they are in. No account, no email, no password.
+				</Text>
+			</ScreenScroll>
+		</Screen>
 	);
 }
 
+function formatRelativeJoin(value: string) {
+	const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes} min ago`;
+	const hours = Math.round(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	return `${Math.round(hours / 24)}d ago`;
+}
+
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
-	},
 	centered: {
-		justifyContent: "center",
 		alignItems: "center",
+		justifyContent: "center",
 	},
 	content: {
-		flex: 1,
-		padding: 16,
+		paddingHorizontal: space.lg,
+		paddingTop: space.xs,
+		paddingBottom: space.xxl,
+		gap: space.md,
+	},
+	qrCard: {
 		alignItems: "center",
-		gap: 14,
+		paddingVertical: space.xl,
 	},
-	header: {
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-		width: "100%",
-		gap: 6,
-	},
-	panelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#6b7280",
-	},
-	title: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		textAlign: "center",
-		letterSpacing: -0.6,
-	},
-	subtitle: {
-		fontSize: 14,
-		color: "#6b7280",
+	centerText: {
 		textAlign: "center",
 	},
-	qrContainer: {
-		width: "100%",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingVertical: 20,
-		alignItems: "center",
-	},
-	qrWrapper: {
-		backgroundColor: "#fff",
-		padding: 16,
-		borderRadius: 0,
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.1,
-		shadowRadius: 12,
-		elevation: 5,
-	},
-	codeSection: {
-		alignItems: "center",
-		width: "100%",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingVertical: 18,
-		gap: 10,
+	qrPlate: {
+		marginTop: space.lg,
+		padding: space.md,
+		borderRadius: radius.xl,
+		backgroundColor: "#FFFFFF",
 	},
 	codeLabel: {
-		fontSize: 14,
-		color: "#666",
-		marginBottom: 8,
+		...type.eyebrow,
+		color: theme.textMuted,
+		marginTop: space.xl,
 	},
-	codeButton: {
+	codeRow: {
+		flexDirection: "row",
+		gap: 6,
+		marginTop: space.md,
+	},
+	codeCell: {
+		width: 40,
+		height: 50,
+		borderRadius: radius.md,
+		backgroundColor: theme.cardElevated,
+		borderWidth: 1,
+		borderColor: theme.border,
 		alignItems: "center",
+		justifyContent: "center",
 	},
-	codeText: {
-		fontSize: 36,
-		fontWeight: "700",
-		fontFamily: "SpaceMono",
-		color: "#111827",
-		letterSpacing: 4,
+	codeChar: {
+		fontSize: 22,
+		fontWeight: "800",
+		letterSpacing: -0.5,
+		color: theme.textPrimary,
 	},
 	copyHint: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 4,
+		...type.caption,
 		fontWeight: "600",
+		color: theme.textMuted,
+		marginTop: space.md,
 	},
-	actions: {
-		width: "100%",
-		gap: 12,
-		marginTop: "auto",
-		paddingBottom: 24,
+	copyHintDone: {
+		color: theme.success,
 	},
-	shareButton: {
-		backgroundColor: "#111827",
-		paddingVertical: 18,
-		borderRadius: 999,
+	guestHeader: {
+		flexDirection: "row",
 		alignItems: "center",
+		justifyContent: "space-between",
+		paddingHorizontal: space.lg,
+		paddingTop: space.lg,
+		paddingBottom: space.sm,
 	},
-	shareButtonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
+	joinedAt: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
 	},
-	doneButton: {
-		paddingVertical: 16,
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
+	noGuests: {
+		paddingHorizontal: space.lg,
+		paddingBottom: space.lg,
 	},
-	doneButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
+	noGuestsText: {
+		...type.callout,
+		color: theme.textMuted,
 	},
-	doneButtonText: {
-		color: "#111827",
-		fontSize: 15,
-		fontWeight: "600",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
+	footnote: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textFaint,
+		textAlign: "center",
+		marginTop: space.xs,
+		lineHeight: 17,
 	},
 });
