@@ -112,15 +112,42 @@ jest.mock("@/store/eventStore", () => ({
 	}),
 }));
 
+jest.mock("react-native-safe-area-context", () => ({
+	SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+	useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
+}));
+
+jest.mock("@/lib/supabase", () => {
+	const chain: any = {};
+	for (const method of ["select", "insert", "update", "delete", "eq", "in", "order", "single", "filter", "is"]) {
+		chain[method] = jest.fn().mockReturnValue(chain);
+	}
+	chain.then = (resolve: any) => resolve({ data: null, error: null });
+	return {
+		supabase: {
+			from: jest.fn(() => chain),
+			storage: { from: jest.fn(() => ({ createSignedUrl: jest.fn(), getPublicUrl: jest.fn() })) },
+			auth: { getSession: jest.fn().mockResolvedValue({ data: { session: null } }) },
+			channel: jest.fn(() => ({ on: jest.fn().mockReturnThis(), subscribe: jest.fn() })),
+			removeChannel: jest.fn(),
+		},
+	};
+});
+
+jest.mock("@react-native-async-storage/async-storage", () => ({
+	__esModule: true,
+	default: {
+		getItem: jest.fn().mockResolvedValue(null),
+		setItem: jest.fn().mockResolvedValue(undefined),
+		removeItem: jest.fn().mockResolvedValue(undefined),
+	},
+}));
+
 let mockSubscriptionsEnabled = true;
 jest.mock("@/lib/billing/config", () => ({
 	get SUBSCRIPTIONS_ENABLED() {
 		return mockSubscriptionsEnabled;
 	},
-}));
-
-jest.mock("@/components/useColorScheme", () => ({
-	useColorScheme: () => "light",
 }));
 
 jest.mock("date-fns", () => ({
@@ -222,19 +249,19 @@ describe("Settings - Restore Button", () => {
 
 	it("renders Restore Purchases when user is not pro", () => {
 		const { getByText } = render(<SettingsScreen />);
-		expect(getByText("Restore Purchases")).toBeTruthy();
+		expect(getByText("Restore purchases")).toBeTruthy();
 	});
 
 	it("does not render Restore Purchases when isPro is true", () => {
 		mockIsPro = true;
 		mockedUseIsPro.mockReturnValue(true);
 		const { queryByText } = render(<SettingsScreen />);
-		expect(queryByText("Restore Purchases")).toBeNull();
+		expect(queryByText("Restore purchases")).toBeNull();
 	});
 
 	it("calls restore when Restore Purchases is pressed", async () => {
 		const { getByText } = render(<SettingsScreen />);
-		fireEvent.press(getByText("Restore Purchases"));
+		fireEvent.press(getByText("Restore purchases"));
 		await waitFor(() => {
 			expect(mockRestore).toHaveBeenCalledTimes(1);
 		});
@@ -255,10 +282,10 @@ describe("Join - Event Full", () => {
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
 
 		fireEvent.changeText(getByPlaceholderText("ABC123"), "ABCDEF");
-		fireEvent.press(getByText("Find Event"));
+		fireEvent.press(getByText("Find the album"));
 
 		await waitFor(() => {
-			expect(queryByText(/Event Full/)).toBeTruthy();
+			expect(queryByText(/Album is full/)).toBeTruthy();
 		});
 	});
 
@@ -268,11 +295,11 @@ describe("Join - Event Full", () => {
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
 
 		fireEvent.changeText(getByPlaceholderText("ABC123"), "ABCDEF");
-		fireEvent.press(getByText("Find Event"));
+		fireEvent.press(getByText("Find the album"));
 
 		await waitFor(() => {
-			expect(getByText("Event Full")).toBeTruthy();
-			expect(queryByText(/current plan limit/)).toBeTruthy();
+			expect(getByText("Album is full")).toBeTruthy();
+			expect(queryByText(/guest limit/)).toBeTruthy();
 		});
 	});
 
@@ -282,10 +309,10 @@ describe("Join - Event Full", () => {
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
 
 		fireEvent.changeText(getByPlaceholderText("ABC123"), "ABCDEF");
-		fireEvent.press(getByText("Find Event"));
+		fireEvent.press(getByText("Find the album"));
 
 		await waitFor(() => {
-			expect(getByText(/current plan limit/)).toBeTruthy();
+			expect(getByText(/guest limit/)).toBeTruthy();
 		});
 
 		expect(queryByText("What should we call you?")).toBeNull();
@@ -298,13 +325,13 @@ describe("Join - Event Full", () => {
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
 
 		fireEvent.changeText(getByPlaceholderText("ABC123"), "ABCDEF");
-		fireEvent.press(getByText("Find Event"));
+		fireEvent.press(getByText("Find the album"));
 
 		await waitFor(() => {
 			expect(getByText("Test Event")).toBeTruthy();
 		});
 
-		expect(queryByText(/current plan limit/)).toBeNull();
+		expect(queryByText(/guest limit/)).toBeNull();
 	});
 
 	it("does not show Event Full banner when participant_count < 12", async () => {
@@ -314,13 +341,13 @@ describe("Join - Event Full", () => {
 		const { getByPlaceholderText, getByText, queryByText } = render(<JoinEventScreen />);
 
 		fireEvent.changeText(getByPlaceholderText("ABC123"), "ABCDEF");
-		fireEvent.press(getByText("Find Event"));
+		fireEvent.press(getByText("Find the album"));
 
 		await waitFor(() => {
 			expect(getByText("Test Event")).toBeTruthy();
 		});
 
-		expect(queryByText(/current plan limit/)).toBeNull();
+		expect(queryByText(/guest limit/)).toBeNull();
 	});
 });
 

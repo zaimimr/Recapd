@@ -16,7 +16,7 @@
  *   finish review, the verdict, DESIGN.md, and every shipping raster carrying its
  *   provenance.
  */
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Feather from "@expo/vector-icons/Feather";
 import {
 	DarkTheme as DefaultNavigationTheme,
 	type Theme,
@@ -33,6 +33,7 @@ import {
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { AppState, StatusBar } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
@@ -80,7 +81,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 function RootLayout() {
 	const [loaded, error] = useFonts({
 		SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-		...FontAwesome.font,
+		...Feather.font,
 	});
 	const initializeAuth = useAuthStore((state) => state.initializeAuth);
 	const isInitialized = useAuthStore((state) => state.isInitialized);
@@ -258,32 +259,37 @@ function RootLayoutNav() {
 	}, [user?.id]);
 
 	return (
-		<ThemeProvider value={navigationTheme}>
-			<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-			<Stack screenOptions={stackScreenOptions}>
-				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-				<Stack.Screen name="event/create" options={{ headerShown: false, presentation: "modal" }} />
-				<Stack.Screen name="event/join" options={{ headerShown: false, presentation: "modal" }} />
-				<Stack.Screen name="event/[id]" options={{ headerShown: false }} />
-				<Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
-				<Stack.Screen
-					name="event/share/[id]"
-					options={{ headerShown: false, presentation: "modal" }}
-				/>
-				<Stack.Screen
-					name="contribute/[eventId]"
-					options={{ headerShown: false, presentation: "modal" }}
-				/>
-				<Stack.Screen
-					name="onboarding"
-					options={{
-						headerShown: false,
-						presentation: "modal",
-						gestureEnabled: false,
-					}}
-				/>
-			</Stack>
-		</ThemeProvider>
+		<SafeAreaProvider>
+			<ThemeProvider value={navigationTheme}>
+				<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+				<Stack screenOptions={stackScreenOptions}>
+					<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+					<Stack.Screen
+						name="event/create"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen name="event/join" options={{ headerShown: false, presentation: "modal" }} />
+					<Stack.Screen name="event/[id]" options={{ headerShown: false }} />
+					<Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
+					<Stack.Screen
+						name="event/share/[id]"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen
+						name="contribute/[eventId]"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen
+						name="onboarding"
+						options={{
+							headerShown: false,
+							presentation: "modal",
+							gestureEnabled: false,
+						}}
+					/>
+				</Stack>
+			</ThemeProvider>
+		</SafeAreaProvider>
 	);
 }
 

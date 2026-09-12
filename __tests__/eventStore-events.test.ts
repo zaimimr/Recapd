@@ -11,6 +11,7 @@ jest.mock("@/lib/supabase", () => {
 			"order",
 			"single",
 			"filter",
+			"is",
 			"limit",
 		];
 		methods.forEach((m) => {

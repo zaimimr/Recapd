@@ -1,4 +1,4 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
 	ActivityIndicator,
@@ -165,7 +165,7 @@ function ClusterRow({
 									)}
 									{isFailed && (
 										<TouchableOpacity style={styles.retryBadge} onPress={() => onRetry?.(photo.id)}>
-											<FontAwesome name="refresh" size={16} color="#fff" />
+											<Feather name="refresh-cw" size={16} color="#fff" />
 											<Text style={styles.retryText}>Retry</Text>
 										</TouchableOpacity>
 									)}
@@ -176,12 +176,7 @@ function ClusterRow({
 								<>
 									<View style={styles.videoPlayOverlay}>
 										<View style={styles.videoPlayButton}>
-											<FontAwesome
-												name="play"
-												size={20}
-												color="#fff"
-												style={styles.videoPlayIcon}
-											/>
+											<Feather name="play" size={20} color="#fff" style={styles.videoPlayIcon} />
 										</View>
 									</View>
 									{photo.duration_milliseconds != null && photo.duration_milliseconds > 0 && (

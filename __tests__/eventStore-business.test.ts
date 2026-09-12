@@ -11,6 +11,7 @@ jest.mock("@/lib/supabase", () => {
 			"order",
 			"single",
 			"filter",
+			"is",
 		];
 		methods.forEach((m) => {
 			chain[m] = jest.fn().mockReturnValue(chain);

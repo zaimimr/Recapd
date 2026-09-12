@@ -1,4 +1,4 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Feather from "@expo/vector-icons/Feather";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { theme } from "@/constants/theme";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { createVideoThumbnailUri } from "@/lib/storage";
 import MediaViewerPager from "./MediaViewerPager";
@@ -213,10 +214,10 @@ export default function SelectionPhotoViewer({
 		return "Select";
 	}
 
-	function getButtonIcon() {
-		if (isUploaded) return "cloud";
+	function getButtonIcon(): React.ComponentProps<typeof Feather>["name"] {
+		if (isUploaded) return "check-circle";
 		if (isSelected) return "check";
-		return "circle-o";
+		return "circle";
 	}
 
 	return (
@@ -234,7 +235,7 @@ export default function SelectionPhotoViewer({
 						onPress={onClose}
 						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
 					>
-						<FontAwesome name="chevron-down" size={20} color="#fff" />
+						<Feather name="chevron-down" size={20} color="#fff" />
 					</TouchableOpacity>
 					<View style={styles.headerCenter}>
 						<Text style={styles.counter}>
@@ -263,7 +264,7 @@ export default function SelectionPhotoViewer({
 				<View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
 					<View style={styles.mediaMetaRow}>
 						<View style={styles.mediaPill}>
-							<FontAwesome
+							<Feather
 								name={currentPhoto.mediaType === "video" ? "play" : "image"}
 								size={10}
 								color="#fff"
@@ -279,10 +280,10 @@ export default function SelectionPhotoViewer({
 						)}
 					</View>
 					<TouchableOpacity style={getButtonStyle()} onPress={handleToggle} disabled={isUploaded}>
-						<FontAwesome
+						<Feather
 							name={getButtonIcon()}
 							size={18}
-							color={isUploaded ? "#22c55e" : isSelected ? "#fff" : "#3b82f6"}
+							color={isUploaded ? theme.success : isSelected ? "#fff" : theme.accentSoft}
 							style={styles.buttonIcon}
 						/>
 						<Text style={getButtonTextStyle()}>{getButtonLabel()}</Text>
