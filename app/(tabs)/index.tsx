@@ -131,7 +131,6 @@ const styles = StyleSheet.create({
 	heroBody: {
 		...type.body,
 		color: theme.textMuted,
-		maxWidth: 320,
 	},
 	section: {
 		gap: space.lg,

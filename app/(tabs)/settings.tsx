@@ -53,7 +53,9 @@ interface PermissionInfo {
 function permissionTone(status: PermissionStatus): PillTone {
 	if (status === "granted") return "success";
 	if (status === "limited") return "warning";
-	return "danger";
+	// Never asked is not a failure. Red is reserved for an actual denial.
+	if (status === "denied") return "danger";
+	return "neutral";
 }
 
 export default function SettingsScreen() {
@@ -278,7 +280,7 @@ export default function SettingsScreen() {
 			case "denied":
 				return "Denied";
 			default:
-				return "Not Set";
+				return "Not asked yet";
 		}
 	}
 

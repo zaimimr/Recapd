@@ -100,19 +100,21 @@ export function NavBar({
 
 	return (
 		<View style={[styles.nav, transparent && styles.navTransparent]}>
-			<Pressable
-				onPress={handleBack}
-				hitSlop={hitSlop}
-				accessibilityRole="button"
-				accessibilityLabel={dismiss ? "Close" : "Go back"}
-				style={({ pressed }) => [styles.navButton, pressed && { opacity: 0.6 }]}
-			>
-				<Feather
-					name={dismiss ? "x" : "chevron-left"}
-					size={dismiss ? 20 : 22}
-					color={theme.textPrimary}
-				/>
-			</Pressable>
+			<View style={styles.navSide}>
+				<Pressable
+					onPress={handleBack}
+					hitSlop={hitSlop}
+					accessibilityRole="button"
+					accessibilityLabel={dismiss ? "Close" : "Go back"}
+					style={({ pressed }) => [styles.navButton, pressed && { opacity: 0.6 }]}
+				>
+					<Feather
+						name={dismiss ? "x" : "chevron-left"}
+						size={dismiss ? 20 : 22}
+						color={theme.textPrimary}
+					/>
+				</Pressable>
+			</View>
 
 			<View style={styles.navTitleWrap}>
 				{title ? (
@@ -127,7 +129,9 @@ export function NavBar({
 				) : null}
 			</View>
 
-			<View style={styles.navRight}>{right ?? <View style={styles.navButtonSpacer} />}</View>
+			<View style={[styles.navSide, styles.navRight]}>
+				{right ?? <View style={styles.navButtonSpacer} />}
+			</View>
 		</View>
 	);
 }
@@ -179,8 +183,14 @@ const styles = StyleSheet.create({
 		width: 38,
 		height: 38,
 	},
-	navTitleWrap: {
+	navSide: {
 		flex: 1,
+		flexDirection: "row",
+		alignItems: "center",
+		minWidth: 38,
+	},
+	navTitleWrap: {
+		flexShrink: 1,
 		alignItems: "center",
 		gap: 1,
 	},
@@ -195,8 +205,7 @@ const styles = StyleSheet.create({
 		color: theme.textMuted,
 	},
 	navRight: {
-		flexDirection: "row",
-		alignItems: "center",
+		justifyContent: "flex-end",
 		gap: space.sm,
 	},
 });
