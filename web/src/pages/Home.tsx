@@ -73,7 +73,7 @@ const faqs = [
 	},
 	{
 		q: "Is Recapd free?",
-		a: "Yes, for events up to 10 people. If you're hosting something bigger, Pro is $2.99/month and only the host needs it. Every guest always joins free.",
+		a: "Yes, for events up to 12 people, which is you plus 11 guests. If you're hosting something bigger, Pro is $2.99/month and only the host needs it. Every guest always joins free.",
 	},
 	{
 		q: "Does it work on both iPhone and Android?",
@@ -270,7 +270,7 @@ export default function Home() {
 									<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
 								</svg>
 							</span>
-							<span>Free for events up to 10 people</span>
+							<span>Free for events up to 12 people</span>
 						</div>
 						<div className="trust-divider" aria-hidden="true" />
 						<div className="trust-item">
