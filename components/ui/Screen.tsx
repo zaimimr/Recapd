@@ -11,7 +11,7 @@ import {
 	type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { hitSlop, space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, hitSlop, space, theme, type } from "@/constants/theme";
 
 /**
  * Page shell. Owns the ground colour and the safe-area padding so no screen
@@ -51,7 +51,7 @@ export function ScreenScroll({
 	return (
 		<ScrollView
 			style={styles.flex}
-			contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
+			contentContainerStyle={[styles.scrollContent, styles.measure, contentContainerStyle]}
 			showsVerticalScrollIndicator={false}
 			keyboardShouldPersistTaps="handled"
 			indicatorStyle="white"
@@ -122,6 +122,15 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		paddingBottom: space.huge,
+	},
+	/**
+	 * Caps the reading measure so a 13" iPad does not stretch a form into a
+	 * single 1000pt line. Phones are narrower than the cap and ignore it.
+	 */
+	measure: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	nav: {
 		flexDirection: "row",

@@ -92,6 +92,9 @@ export const shadow = {
 
 export const hitSlop = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
+/** Reading measure cap. Phones fall under it; tablets stop stretching at it. */
+export const CONTENT_MAX_WIDTH = 680;
+
 export interface AppTheme {
 	page: string;
 	pageDeep: string;

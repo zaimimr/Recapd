@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { Button, EmptyState, IconButton, NavBar, Screen } from "@/components/ui";
-import { radius, space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import { logger } from "@/lib/logger";
 import {
@@ -739,6 +739,9 @@ const styles = StyleSheet.create({
 		alignItems: "center",
 		justifyContent: "center",
 		paddingHorizontal: space.xl,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	statePanel: {
 		alignItems: "center",
@@ -858,6 +861,9 @@ const styles = StyleSheet.create({
 	},
 
 	footer: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 		paddingHorizontal: space.lg,
 		paddingTop: space.md,
 		paddingBottom: space.md,

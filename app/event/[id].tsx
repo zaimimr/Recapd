@@ -30,7 +30,7 @@ import {
 	StatRow,
 } from "@/components/ui";
 import Gradient from "@/components/ui/Gradient";
-import { radius, shadow, space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, radius, shadow, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import {
 	DELETION_DELAY_DAYS,
@@ -838,6 +838,9 @@ const styles = StyleSheet.create({
 		paddingHorizontal: space.lg,
 		paddingBottom: space.lg,
 		gap: space.md,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	cardTop: {
 		flexDirection: "row",
@@ -927,6 +930,8 @@ const styles = StyleSheet.create({
 
 	uploadBar: {
 		position: "absolute",
+		alignSelf: "center",
+		maxWidth: CONTENT_MAX_WIDTH,
 		left: space.md,
 		right: space.md,
 		bottom: space.xl,

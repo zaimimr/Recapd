@@ -2,7 +2,7 @@ import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
 import { Button, Field, Screen, SectionHeader } from "@/components/ui";
-import { space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 
 export default function OnboardingScreen() {
@@ -93,6 +93,9 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingHorizontal: space.xl,
 		gap: space.lg,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	brand: {
 		marginBottom: space.sm,

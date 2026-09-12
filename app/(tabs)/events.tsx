@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
 import { Button, EmptyState, Field, Screen, SectionHeader } from "@/components/ui";
-import { space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
 
@@ -135,6 +135,9 @@ const styles = StyleSheet.create({
 		paddingHorizontal: space.lg,
 		paddingBottom: space.md,
 		gap: space.md,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	listEmpty: {
 		flexGrow: 1,
@@ -149,6 +152,9 @@ const styles = StyleSheet.create({
 	actions: {
 		flexDirection: "row",
 		gap: space.md,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 		paddingHorizontal: space.lg,
 		paddingTop: space.md,
 		paddingBottom: space.lg,
@@ -164,6 +170,9 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingHorizontal: space.xl,
 		gap: space.lg,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	welcomeBody: {
 		...type.body,

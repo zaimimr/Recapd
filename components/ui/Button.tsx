@@ -55,8 +55,13 @@ export default function Button({
 	const dims = SIZES[size];
 	const isDisabled = disabled || loading;
 
-	const contentColor =
-		variant === "primary" || variant === "danger"
+	const isFilled = variant === "primary" || variant === "danger";
+
+	// A disabled control stops being the primary action, so it drops the
+	// gradient entirely rather than wearing a faded version of it.
+	const contentColor = isDisabled
+		? theme.textDisabled
+		: isFilled
 			? theme.textOnAccent
 			: variant === "secondary"
 				? theme.textPrimary
@@ -82,10 +87,7 @@ export default function Button({
 		alignItems: "center",
 		justifyContent: "center",
 		overflow: "hidden",
-		opacity: isDisabled ? 0.45 : 1,
 	};
-
-	const isFilled = variant === "primary" || variant === "danger";
 
 	return (
 		<Pressable
@@ -98,17 +100,23 @@ export default function Button({
 			accessibilityHint={accessibilityHint}
 			style={({ pressed }) => [
 				shell,
-				!isFilled && {
-					backgroundColor: variant === "secondary" ? theme.cardElevated : "transparent",
-					borderWidth: variant === "secondary" ? 1 : 0,
+				isDisabled && {
+					backgroundColor: theme.cardElevated,
+					borderWidth: 1,
 					borderColor: theme.border,
 				},
+				!isFilled &&
+					!isDisabled && {
+						backgroundColor: variant === "secondary" ? theme.cardElevated : "transparent",
+						borderWidth: variant === "secondary" ? 1 : 0,
+						borderColor: theme.border,
+					},
 				variant === "primary" && !isDisabled && shadow.accent,
 				pressed && !isDisabled && styles.pressed,
 				style,
 			]}
 		>
-			{isFilled ? (
+			{isFilled && !isDisabled ? (
 				<Gradient
 					colors={variant === "primary" ? gradients.brand : gradients.danger}
 					style={styles.fill}
