@@ -7,6 +7,7 @@ import {
 	ActivityIndicator,
 	Animated,
 	Easing,
+	type NativeScrollEvent,
 	type RefreshControlProps,
 	StyleSheet,
 	Text,
@@ -44,6 +45,8 @@ interface MasonryGridProps {
 	headerComponent?: ReactElement | null;
 	emptyComponent?: ReactElement | null;
 	refreshControl?: ReactElement<RefreshControlProps>;
+	/** Reports vertical offset so a caller can collapse or reveal its own chrome. */
+	onScroll?: (offsetY: number) => void;
 }
 
 function GridTile({
@@ -355,6 +358,7 @@ export default function MasonryGrid({
 	headerComponent,
 	emptyComponent,
 	refreshControl,
+	onScroll,
 }: MasonryGridProps) {
 	const [gridColumns, setGridColumns] = useState<GridColumns>(3);
 
@@ -440,6 +444,13 @@ export default function MasonryGrid({
 			ListHeaderComponent={listHeader}
 			ListEmptyComponent={emptyComponent ?? null}
 			refreshControl={refreshControl}
+			onScroll={
+				onScroll
+					? (event: { nativeEvent: NativeScrollEvent }) =>
+							onScroll(event.nativeEvent.contentOffset.y)
+					: undefined
+			}
+			scrollEventThrottle={32}
 			drawDistance={250}
 			maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
 		/>

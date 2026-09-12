@@ -60,6 +60,9 @@ import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 import type { MergedMediaItem } from "@/types/media";
 
+/** Roughly where the 26px album title leaves the viewport. */
+const HERO_TITLE_OFFSET = 120;
+
 function UploadProgressBar({ eventId }: { eventId: string }) {
 	const retryFailedUpload = useEventStore((state) => state.retryFailedUpload);
 	const clearAllPendingUploads = useEventStore((state) => state.clearAllPendingUploads);
@@ -183,6 +186,7 @@ export default function EventScreen() {
 		removeParticipant,
 	} = useEventStore();
 
+	const [titleInNav, setTitleInNav] = useState(false);
 	const [viewerVisible, setViewerVisible] = useState(false);
 	const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 	const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<string | undefined>();
@@ -624,6 +628,7 @@ export default function EventScreen() {
 	return (
 		<Screen>
 			<NavBar
+				title={titleInNav ? currentEvent.title : undefined}
 				subtitle={`${formatLocalizedDate(currentEvent.starts_at, {
 					month: "short",
 					day: "numeric",
@@ -644,6 +649,7 @@ export default function EventScreen() {
 			/>
 
 			<MasonryGrid
+				onScroll={(offsetY) => setTitleInNav(offsetY > HERO_TITLE_OFFSET)}
 				photos={mergedPhotos}
 				onPhotoPress={handlePhotoPress}
 				onRetry={retryFailedUpload}
