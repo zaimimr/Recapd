@@ -628,11 +628,14 @@ export default function EventScreen() {
 	return (
 		<Screen>
 			<NavBar
-				title={titleInNav ? currentEvent.title : undefined}
-				subtitle={`${formatLocalizedDate(currentEvent.starts_at, {
-					month: "short",
-					day: "numeric",
-				})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}`}
+				title={
+					titleInNav
+						? currentEvent.title
+						: `${formatLocalizedDate(currentEvent.starts_at, {
+								month: "short",
+								day: "numeric",
+							})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}`
+				}
 				onBack={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/events"))}
 				right={
 					<>

@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
 import { Button, Pill, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
-import { space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
@@ -42,14 +42,15 @@ export default function HomeScreen() {
 
 	return (
 		<Screen>
+			<View style={styles.masthead}>
+				<Text style={styles.wordmark}>
+					Recap<Text style={styles.wordmarkDot}>d</Text>
+				</Text>
+				{SUBSCRIPTIONS_ENABLED && isPro ? <Pill label="PRO" tone="accent" /> : null}
+			</View>
+
 			<ScreenScroll center contentContainerStyle={styles.content}>
 				<View style={styles.hero}>
-					<View style={styles.heroTop}>
-						<Text style={styles.wordmark}>
-							Recap<Text style={styles.wordmarkDot}>d</Text>
-						</Text>
-						{SUBSCRIPTIONS_ENABLED && isPro ? <Pill label="PRO" tone="accent" /> : null}
-					</View>
 					<Text style={styles.heroTitle}>See the night from every angle.</Text>
 					<Text style={styles.heroBody}>
 						One album for everyone at the party. Nothing lost in the group chat.
@@ -105,14 +106,18 @@ const styles = StyleSheet.create({
 		paddingTop: space.lg,
 		gap: space.xxxl,
 	},
-	hero: {
-		gap: space.sm,
-		paddingTop: space.sm,
-	},
-	heroTop: {
+	masthead: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
+		paddingHorizontal: space.lg,
+		paddingTop: space.sm,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
+	},
+	hero: {
+		gap: space.sm,
 	},
 	wordmark: {
 		fontSize: 22,
@@ -126,7 +131,6 @@ const styles = StyleSheet.create({
 	heroTitle: {
 		...type.display,
 		color: theme.textPrimary,
-		marginTop: space.sm,
 	},
 	heroBody: {
 		...type.body,

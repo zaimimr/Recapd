@@ -285,6 +285,7 @@ export default function SettingsScreen() {
 	}
 
 	const allPermissionsGranted = permissions.every((p) => p.status === "granted");
+	const anyPermissionDenied = permissions.some((p) => p.status === "denied");
 	const currentPlan = plans[planId];
 	const currentPlanHighlights = getPlanMarketingHighlights(planId, plans);
 
@@ -459,7 +460,7 @@ export default function SettingsScreen() {
 				<View style={styles.group}>
 					<View style={styles.groupHeader}>
 						<Eyebrow>Access</Eyebrow>
-						{!allPermissionsGranted ? <Pill label="Action needed" tone="warning" /> : null}
+						{anyPermissionDenied ? <Pill label="Action needed" tone="warning" /> : null}
 					</View>
 					<Card padded={false}>
 						{permissions.map((permission, index) => (
