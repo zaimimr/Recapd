@@ -1,7 +1,7 @@
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
-import { Button, Field, Screen, SectionHeader } from "@/components/ui";
+import { Button, Field, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
 import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 
@@ -43,7 +43,7 @@ export default function OnboardingScreen() {
 				style={styles.flex}
 				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
-				<View style={styles.content}>
+				<ScreenScroll center contentContainerStyle={styles.content}>
 					<View style={styles.brand}>
 						<Text style={styles.wordmark}>
 							Recap<Text style={styles.wordmarkDot}>d</Text>
@@ -78,7 +78,7 @@ export default function OnboardingScreen() {
 						disabled={!displayName.trim()}
 						onPress={handleContinue}
 					/>
-				</View>
+				</ScreenScroll>
 			</KeyboardAvoidingView>
 		</Screen>
 	);
@@ -89,8 +89,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	content: {
-		flex: 1,
-		justifyContent: "center",
 		paddingHorizontal: space.xl,
 		gap: space.lg,
 		width: "100%",

@@ -59,18 +59,13 @@ export function ScreenScroll({
 	return (
 		<ScrollView
 			style={styles.flex}
-			contentContainerStyle={[
-				styles.scrollContent,
-				styles.measure,
-				center && styles.centered,
-				contentContainerStyle,
-			]}
+			contentContainerStyle={[styles.scrollOuter, center && styles.centered]}
 			showsVerticalScrollIndicator={false}
 			keyboardShouldPersistTaps="handled"
 			indicatorStyle="white"
 			{...props}
 		>
-			{children}
+			<View style={[styles.measure, contentContainerStyle]}>{children}</View>
 		</ScrollView>
 	);
 }
@@ -144,7 +139,7 @@ const styles = StyleSheet.create({
 	flex: {
 		flex: 1,
 	},
-	scrollContent: {
+	scrollOuter: {
 		paddingBottom: space.huge,
 	},
 	/**
@@ -154,6 +149,9 @@ const styles = StyleSheet.create({
 	measure: {
 		width: "100%",
 		maxWidth: CONTENT_MAX_WIDTH,
+		// alignSelf works here because this is a real View child. The same
+		// property on a ScrollView contentContainer is ignored, which left-aligns
+		// the capped column on a tablet.
 		alignSelf: "center",
 	},
 	centered: {

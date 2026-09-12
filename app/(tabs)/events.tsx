@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
-import { Button, EmptyState, Field, Screen, SectionHeader } from "@/components/ui";
+import { Button, EmptyState, Field, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
 import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
@@ -50,7 +50,7 @@ export default function EventsScreen() {
 	if (!user) {
 		return (
 			<Screen>
-				<View style={styles.welcome}>
+				<ScreenScroll center contentContainerStyle={styles.welcome}>
 					<SectionHeader title="What should we call you?" />
 					<Text style={styles.welcomeBody}>
 						Your name shows up on the photos you add. Nothing else is stored.
@@ -72,7 +72,7 @@ export default function EventsScreen() {
 						loading={isCreating}
 						disabled={displayName.trim().length < 2}
 					/>
-				</View>
+				</ScreenScroll>
 			</Screen>
 		);
 	}
@@ -86,6 +86,7 @@ export default function EventsScreen() {
 					<AlbumCard event={item} onPress={() => router.push(`/event/${item.id}`)} />
 				)}
 				contentContainerStyle={[styles.list, events.length === 0 && styles.listEmpty]}
+				style={styles.listShell}
 				refreshControl={
 					<RefreshControl
 						refreshing={isRefreshing}
@@ -133,12 +134,15 @@ const styles = StyleSheet.create({
 		paddingHorizontal: space.lg,
 		paddingBottom: space.md,
 		gap: space.md,
-		width: "100%",
-		maxWidth: CONTENT_MAX_WIDTH,
-		alignSelf: "center",
+		alignItems: "stretch",
 	},
 	listEmpty: {
 		flexGrow: 1,
+	},
+	listShell: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	header: {
 		paddingTop: space.sm,
@@ -164,8 +168,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	welcome: {
-		flex: 1,
-		justifyContent: "center",
 		paddingHorizontal: space.xl,
 		gap: space.lg,
 		width: "100%",
