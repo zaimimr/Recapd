@@ -122,6 +122,7 @@ jest.mock("@/lib/supabase", () => {
 	for (const method of ["select", "insert", "update", "delete", "eq", "in", "order", "single", "filter", "is"]) {
 		chain[method] = jest.fn().mockReturnValue(chain);
 	}
+	// biome-ignore lint/suspicious/noThenProperty: mock must be thenable to simulate the Supabase query builder
 	chain.then = (resolve: any) => resolve({ data: null, error: null });
 	return {
 		supabase: {
