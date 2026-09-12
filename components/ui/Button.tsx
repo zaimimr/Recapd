@@ -60,7 +60,7 @@ export default function Button({
 	// A disabled control stops being the primary action, so it drops the
 	// gradient entirely rather than wearing a faded version of it.
 	const contentColor = isDisabled
-		? theme.textDisabled
+		? theme.textMuted
 		: isFilled
 			? theme.textOnAccent
 			: variant === "secondary"
@@ -101,9 +101,8 @@ export default function Button({
 			style={({ pressed }) => [
 				shell,
 				isDisabled && {
-					backgroundColor: theme.cardElevated,
-					borderWidth: 1,
-					borderColor: theme.border,
+					backgroundColor: theme.card,
+					borderWidth: 0,
 				},
 				!isFilled &&
 					!isDisabled && {

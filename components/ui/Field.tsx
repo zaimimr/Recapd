@@ -34,7 +34,7 @@ const Field = forwardRef<TextInput, FieldProps>(function Field(
 				<TextInput
 					ref={ref}
 					style={[styles.input, style]}
-					placeholderTextColor={theme.textDisabled}
+					placeholderTextColor={theme.textMuted}
 					selectionColor={theme.accent}
 					cursorColor={theme.accent}
 					accessibilityLabel={props.accessibilityLabel ?? label}

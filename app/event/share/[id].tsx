@@ -77,7 +77,7 @@ export default function ShareEventScreen() {
 
 	return (
 		<Screen edges="both">
-			<NavBar title="Invite guests" subtitle={currentEvent.title} onBack={handleDone} />
+			<NavBar title="Invite guests" subtitle={currentEvent.title} onBack={handleDone} dismiss />
 
 			<ScreenScroll contentContainerStyle={styles.content}>
 				<Card style={styles.qrCard}>

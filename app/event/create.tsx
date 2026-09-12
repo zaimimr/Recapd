@@ -151,10 +151,10 @@ export default function CreateEventScreen() {
 
 	return (
 		<Screen edges="both">
-			<NavBar title="New album" onBack={() => router.back()} />
+			<NavBar title="New album" onBack={() => router.back()} dismiss />
 
 			<ScreenScroll contentContainerStyle={styles.content}>
-				<SectionHeader eyebrow="Create" title="Set the window for the night" />
+				<SectionHeader title="Set the window for the night" />
 				<Text style={styles.lede}>
 					Guests are only asked for photos and videos captured between these two times.
 				</Text>

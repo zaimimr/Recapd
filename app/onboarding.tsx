@@ -50,7 +50,7 @@ export default function OnboardingScreen() {
 						</Text>
 					</View>
 
-					<SectionHeader eyebrow="One quick thing" title="Tell us what to call you." />
+					<SectionHeader title="Tell us what to call you." />
 					<Text style={styles.lede}>
 						Your name shows up on the photos you add. No email, no password, nothing else.
 					</Text>

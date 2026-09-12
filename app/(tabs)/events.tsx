@@ -51,7 +51,7 @@ export default function EventsScreen() {
 		return (
 			<Screen>
 				<View style={styles.welcome}>
-					<SectionHeader eyebrow="Profile" title="What should we call you?" />
+					<SectionHeader title="What should we call you?" />
 					<Text style={styles.welcomeBody}>
 						Your name shows up on the photos you add. Nothing else is stored.
 					</Text>
@@ -95,9 +95,7 @@ export default function EventsScreen() {
 					/>
 				}
 				showsVerticalScrollIndicator={false}
-				ListHeaderComponent={
-					<SectionHeader eyebrow="Your albums" title="Every night, kept" style={styles.header} />
-				}
+				ListHeaderComponent={<SectionHeader title="Every night, kept" style={styles.header} />}
 				ListEmptyComponent={
 					isLoading ? (
 						<ActivityIndicator size="large" color={theme.accent} style={styles.loader} />

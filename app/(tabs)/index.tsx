@@ -42,7 +42,7 @@ export default function HomeScreen() {
 
 	return (
 		<Screen>
-			<ScreenScroll contentContainerStyle={styles.content}>
+			<ScreenScroll center contentContainerStyle={styles.content}>
 				<View style={styles.hero}>
 					<View style={styles.heroTop}>
 						<Text style={styles.wordmark}>
@@ -59,7 +59,6 @@ export default function HomeScreen() {
 				{hasActiveEvents ? (
 					<View style={styles.section}>
 						<SectionHeader
-							eyebrow="Open now"
 							title="Your albums"
 							trailing={events.length > 3 ? <Pill label={`${events.length} total`} /> : null}
 						/>
@@ -77,7 +76,6 @@ export default function HomeScreen() {
 
 				<View style={styles.section}>
 					<SectionHeader
-						eyebrow="Start"
 						title={hasActiveEvents ? "Join another album" : "Get the night in one place"}
 					/>
 					<View style={styles.actions}>

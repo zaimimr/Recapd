@@ -193,7 +193,7 @@ export default function EditEventScreen() {
 			<NavBar title="Edit album" onBack={() => router.back()} />
 
 			<ScreenScroll contentContainerStyle={styles.content}>
-				<SectionHeader eyebrow="Edit" title="Adjust the name and window" />
+				<SectionHeader title="Adjust the name and window" />
 				<Text style={styles.lede}>
 					Guests keep everything they have already added. Only the window for new media changes.
 				</Text>

@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Animated,
+	Easing,
 	type RefreshControlProps,
 	StyleSheet,
 	Text,
@@ -133,6 +134,23 @@ function GridTile({
 		return signedThumbnailUrl || legacyTransformUrl;
 	})();
 
+	// The one authored moment: a photo landing in the feed settles into place.
+	// Exponential ease-out from an already-visible default, so a tile that never
+	// animates (recycled, cached) still reads as finished.
+	const arrival = useRef(new Animated.Value(photo.isPending ? 1 : 0)).current;
+	const hasArrived = useRef(false);
+
+	useEffect(() => {
+		if (hasArrived.current || !imageUri || photo.isPending) return;
+		hasArrived.current = true;
+		Animated.timing(arrival, {
+			toValue: 1,
+			duration: 320,
+			easing: Easing.out(Easing.cubic),
+			useNativeDriver: true,
+		}).start();
+	}, [imageUri, photo.isPending, arrival]);
+
 	const isSyncing = photo.isPending && photo.syncStatus === "syncing";
 	const isFailed = photo.isPending && photo.syncStatus === "failed";
 	const isQueued = photo.isPending && (photo.syncStatus === "pending" || !photo.syncStatus);
@@ -140,7 +158,22 @@ function GridTile({
 	const uploaderInitial = photo.uploader?.display_name?.charAt(0).toUpperCase();
 
 	return (
-		<View style={styles.tileShell}>
+		<Animated.View
+			style={[
+				styles.tileShell,
+				{
+					opacity: arrival,
+					transform: [
+						{
+							scale: arrival.interpolate({
+								inputRange: [0, 1],
+								outputRange: [0.94, 1],
+							}),
+						},
+					],
+				},
+			]}
+		>
 			<TouchableOpacity
 				activeOpacity={0.9}
 				style={styles.tile}
@@ -261,7 +294,7 @@ function GridTile({
 					</View>
 				)}
 			</TouchableOpacity>
-		</View>
+		</Animated.View>
 	);
 }
 
@@ -273,8 +306,18 @@ function SkeletonTile({ syncing }: { syncing: boolean }) {
 	useEffect(() => {
 		const loop = Animated.loop(
 			Animated.sequence([
-				Animated.timing(pulse, { toValue: 1, duration: 760, useNativeDriver: true }),
-				Animated.timing(pulse, { toValue: 0.45, duration: 760, useNativeDriver: true }),
+				Animated.timing(pulse, {
+					toValue: 1,
+					duration: 760,
+					easing: Easing.inOut(Easing.quad),
+					useNativeDriver: true,
+				}),
+				Animated.timing(pulse, {
+					toValue: 0.45,
+					duration: 760,
+					easing: Easing.inOut(Easing.quad),
+					useNativeDriver: true,
+				}),
 			])
 		);
 		loop.start();

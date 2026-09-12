@@ -257,13 +257,13 @@ export default function JoinEventScreen() {
 
 	return (
 		<Screen edges="both">
-			<NavBar title="Join an album" onBack={() => router.back()} />
+			<NavBar title="Join an album" onBack={() => router.back()} dismiss />
 			<KeyboardAvoidingView
 				style={styles.flex}
 				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<ScreenScroll contentContainerStyle={styles.content}>
-					<SectionHeader eyebrow="10 seconds to join" title="Got a code from the host?" />
+					<SectionHeader title="Got a code from the host?" />
 					<Text style={styles.lede}>
 						Type the six characters, or scan the QR they're holding up. No account needed.
 					</Text>
@@ -272,7 +272,7 @@ export default function JoinEventScreen() {
 						<TextInput
 							style={styles.codeInput}
 							placeholder="ABC123"
-							placeholderTextColor={theme.textDisabled}
+							placeholderTextColor={theme.textMuted}
 							selectionColor={theme.accent}
 							value={code}
 							onChangeText={(text) => setCode(formatCode(text))}

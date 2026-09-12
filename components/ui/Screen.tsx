@@ -46,12 +46,25 @@ export function Screen({
 export function ScreenScroll({
 	children,
 	contentContainerStyle,
+	center = false,
 	...props
-}: ScrollViewProps & { children: ReactNode }) {
+}: ScrollViewProps & {
+	children: ReactNode;
+	/**
+	 * Centres short content in the viewport instead of stranding it against the
+	 * top. Content taller than the viewport still scrolls normally.
+	 */
+	center?: boolean;
+}) {
 	return (
 		<ScrollView
 			style={styles.flex}
-			contentContainerStyle={[styles.scrollContent, styles.measure, contentContainerStyle]}
+			contentContainerStyle={[
+				styles.scrollContent,
+				styles.measure,
+				center && styles.centered,
+				contentContainerStyle,
+			]}
 			showsVerticalScrollIndicator={false}
 			keyboardShouldPersistTaps="handled"
 			indicatorStyle="white"
@@ -72,12 +85,15 @@ export function NavBar({
 	onBack,
 	right,
 	transparent = false,
+	dismiss = false,
 }: {
 	title?: string;
 	subtitle?: string;
 	onBack?: () => void;
 	right?: ReactNode;
 	transparent?: boolean;
+	/** Sheets close, they do not go back. Swaps the chevron for a Close control. */
+	dismiss?: boolean;
 }) {
 	const router = useRouter();
 	const handleBack = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace("/")));
@@ -88,10 +104,14 @@ export function NavBar({
 				onPress={handleBack}
 				hitSlop={hitSlop}
 				accessibilityRole="button"
-				accessibilityLabel="Go back"
+				accessibilityLabel={dismiss ? "Close" : "Go back"}
 				style={({ pressed }) => [styles.navButton, pressed && { opacity: 0.6 }]}
 			>
-				<Feather name="chevron-left" size={22} color={theme.textPrimary} />
+				<Feather
+					name={dismiss ? "x" : "chevron-left"}
+					size={dismiss ? 20 : 22}
+					color={theme.textPrimary}
+				/>
 			</Pressable>
 
 			<View style={styles.navTitleWrap}>
@@ -131,6 +151,10 @@ const styles = StyleSheet.create({
 		width: "100%",
 		maxWidth: CONTENT_MAX_WIDTH,
 		alignSelf: "center",
+	},
+	centered: {
+		flexGrow: 1,
+		justifyContent: "center",
 	},
 	nav: {
 		flexDirection: "row",

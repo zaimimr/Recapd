@@ -624,7 +624,6 @@ export default function EventScreen() {
 	return (
 		<Screen>
 			<NavBar
-				title={currentEvent.title}
 				subtitle={`${formatLocalizedDate(currentEvent.starts_at, {
 					month: "short",
 					day: "numeric",

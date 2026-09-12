@@ -558,7 +558,7 @@ export default function ContributeScreen() {
 
 		return (
 			<Screen edges="both">
-				<NavBar title="Add your photos" onBack={handleSkip} />
+				<NavBar title="Add your photos" onBack={handleSkip} dismiss />
 				<View style={styles.centered}>
 					<EmptyState icon="alert-circle" title={errorTitle} body={errorMessage} />
 					<View style={styles.stateActions}>
@@ -584,7 +584,7 @@ export default function ContributeScreen() {
 	if (step === "empty") {
 		return (
 			<Screen edges="both">
-				<NavBar title="Add your photos" onBack={handleSkip} />
+				<NavBar title="Add your photos" onBack={handleSkip} dismiss />
 				<View style={styles.centered}>
 					<EmptyState
 						icon="camera"
@@ -606,6 +606,7 @@ export default function ContributeScreen() {
 				title="Add your photos"
 				subtitle={getCountText()}
 				onBack={handleSkip}
+				dismiss
 				right={
 					<IconButton icon="plus" accessibilityLabel="Pick more media" onPress={handleManualPick} />
 				}

@@ -70,12 +70,10 @@ export function Eyebrow({
 }
 
 export function SectionHeader({
-	eyebrow,
 	title,
 	trailing,
 	style,
 }: {
-	eyebrow?: string;
 	title?: string;
 	trailing?: ReactNode;
 	style?: StyleProp<ViewStyle>;
@@ -83,7 +81,6 @@ export function SectionHeader({
 	return (
 		<View style={[styles.sectionHeader, style]}>
 			<View style={styles.sectionHeaderText}>
-				{eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
 				{title ? (
 					<Text style={styles.sectionTitle} numberOfLines={2}>
 						{title}

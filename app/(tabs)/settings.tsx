@@ -289,11 +289,10 @@ export default function SettingsScreen() {
 	return (
 		<Screen>
 			<ScreenScroll contentContainerStyle={styles.content}>
-				<SectionHeader eyebrow="Settings" title="You and your access" style={styles.pageHeader} />
+				<SectionHeader title="You and your access" style={styles.pageHeader} />
 
 				{user ? (
 					<View style={styles.group}>
-						<Eyebrow>Profile</Eyebrow>
 						<Card padded={false}>
 							<View style={styles.profileRow}>
 								<Avatar name={user.display_name || "?"} size={52} />
@@ -304,7 +303,7 @@ export default function SettingsScreen() {
 											value={editedName}
 											onChangeText={setEditedName}
 											placeholder="Your name"
-											placeholderTextColor={theme.textDisabled}
+											placeholderTextColor={theme.textMuted}
 											selectionColor={theme.accent}
 											autoFocus
 											maxLength={50}
