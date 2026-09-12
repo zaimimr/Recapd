@@ -1,4 +1,4 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Feather from "@expo/vector-icons/Feather";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,6 +18,8 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Avatar } from "@/components/ui";
+import { radius, space, theme, type } from "@/constants/theme";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
 	backfillVideoThumbnail,
@@ -340,8 +342,12 @@ export default function PhotoViewer({
 		: null;
 	const captureTimeLabel = capturedAt ? formatLocalizedTime(capturedAt) : null;
 
-	const buttonSurface = isDark ? "rgba(15, 23, 42, 0.56)" : "rgba(15, 23, 42, 0.44)";
-	const buttonBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.18)";
+	const megapixels =
+		currentPhoto.width && currentPhoto.height
+			? (currentPhoto.width * currentPhoto.height) / 1_000_000
+			: null;
+	const qualityLabel =
+		megapixels && megapixels >= 0.1 ? `ORIGINAL · ${megapixels.toFixed(1)} MP` : null;
 
 	const scrollToPhoto = useCallback((index: number, animated: boolean) => {
 		pagerRef.current?.scrollToIndex(index, animated);
@@ -588,95 +594,52 @@ export default function PhotoViewer({
 						<Pressable
 							onPress={animateClose}
 							hitSlop={12}
-							style={[
-								styles.topButton,
-								{
-									top: insets.top + 12,
-									backgroundColor: buttonSurface,
-									borderColor: buttonBorder,
-								},
-							]}
+							accessibilityRole="button"
+							accessibilityLabel="Close"
+							style={[styles.topButton, { top: insets.top + 12 }]}
 						>
-							<FontAwesome name="chevron-down" size={18} color="#fff" />
+							<Feather name="chevron-down" size={20} color="#fff" />
 						</Pressable>
 
-						{counterLabel ? (
-							<View pointerEvents="none" style={[styles.counterRow, { top: insets.top + 12 }]}>
-								<View
-									style={[
-										styles.counterBadge,
-										{ backgroundColor: buttonSurface, borderColor: buttonBorder },
-									]}
-								>
-									<Text style={styles.counterText}>{counterLabel}</Text>
-								</View>
-							</View>
-						) : null}
-
-						{isVideo ? (
-							<Pressable
-								onPress={toggleMuted}
-								hitSlop={12}
-								style={[
-									styles.topButton,
-									styles.muteButton,
-									{
-										top: insets.top + 12,
-										backgroundColor: buttonSurface,
-										borderColor: buttonBorder,
-									},
-								]}
-							>
-								<FontAwesome name={muted ? "volume-off" : "volume-up"} size={18} color="#fff" />
-							</Pressable>
-						) : null}
-
-						{uploaderName || (captureDateLabel && captureTimeLabel) ? (
-							<View
-								style={[
-									styles.timestampBadge,
-									{
-										left: 16,
-										bottom: insets.bottom + 18,
-										backgroundColor: buttonSurface,
-										borderColor: buttonBorder,
-									},
-								]}
-							>
-								{uploaderName ? <Text style={styles.uploaderName}>{uploaderName}</Text> : null}
+						<View pointerEvents="none" style={[styles.identityRow, { top: insets.top + 12 }]}>
+							{uploaderName ? <Avatar name={uploaderName} size={34} /> : null}
+							<View style={styles.identityText}>
+								{uploaderName ? (
+									<Text style={styles.uploaderName} numberOfLines={1}>
+										{uploaderName}
+									</Text>
+								) : null}
 								{captureDateLabel && captureTimeLabel ? (
-									<Text style={styles.timestampDate}>
+									<Text style={styles.timestampDate} numberOfLines={1}>
 										{captureDateLabel} · {captureTimeLabel}
 									</Text>
 								) : null}
 							</View>
-						) : null}
+						</View>
 
-						<View
-							style={[
-								styles.bottomActions,
-								{
-									bottom: insets.bottom + 18,
-								},
-							]}
-						>
-							{canDelete ? (
+						<View pointerEvents="none" style={[styles.metaRow, { top: insets.top + 12 }]}>
+							{qualityLabel ? (
+								<View style={styles.metaBadge}>
+									<Text style={styles.metaText}>{qualityLabel}</Text>
+								</View>
+							) : null}
+							{counterLabel ? (
+								<View style={styles.metaBadge}>
+									<Text style={styles.metaText}>{counterLabel}</Text>
+								</View>
+							) : null}
+						</View>
+
+						<View style={[styles.bottomActions, { bottom: insets.bottom + 18 }]}>
+							{isVideo ? (
 								<Pressable
-									onPress={handleDelete}
-									disabled={deleting}
-									style={[
-										styles.actionButton,
-										{
-											backgroundColor: buttonSurface,
-											borderColor: buttonBorder,
-										},
-									]}
+									onPress={toggleMuted}
+									hitSlop={12}
+									accessibilityRole="button"
+									accessibilityLabel={muted ? "Unmute" : "Mute"}
+									style={styles.actionButton}
 								>
-									{deleting ? (
-										<ActivityIndicator size="small" color="#fff" />
-									) : (
-										<FontAwesome name="trash-o" size={20} color="#fff" />
-									)}
+									<Feather name={muted ? "volume-x" : "volume-2"} size={19} color="#fff" />
 								</Pressable>
 							) : null}
 
@@ -684,18 +647,33 @@ export default function PhotoViewer({
 								<Pressable
 									onPress={handleDownload}
 									disabled={saving}
-									style={[
-										styles.actionButton,
-										{
-											backgroundColor: buttonSurface,
-											borderColor: buttonBorder,
-										},
-									]}
+									accessibilityRole="button"
+									accessibilityLabel="Save to camera roll"
+									accessibilityState={{ disabled: saving, busy: saving }}
+									style={styles.saveButton}
 								>
 									{saving ? (
 										<ActivityIndicator size="small" color="#fff" />
 									) : (
-										<FontAwesome name="arrow-down" size={20} color="#fff" />
+										<Feather name="download" size={19} color="#fff" />
+									)}
+									<Text style={styles.saveLabel}>{saving ? "Saving…" : "Save"}</Text>
+								</Pressable>
+							) : null}
+
+							{canDelete ? (
+								<Pressable
+									onPress={handleDelete}
+									disabled={deleting}
+									accessibilityRole="button"
+									accessibilityLabel="Delete this item"
+									accessibilityState={{ disabled: deleting, busy: deleting }}
+									style={styles.actionButton}
+								>
+									{deleting ? (
+										<ActivityIndicator size="small" color="#fff" />
+									) : (
+										<Feather name="trash-2" size={19} color="#fff" />
 									)}
 								</Pressable>
 							) : null}
@@ -740,67 +718,93 @@ const styles = StyleSheet.create({
 	topButton: {
 		position: "absolute",
 		left: 16,
-		width: 46,
-		height: 46,
-		borderRadius: 23,
-		borderWidth: 1,
+		width: 40,
+		height: 40,
+		borderRadius: 20,
 		alignItems: "center",
 		justifyContent: "center",
+		backgroundColor: "rgba(7,7,12,0.52)",
+		borderWidth: 1,
+		borderColor: theme.glassBorder,
 	},
-	muteButton: {
-		left: undefined,
-		right: 16,
-	},
-	counterRow: {
+	identityRow: {
 		position: "absolute",
-		left: 0,
-		right: 0,
+		left: 66,
+		right: 120,
+		flexDirection: "row",
 		alignItems: "center",
+		gap: space.sm,
+		height: 40,
 	},
-	counterBadge: {
-		paddingHorizontal: 14,
-		height: 46,
-		justifyContent: "center",
-		borderRadius: 23,
-		borderWidth: 1,
-	},
-	counterText: {
-		color: "#fff",
-		fontSize: 14,
-		fontWeight: "600",
-	},
-	timestampBadge: {
-		position: "absolute",
-		maxWidth: SCREEN_WIDTH - 108,
-		paddingHorizontal: 14,
-		paddingVertical: 10,
-		borderRadius: 16,
-		borderWidth: 1,
+	identityText: {
+		flex: 1,
+		gap: 1,
 	},
 	uploaderName: {
-		color: "#fff",
-		fontSize: 14,
-		fontWeight: "600",
+		...type.bodyStrong,
+		color: "#FFFFFF",
 	},
 	timestampDate: {
-		marginTop: 2,
-		color: "rgba(255, 255, 255, 0.8)",
-		fontSize: 13,
+		...type.caption,
 		fontWeight: "500",
+		color: "rgba(255,255,255,0.72)",
+	},
+	metaRow: {
+		position: "absolute",
+		right: 16,
+		height: 40,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: 6,
+	},
+	metaBadge: {
+		paddingHorizontal: 9,
+		paddingVertical: 5,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(7,7,12,0.52)",
+		borderWidth: 1,
+		borderColor: theme.glassBorder,
+	},
+	metaText: {
+		fontSize: 10.5,
+		fontWeight: "800",
+		letterSpacing: 0.4,
+		color: "#FFFFFF",
 	},
 	bottomActions: {
 		position: "absolute",
+		left: 16,
 		right: 16,
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
+		justifyContent: "center",
+		gap: space.md,
 	},
 	actionButton: {
 		width: 52,
 		height: 52,
-		borderRadius: 26,
-		borderWidth: 1,
+		borderRadius: radius.lg,
 		alignItems: "center",
 		justifyContent: "center",
+		backgroundColor: theme.glass,
+		borderWidth: 1,
+		borderColor: theme.glassBorder,
+	},
+	saveButton: {
+		flex: 1,
+		height: 52,
+		borderRadius: radius.lg,
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: space.sm,
+		backgroundColor: theme.glass,
+		borderWidth: 1,
+		borderColor: theme.glassBorder,
+	},
+	saveLabel: {
+		...type.subheading,
+		fontSize: 15,
+		color: "#FFFFFF",
 	},
 });
