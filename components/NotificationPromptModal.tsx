@@ -1,7 +1,9 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Feather from "@expo/vector-icons/Feather";
 import { useCallback, useEffect, useRef } from "react";
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button, Gradient } from "@/components/ui";
+import { radius, space, theme, type } from "@/constants/theme";
 
 const SHEET_HEIGHT = 340;
 
@@ -97,39 +99,33 @@ export default function NotificationPromptModal({
 				<Animated.View
 					style={[
 						styles.sheet,
-						isDark && styles.sheetDark,
 						{
 							transform: [{ translateY }],
-							paddingBottom: insets.bottom + 16,
+							paddingBottom: insets.bottom + space.lg,
 						},
 					]}
 				>
 					<View style={styles.handleContainer}>
-						<View style={[styles.handle, isDark && styles.handleDark]} />
+						<View style={styles.handle} />
 					</View>
 
 					<View style={styles.content}>
-						<View style={styles.iconContainer}>
-							<FontAwesome name="bell" size={28} color="#fff" />
+						<View style={styles.iconWrap}>
+							<Gradient colors={theme.gradient} style={styles.iconFill} pointerEvents="none" />
+							<Feather name="bell" size={26} color="#FFFFFF" />
 						</View>
 
-						<Text style={[styles.title, isDark && styles.textDark]}>Never miss a memory</Text>
+						<Text style={styles.title}>Know before it closes</Text>
 
-						<Text style={[styles.message, isDark && styles.textMuted]}>
-							We'll send you a gentle nudge to upload your photos after events end, so everyone can
-							relive the night together. No spam, ever. Promise.
+						<Text style={styles.message}>
+							We'll nudge you to add your photos after the event, and again before the album deletes
+							itself. Nothing else, ever.
 						</Text>
 
-						<TouchableOpacity style={styles.enableButton} onPress={handleEnable}>
-							<Text style={styles.enableButtonText}>Enable Notifications</Text>
-						</TouchableOpacity>
-
-						<TouchableOpacity
-							style={[styles.laterButton, isDark && styles.laterButtonDark]}
-							onPress={handleMaybeLater}
-						>
-							<Text style={[styles.laterButtonText, isDark && styles.textMuted]}>Maybe Later</Text>
-						</TouchableOpacity>
+						<View style={styles.actions}>
+							<Button label="Turn on notifications" icon="bell" onPress={handleEnable} />
+							<Button label="Not now" variant="ghost" size="md" onPress={handleMaybeLater} />
+						</View>
 					</View>
 				</Animated.View>
 			</View>
@@ -144,98 +140,58 @@ const styles = StyleSheet.create({
 	},
 	backdrop: {
 		...StyleSheet.absoluteFillObject,
-		backgroundColor: "rgba(0, 0, 0, 0.4)",
+		backgroundColor: theme.overlay,
 	},
 	sheet: {
-		backgroundColor: "#fff",
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: -3 },
-		shadowOpacity: 0.1,
-		shadowRadius: 10,
-		elevation: 20,
-	},
-	sheetDark: {
-		backgroundColor: "#0f1115",
+		backgroundColor: theme.card,
+		borderTopLeftRadius: radius.xxl,
+		borderTopRightRadius: radius.xxl,
+		borderTopWidth: 1,
+		borderColor: theme.border,
+		paddingHorizontal: space.xl,
 	},
 	handleContainer: {
 		alignItems: "center",
-		paddingTop: 10,
-		paddingBottom: 6,
+		paddingTop: space.md,
+		paddingBottom: space.sm,
 	},
 	handle: {
-		width: 36,
-		height: 5,
-		backgroundColor: "#d1d1d6",
-		borderRadius: 2.5,
-	},
-	handleDark: {
-		backgroundColor: "#48484a",
+		width: 40,
+		height: 4,
+		borderRadius: 2,
+		backgroundColor: theme.borderStrong,
 	},
 	content: {
-		paddingHorizontal: 24,
-		paddingTop: 10,
 		alignItems: "center",
+		gap: space.md,
+		paddingTop: space.md,
 	},
-	iconContainer: {
-		width: 64,
-		height: 64,
-		borderRadius: 32,
-		backgroundColor: "#111827",
-		justifyContent: "center",
+	iconWrap: {
+		width: 62,
+		height: 62,
+		borderRadius: radius.xl,
+		overflow: "hidden",
 		alignItems: "center",
-		marginBottom: 20,
+		justifyContent: "center",
+	},
+	iconFill: {
+		...StyleSheet.absoluteFillObject,
 	},
 	title: {
-		fontSize: 22,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 12,
+		...type.title,
+		color: theme.textPrimary,
 		textAlign: "center",
-		letterSpacing: -0.5,
+		marginTop: space.xs,
 	},
 	message: {
-		fontSize: 15,
-		color: "#666",
+		...type.body,
+		color: theme.textMuted,
 		textAlign: "center",
 		lineHeight: 22,
-		marginBottom: 24,
 	},
-	enableButton: {
-		backgroundColor: "#111827",
-		paddingVertical: 16,
-		paddingHorizontal: 32,
-		borderRadius: 999,
-		width: "100%",
-		alignItems: "center",
-		marginBottom: 12,
-	},
-	enableButtonText: {
-		color: "#fff",
-		fontSize: 17,
-		fontWeight: "600",
-	},
-	laterButton: {
-		paddingVertical: 14,
-		paddingHorizontal: 28,
-		borderRadius: 999,
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		marginBottom: 6,
-	},
-	laterButtonDark: {
-		borderColor: "#242833",
-	},
-	laterButtonText: {
-		fontSize: 16,
-		color: "#666",
-		fontWeight: "500",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
+	actions: {
+		alignSelf: "stretch",
+		gap: space.sm,
+		marginTop: space.lg,
 	},
 });

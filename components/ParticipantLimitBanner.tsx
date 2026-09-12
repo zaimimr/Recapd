@@ -1,5 +1,7 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Feather from "@expo/vector-icons/Feather";
+import { StyleSheet, Text, View } from "react-native";
+import { Button, Card } from "@/components/ui";
+import { radius, space, theme, type } from "@/constants/theme";
 import { useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
 import { getParticipantLimit, getParticipantWarningThreshold } from "@/types/subscription";
 
@@ -14,7 +16,6 @@ export default function ParticipantLimitBanner({
 	participantCount,
 	hostIsPro,
 	isHost,
-	isDark = false,
 }: ParticipantLimitBannerProps) {
 	const { showPaywall } = useSubscriptionStore();
 	const plans = useSubscriptionPlans();
@@ -26,130 +27,75 @@ export default function ParticipantLimitBanner({
 
 	const isAtLimit = participantCount >= participantLimit;
 	const remaining = participantLimit - participantCount;
+	const tint = isAtLimit ? theme.danger : theme.warning;
 
-	const handleUpgrade = () => {
-		showPaywall();
-	};
+	const title = isAtLimit
+		? "The album is full"
+		: `${remaining} ${remaining === 1 ? "spot" : "spots"} left`;
 
-	if (isAtLimit) {
-		return (
-			<View style={[styles.banner, styles.bannerLimit, isDark && styles.bannerDark]}>
-				<View style={[styles.iconContainer, styles.iconLimit]}>
-					<FontAwesome name="exclamation" size={14} color="#fff" />
-				</View>
-				<View style={styles.content}>
-					<Text style={[styles.title, styles.titleLimit]}>Participant limit reached</Text>
-					<Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
-						{isHost
-							? "Upgrade to Pro for unlimited participants"
-							: "Ask the host to upgrade for more guests"}
-					</Text>
-				</View>
-				{isHost && (
-					<TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
-						<Text style={styles.upgradeButtonText}>Upgrade</Text>
-					</TouchableOpacity>
-				)}
-			</View>
-		);
-	}
+	const body = isAtLimit
+		? isHost
+			? "Nobody else can join until you upgrade."
+			: "Ask the host to upgrade so more people can join."
+		: isHost
+			? `Free albums hold ${participantLimit} guests. Pro removes the cap.`
+			: `Free albums hold up to ${participantLimit} guests.`;
 
 	return (
-		<View style={[styles.banner, styles.bannerWarning, isDark && styles.bannerDark]}>
-			<View style={[styles.iconContainer, styles.iconWarning]}>
-				<FontAwesome name="users" size={12} color="#fff" />
+		<Card style={[styles.card, { borderColor: tint }]}>
+			<View style={styles.row}>
+				<View style={[styles.icon, { backgroundColor: `${tint}22` }]}>
+					<Feather name={isAtLimit ? "alert-circle" : "users"} size={17} color={tint} />
+				</View>
+				<View style={styles.text}>
+					<Text style={[styles.title, { color: tint }]}>{title}</Text>
+					<Text style={styles.body}>{body}</Text>
+				</View>
 			</View>
-			<View style={styles.content}>
-				<Text style={[styles.title, styles.titleWarning]}>
-					{remaining} spot{remaining !== 1 ? "s" : ""} left
-				</Text>
-				<Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
-					{isHost
-						? "Upgrade to Pro for unlimited"
-						: `Free events allow up to ${participantLimit} guests`}
-				</Text>
-			</View>
-			{isHost && (
-				<TouchableOpacity
-					style={[styles.upgradeButton, styles.upgradeButtonWarning]}
-					onPress={handleUpgrade}
-				>
-					<Text style={styles.upgradeButtonText}>Upgrade</Text>
-				</TouchableOpacity>
-			)}
-		</View>
+			{isHost ? (
+				<Button
+					label="Upgrade to Pro"
+					icon="zap"
+					size="md"
+					variant="secondary"
+					onPress={showPaywall}
+					style={styles.action}
+				/>
+			) : null}
+		</Card>
 	);
 }
 
 const styles = StyleSheet.create({
-	banner: {
+	card: {
+		gap: space.md,
+	},
+	row: {
 		flexDirection: "row",
+		alignItems: "flex-start",
+		gap: space.md,
+	},
+	icon: {
+		width: 38,
+		height: 38,
+		borderRadius: radius.md,
 		alignItems: "center",
-		paddingHorizontal: 14,
-		paddingVertical: 14,
-		borderWidth: 1,
-		marginBottom: 16,
-		gap: 12,
-	},
-	bannerWarning: {
-		backgroundColor: "#fff",
-		borderColor: "#f59e0b",
-	},
-	bannerLimit: {
-		backgroundColor: "#fff",
-		borderColor: "#ef4444",
-	},
-	bannerDark: {
-		backgroundColor: "#0f1115",
-	},
-	iconContainer: {
-		width: 28,
-		height: 28,
-		borderRadius: 14,
 		justifyContent: "center",
-		alignItems: "center",
 	},
-	iconWarning: {
-		backgroundColor: "#f59e0b",
-	},
-	iconLimit: {
-		backgroundColor: "#ef4444",
-	},
-	content: {
+	text: {
 		flex: 1,
+		gap: 3,
 	},
 	title: {
-		fontSize: 14,
-		fontWeight: "600",
-		marginBottom: 3,
-		textTransform: "uppercase",
-		letterSpacing: 0.8,
+		...type.bodyStrong,
 	},
-	titleWarning: {
-		color: "#92400e",
+	body: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
+		lineHeight: 17,
 	},
-	titleLimit: {
-		color: "#b91c1c",
-	},
-	subtitle: {
-		fontSize: 13,
-		color: "#6b7280",
-	},
-	subtitleDark: {
-		color: "#9ca3af",
-	},
-	upgradeButton: {
-		backgroundColor: "#111827",
-		paddingHorizontal: 14,
-		paddingVertical: 8,
-		borderRadius: 999,
-	},
-	upgradeButtonWarning: {
-		backgroundColor: "#111827",
-	},
-	upgradeButtonText: {
-		color: "#fff",
-		fontSize: 13,
-		fontWeight: "600",
+	action: {
+		marginTop: space.xs,
 	},
 });
