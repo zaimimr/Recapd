@@ -8,7 +8,6 @@ export interface EventStatus {
 	key: EventStatusKey;
 	label: string;
 	tone: PillTone;
-	/** Live is the only state that earns the pulsing dot. */
 	dot: boolean;
 }
 
@@ -34,10 +33,6 @@ export function getEventStatus(
 	return STATUS.ended;
 }
 
-/**
- * Days until the album deletes itself. Null when the event has no expiry set.
- * Never returns a negative number; an album past expiry reads as 0.
- */
 export function daysUntilExpiry(expiresAt: string | null | undefined): number | null {
 	if (!expiresAt) return null;
 	return Math.max(0, differenceInCalendarDays(new Date(expiresAt), new Date()));

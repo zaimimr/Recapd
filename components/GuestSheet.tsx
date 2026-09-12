@@ -55,12 +55,15 @@ export default function GuestSheet({
 			setSendingType(null);
 
 			if (result.ok) {
+				if (result.sent === 0) {
+					Alert.alert(
+						"Nobody to remind yet",
+						"None of your guests have turned notifications on, so there was nobody to reach."
+					);
+					return;
+				}
 				const noun = result.sent === 1 ? "guest" : "guests";
-				const message =
-					result.sent === 0
-						? "No guests have notifications enabled yet."
-						: `Reminder sent to ${result.sent} ${noun}.`;
-				Alert.alert("Reminder sent", message);
+				Alert.alert("Reminder sent", `Reminder sent to ${result.sent} ${noun}.`);
 				return;
 			}
 

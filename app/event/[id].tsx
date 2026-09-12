@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { differenceInDays, differenceInHours, isPast } from "date-fns";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +30,7 @@ import {
 	StatRow,
 } from "@/components/ui";
 import Gradient from "@/components/ui/Gradient";
+import Icon from "@/components/ui/Icon";
 import { CONTENT_MAX_WIDTH, radius, shadow, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import {
@@ -62,7 +62,6 @@ import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
 import type { MergedMediaItem } from "@/types/media";
 
-/** Roughly where the 26px album title leaves the viewport. */
 const HERO_TITLE_OFFSET = 120;
 
 function UploadProgressBar({ eventId }: { eventId: string }) {
@@ -229,7 +228,6 @@ export default function EventScreen() {
 		checkNoPhotosStatus();
 	}, [id, user?.id, getNoPhotosToUpload]);
 
-	// Refresh participant stats when currentEvent participants change (real-time updates)
 	useEffect(() => {
 		if (id && currentEvent?.participants) {
 			const currentEventId = id;
@@ -240,6 +238,18 @@ export default function EventScreen() {
 			});
 		}
 	}, [id, fetchParticipantStats, currentEvent?.participants]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the media count is the trigger, not a value the body reads
+	useEffect(() => {
+		if (!id || !guestSheetVisible) return;
+		let cancelled = false;
+		fetchParticipantStats(id).then((stats) => {
+			if (!cancelled) setParticipants(stats);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [id, guestSheetVisible, fetchParticipantStats, mediaItems.length]);
 
 	useEffect(() => {
 		if (id) {
@@ -710,7 +720,7 @@ export default function EventScreen() {
 									{currentEvent.participant_count === 1 ? "guest" : "guests"}
 									{status.key === "live" ? " adding photos" : ""}
 								</Text>
-								<Feather name="chevron-right" size={14} color={theme.textDisabled} />
+								<Icon name="chevron-right" size={14} color={theme.textDisabled} />
 							</Pressable>
 
 							<StatRow
@@ -748,7 +758,7 @@ export default function EventScreen() {
 							<Card accent style={styles.expiryCard}>
 								<View style={styles.expiryRow}>
 									<View style={styles.expiryIcon}>
-										<Feather name="clock" size={17} color={theme.accentSoft} />
+										<Icon name="clock" size={17} color={theme.accentSoft} />
 									</View>
 									<View style={styles.expiryText}>
 										<Text style={styles.expiryTitle}>
@@ -794,7 +804,7 @@ export default function EventScreen() {
 
 						{isEnded && myMediaCount === 0 && hasMarkedNoPhotos ? (
 							<View style={styles.noPhotos}>
-								<Feather name="check-circle" size={15} color={theme.success} />
+								<Icon name="check-circle" size={15} color={theme.success} />
 								<Text style={styles.noPhotosText}>
 									Thanks. We won't remind you about this album.
 								</Text>

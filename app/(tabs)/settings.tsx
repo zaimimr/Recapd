@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Camera } from "expo-camera";
 import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
@@ -28,6 +27,7 @@ import {
 	ScreenScroll,
 	SectionHeader,
 } from "@/components/ui";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate } from "@/lib/utils";
@@ -46,14 +46,13 @@ interface PermissionInfo {
 	name: string;
 	description: string;
 	status: PermissionStatus;
-	icon: React.ComponentProps<typeof Feather>["name"];
+	icon: IconName;
 	required: boolean;
 }
 
 function permissionTone(status: PermissionStatus): PillTone {
 	if (status === "granted") return "success";
 	if (status === "limited") return "warning";
-	// Never asked is not a failure. Red is reserved for an actual denial.
 	if (status === "denied") return "danger";
 	return "neutral";
 }
@@ -363,7 +362,7 @@ export default function SettingsScreen() {
 					<Card>
 						<View style={styles.planRow}>
 							<View style={[styles.planIcon, isPro && styles.planIconPro]}>
-								<Feather
+								<Icon
 									name={isPro ? "zap" : "user"}
 									size={20}
 									color={isPro ? theme.textOnAccent : theme.textMuted}
@@ -439,19 +438,19 @@ export default function SettingsScreen() {
 							icon="lock"
 							title="Albums are invite-only"
 							subtitle="Only people with the code can open one"
-							trailing={<Feather name="check" size={17} color={theme.success} />}
+							trailing={<Icon name="check" size={17} color={theme.success} />}
 						/>
 						<ListRow
 							icon="eye-off"
 							title="No public profiles"
 							subtitle="No feed, no followers, no discovery"
-							trailing={<Feather name="check" size={17} color={theme.success} />}
+							trailing={<Icon name="check" size={17} color={theme.success} />}
 						/>
 						<ListRow
 							icon="shield"
 							title="Nothing sold or trained on"
 							subtitle="Your photos are never used for ads or models"
-							trailing={<Feather name="check" size={17} color={theme.success} />}
+							trailing={<Icon name="check" size={17} color={theme.success} />}
 							last
 						/>
 					</Card>

@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useMemo } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
 import { Button, Pill, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
@@ -20,6 +20,14 @@ export default function HomeScreen() {
 			fetchUserEvents(user.id);
 		}
 	}, [user?.id, fetchUserEvents]);
+
+	useFocusEffect(
+		useCallback(() => {
+			if (user?.id) {
+				fetchUserEvents(user.id);
+			}
+		}, [user?.id, fetchUserEvents])
+	);
 
 	useEffect(() => {
 		if (user?.id) {

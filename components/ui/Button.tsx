@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import {
 	ActivityIndicator,
 	type GestureResponderEvent,
@@ -9,6 +8,7 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { gradients, radius, shadow, space, theme, type } from "@/constants/theme";
 import Gradient from "./Gradient";
 
@@ -18,8 +18,8 @@ export type ButtonSize = "lg" | "md" | "sm";
 interface ButtonProps {
 	label: string;
 	onPress?: (event: GestureResponderEvent) => void;
-	icon?: React.ComponentProps<typeof Feather>["name"];
-	iconRight?: React.ComponentProps<typeof Feather>["name"];
+	icon?: IconName;
+	iconRight?: IconName;
 	variant?: ButtonVariant;
 	size?: ButtonSize;
 	loading?: boolean;
@@ -57,8 +57,6 @@ export default function Button({
 
 	const isFilled = variant === "primary" || variant === "danger";
 
-	// A disabled control stops being the primary action, so it drops the
-	// gradient entirely rather than wearing a faded version of it.
 	const contentColor = isDisabled
 		? theme.textMuted
 		: isFilled
@@ -71,11 +69,11 @@ export default function Button({
 		<ActivityIndicator color={contentColor} />
 	) : (
 		<View style={styles.content}>
-			{icon ? <Feather name={icon} size={dims.icon} color={contentColor} /> : null}
+			{icon ? <Icon name={icon} size={dims.icon} color={contentColor} /> : null}
 			<Text style={[styles.label, { color: contentColor, fontSize: dims.font }]} numberOfLines={1}>
 				{label}
 			</Text>
-			{iconRight ? <Feather name={iconRight} size={dims.icon} color={contentColor} /> : null}
+			{iconRight ? <Icon name={iconRight} size={dims.icon} color={contentColor} /> : null}
 		</View>
 	);
 

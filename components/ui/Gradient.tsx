@@ -5,7 +5,6 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 interface GradientProps {
 	colors: readonly string[];
-	/** 0 = left-to-right, 90 = top-to-bottom, 135 = the brand diagonal. */
 	angle?: number;
 	style?: StyleProp<ViewStyle>;
 	children?: React.ReactNode;
@@ -24,10 +23,6 @@ function angleToPoints(angle: number) {
 	};
 }
 
-/**
- * Linear gradient fill built on react-native-svg, which is already linked for
- * QR rendering. Clip it by giving the wrapper a borderRadius and overflow hidden.
- */
 export default function Gradient({
 	colors,
 	angle = 135,

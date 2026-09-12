@@ -1,6 +1,6 @@
-import Feather from "@expo/vector-icons/Feather";
 import { StyleSheet, Text, View } from "react-native";
 import { Button, Card } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
 import { getParticipantLimit, getParticipantWarningThreshold } from "@/types/subscription";
@@ -44,7 +44,7 @@ export default function ParticipantLimitBanner({
 		<Card style={[styles.card, { borderColor: tint }]}>
 			<View style={styles.row}>
 				<View style={[styles.icon, { backgroundColor: `${tint}22` }]}>
-					<Feather name={isAtLimit ? "alert-circle" : "users"} size={17} color={tint} />
+					<Icon name={isAtLimit ? "alert-circle" : "users"} size={17} color={tint} />
 				</View>
 				<View style={styles.text}>
 					<Text style={[styles.title, { color: tint }]}>{title}</Text>

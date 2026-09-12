@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +13,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { radius, theme } from "@/constants/theme";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { createVideoThumbnailUri } from "@/lib/storage";
@@ -214,7 +214,7 @@ export default function SelectionPhotoViewer({
 		return "Select";
 	}
 
-	function getButtonIcon(): React.ComponentProps<typeof Feather>["name"] {
+	function getButtonIcon(): IconName {
 		if (isUploaded) return "check-circle";
 		if (isSelected) return "check";
 		return "circle";
@@ -235,7 +235,7 @@ export default function SelectionPhotoViewer({
 						onPress={onClose}
 						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
 					>
-						<Feather name="chevron-down" size={20} color="#fff" />
+						<Icon name="chevron-down" size={20} color="#fff" />
 					</TouchableOpacity>
 					<View style={styles.headerCenter}>
 						<Text style={styles.counter}>
@@ -264,7 +264,7 @@ export default function SelectionPhotoViewer({
 				<View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
 					<View style={styles.mediaMetaRow}>
 						<View style={styles.mediaPill}>
-							<Feather
+							<Icon
 								name={currentPhoto.mediaType === "video" ? "play" : "image"}
 								size={10}
 								color="#fff"
@@ -280,7 +280,7 @@ export default function SelectionPhotoViewer({
 						)}
 					</View>
 					<TouchableOpacity style={getButtonStyle()} onPress={handleToggle} disabled={isUploaded}>
-						<Feather
+						<Icon
 							name={getButtonIcon()}
 							size={18}
 							color={isUploaded ? theme.success : isSelected ? "#FFFFFF" : theme.textPrimary}

@@ -113,7 +113,6 @@ export default function JoinByCodeScreen() {
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
 
-	// Looking up the code from the deep link.
 	if (isLoading && !lookupDone) {
 		return (
 			<Screen style={styles.centered}>
@@ -123,7 +122,6 @@ export default function JoinByCodeScreen() {
 		);
 	}
 
-	// The code does not resolve to a live album.
 	if (lookupDone && !eventPreview) {
 		return (
 			<Screen edges="both">

@@ -1,8 +1,8 @@
-import Feather from "@expo/vector-icons/Feather";
 import { useCallback, useEffect, useRef } from "react";
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button, Gradient } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 
 const SHEET_HEIGHT = 340;
@@ -110,7 +110,7 @@ export default function NotificationPromptModal({
 					<View style={styles.content}>
 						<View style={styles.iconWrap}>
 							<Gradient colors={theme.gradient} style={styles.iconFill} pointerEvents="none" />
-							<Feather name="bell" size={26} color="#FFFFFF" />
+							<Icon name="bell" size={26} color="#FFFFFF" />
 						</View>
 
 						<Text style={styles.title}>Know before it closes</Text>

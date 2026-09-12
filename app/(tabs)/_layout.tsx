@@ -1,17 +1,10 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Tabs } from "expo-router";
-import type React from "react";
 import { Platform, StyleSheet } from "react-native";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { theme } from "@/constants/theme";
 
-function TabBarIcon({
-	name,
-	color,
-}: {
-	name: React.ComponentProps<typeof Feather>["name"];
-	color: string;
-}) {
-	return <Feather size={22} name={name} color={color} />;
+function TabBarIcon({ name, color }: { name: IconName; color: string }) {
+	return <Icon size={22} name={name} color={color} />;
 }
 
 export default function TabLayout() {
@@ -37,7 +30,7 @@ export default function TabLayout() {
 			<Tabs.Screen
 				name="events"
 				options={{
-					title: "My Events",
+					title: "Albums",
 					tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
 				}}
 			/>

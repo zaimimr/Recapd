@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Image as ExpoImage } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -15,6 +14,7 @@ import {
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
 import { Button, EmptyState, IconButton, NavBar, Screen } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import { logger } from "@/lib/logger";
@@ -696,7 +696,7 @@ export default function ContributeScreen() {
 
 								{isVideo ? (
 									<View style={styles.videoBadge}>
-										<Feather name="play" size={9} color="#FFFFFF" />
+										<Icon name="play" size={9} color="#FFFFFF" />
 										{item.duration > 0 ? (
 											<Text style={styles.videoDuration}>{formatDurationHms(item.duration)}</Text>
 										) : null}
@@ -706,12 +706,12 @@ export default function ContributeScreen() {
 								{isUploaded ? (
 									<View style={styles.uploadedOverlay}>
 										<View style={styles.uploadedBadge}>
-											<Feather name="check" size={11} color="#FFFFFF" />
+											<Icon name="check" size={11} color="#FFFFFF" />
 										</View>
 									</View>
 								) : (
 									<View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
-										{isSelected ? <Feather name="check" size={13} color="#FFFFFF" /> : null}
+										{isSelected ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
 									</View>
 								)}
 							</Pressable>

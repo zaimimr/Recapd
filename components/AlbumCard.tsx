@@ -1,7 +1,7 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Pill } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, shadow, space, theme, type } from "@/constants/theme";
 import { daysUntilExpiry, expiryLabel, expiryTone, getEventStatus } from "@/lib/eventStatus";
 import { usePhotoThumbnailUrl } from "@/lib/storage";
@@ -55,7 +55,7 @@ export default function AlbumCard({
 		<Pressable
 			onPress={onPress}
 			accessibilityRole="button"
-			accessibilityLabel={`${event.title}, ${status.label}, ${countLabel}`}
+			accessibilityLabel={`${event.title}, ${status.label}, ${countLabel}${isHost ? ", you host this" : ""}`}
 			accessibilityHint="Opens the album"
 			style={({ pressed }) => [styles.card, pressed && styles.pressed]}
 		>
@@ -66,7 +66,7 @@ export default function AlbumCard({
 					<Text style={styles.title} numberOfLines={1}>
 						{event.title}
 					</Text>
-					{isHost ? <Feather name="key" size={13} color={theme.accentSoft} /> : null}
+					{isHost ? <Icon name="key" size={13} color={theme.accentSoft} /> : null}
 				</View>
 
 				<Text style={styles.meta} numberOfLines={1}>
@@ -83,7 +83,7 @@ export default function AlbumCard({
 				</View>
 			</View>
 
-			<Feather name="chevron-right" size={18} color={theme.textDisabled} style={styles.chevron} />
+			<Icon name="chevron-right" size={18} color={theme.textDisabled} style={styles.chevron} />
 		</Pressable>
 	);
 }

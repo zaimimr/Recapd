@@ -1,7 +1,3 @@
-/**
- * Avatar colours, drawn from the Sunset Pop family so guest initials sit inside
- * the brand instead of beside it. Every entry clears 4.5:1 against white text.
- */
 const AVATAR_COLORS = [
 	"#FF2D8E",
 	"#8B2FE0",

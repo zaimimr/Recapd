@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { addHours, isBefore, setHours, setMinutes } from "date-fns";
 import { useRouter } from "expo-router";
@@ -23,6 +22,7 @@ import {
 	ScreenScroll,
 	SectionHeader,
 } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
@@ -206,7 +206,7 @@ export default function CreateEventScreen() {
 				{SUBSCRIPTIONS_ENABLED ? (
 					<Card style={styles.planCard}>
 						<View style={styles.planRow}>
-							<Feather
+							<Icon
 								name={isPro ? "zap" : "info"}
 								size={17}
 								color={isPro ? theme.accentSoft : theme.textMuted}

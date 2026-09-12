@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { forwardRef } from "react";
 import {
 	StyleSheet,
@@ -8,20 +7,17 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 
 interface FieldProps extends TextInputProps {
 	label?: string;
 	hint?: string;
 	error?: string | null;
-	icon?: React.ComponentProps<typeof Feather>["name"];
+	icon?: IconName;
 	containerStyle?: ViewStyle;
 }
 
-/**
- * Single text field. Errors name the problem under the input and turn the
- * border red; the hint stays visible until an error replaces it.
- */
 const Field = forwardRef<TextInput, FieldProps>(function Field(
 	{ label, hint, error, icon, containerStyle, style, ...props },
 	ref
@@ -30,7 +26,7 @@ const Field = forwardRef<TextInput, FieldProps>(function Field(
 		<View style={[styles.wrap, containerStyle]}>
 			{label ? <Text style={styles.label}>{label}</Text> : null}
 			<View style={[styles.inputShell, !!error && styles.inputShellError]}>
-				{icon ? <Feather name={icon} size={17} color={theme.textMuted} /> : null}
+				{icon ? <Icon name={icon} size={17} color={theme.textMuted} /> : null}
 				<TextInput
 					ref={ref}
 					style={[styles.input, style]}

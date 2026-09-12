@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
@@ -29,6 +29,12 @@ export default function EventsScreen() {
 			fetchUserEvents(user.id);
 		}
 	}, [user?.id, fetchUserEvents]);
+
+	useFocusEffect(
+		useCallback(() => {
+			loadEvents();
+		}, [loadEvents])
+	);
 
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true);

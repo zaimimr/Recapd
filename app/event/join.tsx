@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -24,6 +23,7 @@ import {
 	ScreenScroll,
 	SectionHeader,
 } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
@@ -212,7 +212,7 @@ export default function JoinEventScreen() {
 						{isEventFull ? (
 							<Card accent style={styles.fullCard}>
 								<View style={styles.fullRow}>
-									<Feather name="alert-circle" size={18} color={theme.danger} />
+									<Icon name="alert-circle" size={18} color={theme.danger} />
 									<Text style={styles.fullText}>
 										This album is at its {participantLimit}-guest limit. Ask the host to upgrade for
 										more spots.

@@ -1,9 +1,9 @@
-import Feather from "@expo/vector-icons/Feather";
 import { useEvent, useEventListener } from "expo";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import Icon from "@/components/ui/Icon";
 import { useVideoPlaybackUri } from "@/lib/storage";
 import type { MergedMediaItem } from "@/types/media";
 
@@ -187,7 +187,7 @@ function VideoPlayerContent({
 			{!nativeControls && showPlayButton && (
 				<Pressable style={styles.centerOverlay} onPress={handleSurfaceTap}>
 					<View style={styles.playButton}>
-						<Feather name="play" size={18} color="#fff" style={styles.playIcon} />
+						<Icon name="play" size={18} color="#fff" style={styles.playIcon} />
 					</View>
 				</Pressable>
 			)}
@@ -195,7 +195,7 @@ function VideoPlayerContent({
 			{isError && (
 				<Pressable style={styles.centerOverlay} onPress={handlePlayPause}>
 					<View style={styles.errorBox}>
-						<Feather name="alert-triangle" size={20} color="#fff" />
+						<Icon name="alert-triangle" size={20} color="#fff" />
 						<Text style={styles.errorText}>Couldn't play video</Text>
 						<Text style={styles.errorRetry}>Tap to retry</Text>
 					</View>

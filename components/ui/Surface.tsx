@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import type { ReactNode } from "react";
 import {
 	Pressable,
@@ -9,9 +8,8 @@ import {
 	View,
 	type ViewStyle,
 } from "react-native";
+import Icon, { type IconName } from "@/components/ui/Icon";
 import { hitSlop, radius, shadow, space, theme, type } from "@/constants/theme";
-
-/* -------------------------------------------------------------- Card */
 
 interface CardProps {
 	children: ReactNode;
@@ -57,8 +55,6 @@ export function Card({
 	);
 }
 
-/* -------------------------------------------------------------- Eyebrow + SectionHeader */
-
 export function Eyebrow({
 	children,
 	style,
@@ -92,8 +88,6 @@ export function SectionHeader({
 	);
 }
 
-/* -------------------------------------------------------------- Pill */
-
 export type PillTone = "neutral" | "live" | "success" | "warning" | "danger" | "accent";
 
 const PILL_TONES: Record<PillTone, { bg: string; fg: string }> = {
@@ -115,22 +109,20 @@ export function Pill({
 	label: string;
 	tone?: PillTone;
 	dot?: boolean;
-	icon?: React.ComponentProps<typeof Feather>["name"];
+	icon?: IconName;
 	style?: StyleProp<ViewStyle>;
 }) {
 	const { bg, fg } = PILL_TONES[tone];
 	return (
 		<View style={[styles.pill, { backgroundColor: bg }, style]}>
 			{dot ? <View style={[styles.pillDot, { backgroundColor: fg }]} /> : null}
-			{icon ? <Feather name={icon} size={12} color={fg} /> : null}
+			{icon ? <Icon name={icon} size={12} color={fg} /> : null}
 			<Text style={[styles.pillLabel, { color: fg }]} numberOfLines={1}>
 				{label}
 			</Text>
 		</View>
 	);
 }
-
-/* -------------------------------------------------------------- StatTile */
 
 export function StatRow({ items }: { items: { value: string | number; label: string }[] }) {
 	return (
@@ -154,8 +146,6 @@ export function StatRow({ items }: { items: { value: string | number; label: str
 	);
 }
 
-/* -------------------------------------------------------------- IconButton */
-
 export function IconButton({
 	icon,
 	onPress,
@@ -165,7 +155,7 @@ export function IconButton({
 	disabled = false,
 	style,
 }: {
-	icon: React.ComponentProps<typeof Feather>["name"];
+	icon: IconName;
 	onPress?: () => void;
 	accessibilityLabel: string;
 	tone?: "glass" | "plain" | "danger";
@@ -201,12 +191,10 @@ export function IconButton({
 				style,
 			]}
 		>
-			<Feather name={icon} size={Math.round(size * 0.5)} color={fg} />
+			<Icon name={icon} size={Math.round(size * 0.5)} color={fg} />
 		</Pressable>
 	);
 }
-
-/* -------------------------------------------------------------- ListRow */
 
 export function ListRow({
 	icon,
@@ -219,7 +207,7 @@ export function ListRow({
 	destructive = false,
 	accessibilityHint,
 }: {
-	icon?: React.ComponentProps<typeof Feather>["name"];
+	icon?: IconName;
 	iconTone?: "accent" | "neutral" | "danger";
 	title: string;
 	subtitle?: string;
@@ -246,7 +234,7 @@ export function ListRow({
 		<>
 			{icon ? (
 				<View style={[styles.rowIcon, { backgroundColor: iconBg }]}>
-					<Feather name={icon} size={17} color={iconFg} />
+					<Icon name={icon} size={17} color={iconFg} />
 				</View>
 			) : null}
 			<View style={styles.rowText}>
@@ -260,7 +248,7 @@ export function ListRow({
 				) : null}
 			</View>
 			{trailing ??
-				(onPress ? <Feather name="chevron-right" size={17} color={theme.textDisabled} /> : null)}
+				(onPress ? <Icon name="chevron-right" size={17} color={theme.textDisabled} /> : null)}
 		</>
 	);
 
@@ -281,15 +269,13 @@ export function ListRow({
 	);
 }
 
-/* -------------------------------------------------------------- EmptyState */
-
 export function EmptyState({
 	icon = "image",
 	title,
 	body,
 	action,
 }: {
-	icon?: React.ComponentProps<typeof Feather>["name"];
+	icon?: IconName;
 	title: string;
 	body?: string;
 	action?: ReactNode;
@@ -297,7 +283,7 @@ export function EmptyState({
 	return (
 		<View style={styles.empty}>
 			<View style={styles.emptyIcon}>
-				<Feather name={icon} size={26} color={theme.accentSoft} />
+				<Icon name={icon} size={26} color={theme.accentSoft} />
 			</View>
 			<Text style={styles.emptyTitle}>{title}</Text>
 			{body ? <Text style={styles.emptyBody}>{body}</Text> : null}
@@ -305,8 +291,6 @@ export function EmptyState({
 		</View>
 	);
 }
-
-/* -------------------------------------------------------------- styles */
 
 const styles = StyleSheet.create({
 	card: {

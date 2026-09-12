@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { isBefore } from "date-fns";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,6 +23,7 @@ import {
 	ScreenScroll,
 	SectionHeader,
 } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { computeEventExpiry } from "@/lib/dateUtils";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
@@ -243,7 +243,7 @@ export default function EditEventScreen() {
 
 				<Card style={styles.infoCard}>
 					<View style={styles.infoRow}>
-						<Feather name="clock" size={17} color={theme.textMuted} />
+						<Icon name="clock" size={17} color={theme.textMuted} />
 						<Text style={styles.infoText}>
 							The album closes on{" "}
 							{formatLocalizedDate(newExpiryDate, {

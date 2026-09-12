@@ -264,13 +264,13 @@ All measurements are density-independent points (pt on iOS, dp on Android), not 
 
 **Spacing** runs on an eight-step scale — 4 / 8 / 12 / 16 / 20 / 24 / 32 / 40 — applied through `gap` rather than margins wherever the platform allows it. The two recurring rhythms: 16 for the screen's horizontal gutter and a card's internal padding, and 32 between top-level sections of a scrolling screen.
 
-**The measure cap.** `CONTENT_MAX_WIDTH` is 680. Phones are narrower and ignore it; tablets stop stretching at it and centre the column. This is implemented by `ScreenScroll`, which wraps its children in a real `View` carrying `maxWidth: 680` and `alignSelf: "center"`. Screens that build their own scroller (the event screen's masonry header, the home masthead) repeat that pair by hand.
+**The measure cap.** `CONTENT_MAX_WIDTH` is 680. Phones are narrower and ignore it; tablets stop stretching at it and centre the column. This is implemented by `ScreenScroll`, which wraps its children in a real `View` carrying `maxWidth: 680` and `alignSelf: "center"`. Screens that build their own scroller (the event screen's feed, the home masthead) repeat that pair by hand.
 
 **Short screens centre.** `ScreenScroll` takes a `center` prop that adds `flexGrow: 1` + `justifyContent: "center"` to the scroll container, so a three-field form sits in the middle of the viewport instead of stranded against the top. Content taller than the viewport still scrolls normally. Home, onboarding, and the name gate all use it.
 
 **Navigation.** Three tabs (Home / My Events / Settings) on an 84pt iOS / 66pt Android bar in `rgba(15,15,22,0.98)` with a hairline top edge. Top-level screens have no header — their title lives in the body as a `SectionHeader`. Deep screens and sheets use the inline `NavBar`: a 38pt circular back or close control on the left, a centred title with optional subtitle, and up to two `IconButton`s on the right.
 
-**The feed** is the exception to every gutter above: a 2 / 3 / 4-column masonry list at a 2pt padding per tile, running edge to edge under a header card, with a density switcher pinned above it.
+**The feed** is the exception to every gutter above: a 2 / 3 / 4-column square grid at a 2pt padding per tile, running under a header card at the same 680pt measure, with a density switcher pinned above it.
 
 ### Named Rules
 
@@ -348,7 +348,7 @@ The recurring silhouette is a soft-cornered dark rectangle holding a left-aligne
 
 ### Grid Tile (signature)
 
-The feed tile is where the product lives. An 8pt-cornered `#1E1E2B` square filled by a cover-fit image with a blurhash placeholder, at a 2pt gutter, in a FlashList masonry layout switchable between 2, 3 and 4 columns. Overlays are minimal and always dark-on-photo: an 18pt uploader initial badge top-left in that person's avatar colour, a `VID` chip top-right, a 38pt play button centred and a duration chip bottom-right on video, and — while an item is uploading — a 55%-deep `rgba(7,7,12,0.55)` scrim carrying a status chip (Queued / Uploading / Failed) and up to three 28pt circular retry / skip / remove chips.
+The feed tile is where the product lives. An 8pt-cornered `#1E1E2B` square filled by a cover-fit image with a blurhash placeholder, at a 2pt gutter, in a FlashList grid switchable between 2, 3 and 4 columns. Overlays are minimal and always dark-on-photo: an 18pt uploader initial badge top-left in that person's avatar colour, a `VID` chip top-right, a 38pt play button centred and a duration chip bottom-right on video, and — while an item is uploading — a 55%-deep `rgba(7,7,12,0.55)` scrim carrying a status chip (Queued / Uploading / Failed) and up to three 28pt circular retry / skip / remove chips.
 
 **The one authored motion moment.** A tile arriving in the feed settles in: opacity 0→1 and scale 0.94→1 over 320ms on `Easing.out(Easing.cubic)`. It is keyed so a tile that never animates — recycled by the list, or served from cache — starts already visible rather than flashing in. Nothing else in the app has an entrance animation. Skeleton tiles pulse between 0.45 and 1 opacity on a 760ms `Easing.inOut(Easing.quad)` loop; that is a progress indicator, not decoration.
 

@@ -74,7 +74,6 @@ export default function ShareEventScreen() {
 		);
 	}
 
-	// Deep link for the QR; the web URL redirects to the app or the store.
 	const deepLink = `recapd://join/${currentEvent.join_code}`;
 	const recentGuests = [...(currentEvent.participants ?? [])]
 		.sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime())

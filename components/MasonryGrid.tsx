@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import type { ReactElement } from "react";
@@ -14,6 +13,7 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native";
+import Icon from "@/components/ui/Icon";
 import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { getAvatarColor } from "@/lib/colors";
 import {
@@ -45,7 +45,6 @@ interface MasonryGridProps {
 	headerComponent?: ReactElement | null;
 	emptyComponent?: ReactElement | null;
 	refreshControl?: ReactElement<RefreshControlProps>;
-	/** Reports vertical offset so a caller can collapse or reveal its own chrome. */
 	onScroll?: (offsetY: number) => void;
 }
 
@@ -137,9 +136,6 @@ function GridTile({
 		return signedThumbnailUrl || legacyTransformUrl;
 	})();
 
-	// The one authored moment: a photo landing in the feed settles into place.
-	// Exponential ease-out from an already-visible default, so a tile that never
-	// animates (recycled, cached) still reads as finished.
 	const arrival = useRef(new Animated.Value(photo.isPending ? 1 : 0)).current;
 	const hasArrived = useRef(false);
 
@@ -213,7 +209,7 @@ function GridTile({
 					/>
 				) : (
 					<View style={[styles.media, styles.placeholder]}>
-						<Feather name={isVideo ? "video" : "image"} size={22} color={theme.textDisabled} />
+						<Icon name={isVideo ? "video" : "image"} size={22} color={theme.textDisabled} />
 					</View>
 				)}
 
@@ -232,7 +228,7 @@ function GridTile({
 					)}
 					{isVideo && (
 						<View style={styles.kindBadge}>
-							<Feather name="play" size={9} color="#fff" />
+							<Icon name="play" size={9} color="#fff" />
 							<Text style={styles.kindBadgeText}>VID</Text>
 						</View>
 					)}
@@ -241,7 +237,7 @@ function GridTile({
 				{isVideo && !photo.isPending && (
 					<View style={styles.videoCenter}>
 						<View style={styles.videoPlayButton}>
-							<Feather name="play" size={14} color="#fff" />
+							<Icon name="play" size={14} color="#fff" />
 						</View>
 					</View>
 				)}
@@ -262,12 +258,12 @@ function GridTile({
 								</>
 							) : isFailed ? (
 								<>
-									<Feather name="alert-triangle" size={12} color="#fff" />
+									<Icon name="alert-triangle" size={12} color="#fff" />
 									<Text style={styles.pendingText}>Failed</Text>
 								</>
 							) : (
 								<>
-									<Feather name="clock" size={12} color="#fff" />
+									<Icon name="clock" size={12} color="#fff" />
 									<Text style={styles.pendingText}>{isQueued ? "Queued" : "Pending"}</Text>
 								</>
 							)}
@@ -280,7 +276,7 @@ function GridTile({
 									onPress={() => onRetry(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<Feather name="refresh-cw" size={11} color="#fff" />
+									<Icon name="refresh-cw" size={11} color="#fff" />
 								</TouchableOpacity>
 							)}
 							{(isFailed || isQueued || isSyncing) && onSkip && (
@@ -289,7 +285,7 @@ function GridTile({
 									onPress={() => onSkip(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<Feather name="skip-forward" size={10} color="#fff" />
+									<Icon name="skip-forward" size={10} color="#fff" />
 								</TouchableOpacity>
 							)}
 							{(isFailed || isQueued || isSyncing) && onRemove && (
@@ -298,7 +294,7 @@ function GridTile({
 									onPress={() => onRemove(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<Feather name="trash-2" size={10} color="#fff" />
+									<Icon name="trash-2" size={10} color="#fff" />
 								</TouchableOpacity>
 							)}
 						</View>
@@ -346,7 +342,7 @@ function SkeletonTile({ syncing }: { syncing: boolean }) {
 					{syncing ? (
 						<ActivityIndicator size="small" color="#fff" />
 					) : (
-						<Feather name="clock" size={12} color="#fff" />
+						<Icon name="clock" size={12} color="#fff" />
 					)}
 					<Text style={styles.pendingText}>{syncing ? "Uploading" : "Waiting"}</Text>
 				</View>
@@ -447,7 +443,6 @@ export default function MasonryGrid({
 				keyExtractor={(item) => item.id}
 				getItemType={getItemType}
 				numColumns={gridColumns}
-				masonry
 				contentContainerStyle={styles.container}
 				showsVerticalScrollIndicator={false}
 				ListHeaderComponent={listHeader}

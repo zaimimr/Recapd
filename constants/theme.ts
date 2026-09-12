@@ -26,6 +26,8 @@ export const brandGradient = ["#FF5E62", "#FF2D8E", "#8B2FE0"] as const;
 export const gradients = {
 	brand: brandGradient,
 	danger: ["#F97066", "#EF4444"] as const,
+	scrimTop: ["rgba(7,7,12,0.78)", "rgba(7,7,12,0)"] as const,
+	scrimBottom: ["rgba(7,7,12,0)", "rgba(7,7,12,0.82)"] as const,
 };
 
 export const space = {
@@ -79,7 +81,6 @@ export const shadow = {
 
 export const hitSlop = { top: 10, bottom: 10, left: 10, right: 10 } as const;
 
-/** Reading measure cap. Phones fall under it; tablets stop stretching at it. */
 export const CONTENT_MAX_WIDTH = 680;
 
 export interface AppTheme {
@@ -146,5 +147,4 @@ const dark: AppTheme = {
 	glassBorder: "rgba(255,255,255,0.18)",
 };
 
-/** Recapd ships a single dark appearance. */
 export const theme = dark;

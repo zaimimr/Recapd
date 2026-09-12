@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import {
@@ -11,12 +10,9 @@ import {
 	type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Icon from "@/components/ui/Icon";
 import { CONTENT_MAX_WIDTH, hitSlop, space, theme, type } from "@/constants/theme";
 
-/**
- * Page shell. Owns the ground colour and the safe-area padding so no screen
- * has to rediscover either.
- */
 export function Screen({
 	children,
 	style,
@@ -50,10 +46,6 @@ export function ScreenScroll({
 	...props
 }: ScrollViewProps & {
 	children: ReactNode;
-	/**
-	 * Centres short content in the viewport instead of stranding it against the
-	 * top. Content taller than the viewport still scrolls normally.
-	 */
 	center?: boolean;
 }) {
 	return (
@@ -70,10 +62,6 @@ export function ScreenScroll({
 	);
 }
 
-/**
- * Inline navigation bar. Deep screens stay inline per platform convention;
- * top-level screens use a large title in the body instead.
- */
 export function NavBar({
 	title,
 	subtitle,
@@ -87,7 +75,6 @@ export function NavBar({
 	onBack?: () => void;
 	right?: ReactNode;
 	transparent?: boolean;
-	/** Sheets close, they do not go back. Swaps the chevron for a Close control. */
 	dismiss?: boolean;
 }) {
 	const router = useRouter();
@@ -103,7 +90,7 @@ export function NavBar({
 					accessibilityLabel={dismiss ? "Close" : "Go back"}
 					style={({ pressed }) => [styles.navButton, pressed && { opacity: 0.6 }]}
 				>
-					<Feather
+					<Icon
 						name={dismiss ? "x" : "chevron-left"}
 						size={dismiss ? 20 : 22}
 						color={theme.textPrimary}
@@ -142,16 +129,9 @@ const styles = StyleSheet.create({
 	scrollOuter: {
 		paddingBottom: space.huge,
 	},
-	/**
-	 * Caps the reading measure so a 13" iPad does not stretch a form into a
-	 * single 1000pt line. Phones are narrower than the cap and ignore it.
-	 */
 	measure: {
 		width: "100%",
 		maxWidth: CONTENT_MAX_WIDTH,
-		// alignSelf works here because this is a real View child. The same
-		// property on a ScrollView contentContainer is ignored, which left-aligns
-		// the capped column on a tablet.
 		alignSelf: "center",
 	},
 	centered: {

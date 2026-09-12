@@ -1,4 +1,3 @@
-import Feather from "@expo/vector-icons/Feather";
 import { Image } from "expo-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -19,7 +18,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "@/components/ui";
-import { radius, space, theme, type } from "@/constants/theme";
+import Gradient from "@/components/ui/Gradient";
+import Icon from "@/components/ui/Icon";
+import { gradients, radius, space, theme, type } from "@/constants/theme";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import {
 	backfillVideoThumbnail,
@@ -335,7 +336,9 @@ export default function PhotoViewer({
 		? formatLocalizedDate(capturedAt, {
 				month: "short",
 				day: "numeric",
-				year: "numeric",
+				...(new Date(capturedAt).getFullYear() === new Date().getFullYear()
+					? {}
+					: { year: "numeric" as const }),
 			})
 		: null;
 	const captureTimeLabel = capturedAt ? formatLocalizedTime(capturedAt) : null;
@@ -589,44 +592,60 @@ export default function PhotoViewer({
 						pointerEvents={controlsVisible ? "box-none" : "none"}
 						style={[styles.overlay, { opacity: controlsOpacity }]}
 					>
-						<Pressable
-							onPress={animateClose}
-							hitSlop={12}
-							accessibilityRole="button"
-							accessibilityLabel="Close"
-							style={[styles.topButton, { top: insets.top + 12 }]}
-						>
-							<Feather name="chevron-down" size={20} color="#fff" />
-						</Pressable>
+						<Gradient
+							colors={gradients.scrimTop}
+							angle={180}
+							pointerEvents="none"
+							style={[styles.scrimTop, { height: insets.top + 96 }]}
+						/>
 
-						<View pointerEvents="none" style={[styles.identityRow, { top: insets.top + 12 }]}>
-							{uploaderName ? <Avatar name={uploaderName} size={34} /> : null}
-							<View style={styles.identityText}>
-								{uploaderName ? (
-									<Text style={styles.uploaderName} numberOfLines={1}>
-										{uploaderName}
-									</Text>
+						<View style={[styles.topRow, { top: insets.top + 12 }]}>
+							<Pressable
+								onPress={animateClose}
+								hitSlop={12}
+								accessibilityRole="button"
+								accessibilityLabel="Close"
+								style={styles.topButton}
+							>
+								<Icon name="chevron-down" size={20} color="#fff" />
+							</Pressable>
+
+							<View pointerEvents="none" style={styles.identityRow}>
+								{uploaderName ? <Avatar name={uploaderName} size={34} /> : null}
+								<View style={styles.identityText}>
+									{uploaderName ? (
+										<Text style={styles.uploaderName} numberOfLines={1}>
+											{uploaderName}
+										</Text>
+									) : null}
+									{captureDateLabel && captureTimeLabel ? (
+										<Text style={styles.timestampDate} numberOfLines={1}>
+											{captureDateLabel} · {captureTimeLabel}
+										</Text>
+									) : null}
+								</View>
+							</View>
+
+							<View pointerEvents="none" style={styles.metaRow}>
+								{qualityLabel ? (
+									<View style={styles.metaBadge}>
+										<Text style={styles.metaText}>{qualityLabel}</Text>
+									</View>
 								) : null}
-								{captureDateLabel && captureTimeLabel ? (
-									<Text style={styles.timestampDate} numberOfLines={1}>
-										{captureDateLabel} · {captureTimeLabel}
-									</Text>
+								{counterLabel ? (
+									<View style={styles.metaBadge}>
+										<Text style={styles.metaText}>{counterLabel}</Text>
+									</View>
 								) : null}
 							</View>
 						</View>
 
-						<View pointerEvents="none" style={[styles.metaRow, { top: insets.top + 12 }]}>
-							{qualityLabel ? (
-								<View style={styles.metaBadge}>
-									<Text style={styles.metaText}>{qualityLabel}</Text>
-								</View>
-							) : null}
-							{counterLabel ? (
-								<View style={styles.metaBadge}>
-									<Text style={styles.metaText}>{counterLabel}</Text>
-								</View>
-							) : null}
-						</View>
+						<Gradient
+							colors={gradients.scrimBottom}
+							angle={180}
+							pointerEvents="none"
+							style={[styles.scrimBottom, { height: insets.bottom + 128 }]}
+						/>
 
 						<View style={[styles.bottomActions, { bottom: insets.bottom + 18 }]}>
 							{isVideo ? (
@@ -637,7 +656,7 @@ export default function PhotoViewer({
 									accessibilityLabel={muted ? "Unmute" : "Mute"}
 									style={styles.actionButton}
 								>
-									<Feather name={muted ? "volume-x" : "volume-2"} size={19} color="#fff" />
+									<Icon name={muted ? "volume-x" : "volume-2"} size={19} color="#fff" />
 								</Pressable>
 							) : null}
 
@@ -653,7 +672,7 @@ export default function PhotoViewer({
 									{saving ? (
 										<ActivityIndicator size="small" color="#fff" />
 									) : (
-										<Feather name="download" size={19} color="#fff" />
+										<Icon name="download" size={19} color="#fff" />
 									)}
 									<Text style={styles.saveLabel}>{saving ? "Saving…" : "Save"}</Text>
 								</Pressable>
@@ -671,7 +690,7 @@ export default function PhotoViewer({
 									{deleting ? (
 										<ActivityIndicator size="small" color="#fff" />
 									) : (
-										<Feather name="trash-2" size={19} color="#fff" />
+										<Icon name="trash-2" size={19} color="#fff" />
 									)}
 								</Pressable>
 							) : null}
@@ -713,9 +732,27 @@ const styles = StyleSheet.create({
 	overlay: {
 		...StyleSheet.absoluteFillObject,
 	},
-	topButton: {
+	scrimTop: {
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+	},
+	scrimBottom: {
+		position: "absolute",
+		bottom: 0,
+		left: 0,
+		right: 0,
+	},
+	topRow: {
 		position: "absolute",
 		left: 16,
+		right: 16,
+		flexDirection: "row",
+		alignItems: "center",
+		gap: space.sm,
+	},
+	topButton: {
 		width: 40,
 		height: 40,
 		borderRadius: 20,
@@ -726,9 +763,7 @@ const styles = StyleSheet.create({
 		borderColor: theme.glassBorder,
 	},
 	identityRow: {
-		position: "absolute",
-		left: 66,
-		right: 120,
+		flex: 1,
 		flexDirection: "row",
 		alignItems: "center",
 		gap: space.sm,
@@ -748,8 +783,7 @@ const styles = StyleSheet.create({
 		color: "rgba(255,255,255,0.72)",
 	},
 	metaRow: {
-		position: "absolute",
-		right: 16,
+		flexShrink: 0,
 		height: 40,
 		flexDirection: "row",
 		alignItems: "center",
