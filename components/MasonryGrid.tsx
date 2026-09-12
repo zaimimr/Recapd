@@ -14,7 +14,7 @@ import {
 	TouchableOpacity,
 	View,
 } from "react-native";
-import { radius, space, theme, type } from "@/constants/theme";
+import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { getAvatarColor } from "@/lib/colors";
 import {
 	createVideoThumbnailUri,
@@ -180,6 +180,14 @@ function GridTile({
 			<TouchableOpacity
 				activeOpacity={0.9}
 				style={styles.tile}
+				accessibilityRole="imagebutton"
+				accessibilityLabel={[
+					isVideo ? "Video" : "Photo",
+					photo.uploader?.display_name ? `from ${photo.uploader.display_name}` : null,
+					showPendingOverlay ? "uploading" : null,
+				]
+					.filter(Boolean)
+					.join(", ")}
 				onPress={() => onPhotoPress(photo, index)}
 			>
 				{imageUri ? (
@@ -431,29 +439,31 @@ export default function MasonryGrid({
 	);
 
 	return (
-		<FlashList
-			key={`grid-${gridColumns}`}
-			data={feedItems}
-			renderItem={renderItem}
-			keyExtractor={(item) => item.id}
-			getItemType={getItemType}
-			numColumns={gridColumns}
-			masonry
-			contentContainerStyle={styles.container}
-			showsVerticalScrollIndicator={false}
-			ListHeaderComponent={listHeader}
-			ListEmptyComponent={emptyComponent ?? null}
-			refreshControl={refreshControl}
-			onScroll={
-				onScroll
-					? (event: { nativeEvent: NativeScrollEvent }) =>
-							onScroll(event.nativeEvent.contentOffset.y)
-					: undefined
-			}
-			scrollEventThrottle={32}
-			drawDistance={250}
-			maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
-		/>
+		<View style={styles.measure}>
+			<FlashList
+				key={`grid-${gridColumns}`}
+				data={feedItems}
+				renderItem={renderItem}
+				keyExtractor={(item) => item.id}
+				getItemType={getItemType}
+				numColumns={gridColumns}
+				masonry
+				contentContainerStyle={styles.container}
+				showsVerticalScrollIndicator={false}
+				ListHeaderComponent={listHeader}
+				ListEmptyComponent={emptyComponent ?? null}
+				refreshControl={refreshControl}
+				onScroll={
+					onScroll
+						? (event: { nativeEvent: NativeScrollEvent }) =>
+								onScroll(event.nativeEvent.contentOffset.y)
+						: undefined
+				}
+				scrollEventThrottle={32}
+				drawDistance={250}
+				maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
+			/>
+		</View>
 	);
 }
 
@@ -495,6 +505,12 @@ const styles = StyleSheet.create({
 		color: theme.accentSoft,
 	},
 
+	measure: {
+		flex: 1,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
+	},
 	container: {
 		paddingBottom: space.huge,
 	},
@@ -502,7 +518,8 @@ const styles = StyleSheet.create({
 		padding: GRID_PADDING,
 	},
 	tile: {
-		flex: 1,
+		width: "100%",
+		aspectRatio: 1,
 		overflow: "hidden",
 		borderRadius: radius.sm,
 		backgroundColor: theme.cardElevated,

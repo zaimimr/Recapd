@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	AppState,
+	type AppStateStatus,
 	Pressable,
 	RefreshControl,
 	StyleSheet,
@@ -245,6 +247,16 @@ export default function EventScreen() {
 			return unsubscribe;
 		}
 	}, [id, subscribeToMediaItems]);
+
+	useEffect(() => {
+		if (!id) return;
+		const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
+			if (state === "active") {
+				fetchMediaItems(id);
+			}
+		});
+		return () => subscription.remove();
+	}, [id, fetchMediaItems]);
 
 	useEffect(() => {
 		if (id) {
@@ -622,7 +634,7 @@ export default function EventScreen() {
 	const photoCount = uploaded.filter((p) => p.media_type !== "video").length;
 	const videoCount = uploaded.filter((p) => p.media_type === "video").length;
 	const guestNames = (currentEvent.participants ?? [])
-		.map((p) => p.nickname || "")
+		.map((p) => p.nickname || p.user?.display_name || "")
 		.filter((name) => name.length > 0);
 
 	return (
@@ -671,7 +683,6 @@ export default function EventScreen() {
 						icon="camera"
 						title="Nothing here yet"
 						body="Be the first to drop a photo in and kick the album off."
-						action={<Button label="Add your photos" icon="plus" onPress={handleContribute} />}
 					/>
 				}
 				headerComponent={

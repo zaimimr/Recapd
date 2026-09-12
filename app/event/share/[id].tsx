@@ -20,7 +20,7 @@ import { useEventStore } from "@/store/eventStore";
 export default function ShareEventScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	const router = useRouter();
-	const { fetchEventById, currentEvent, isLoading } = useEventStore();
+	const { fetchEventById, subscribeToParticipants, currentEvent, isLoading } = useEventStore();
 
 	const [copied, setCopied] = useState(false);
 
@@ -29,6 +29,11 @@ export default function ShareEventScreen() {
 			fetchEventById(id);
 		}
 	}, [id, fetchEventById]);
+
+	useEffect(() => {
+		if (!id) return;
+		return subscribeToParticipants(id);
+	}, [id, subscribeToParticipants]);
 
 	async function handleCopyCode() {
 		if (currentEvent?.join_code) {
@@ -121,7 +126,7 @@ export default function ShareEventScreen() {
 						recentGuests.map((participant, index) => (
 							<ListRow
 								key={participant.id}
-								title={participant.nickname || "Guest"}
+								title={participant.nickname || participant.user?.display_name || "Guest"}
 								subtitle={participant.role === "host" ? "Host" : undefined}
 								trailing={
 									<Text style={styles.joinedAt}>{formatRelativeJoin(participant.joined_at)}</Text>

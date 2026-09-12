@@ -24,7 +24,7 @@ import { space, theme, type } from "@/constants/theme";
 import { logger } from "@/lib/logger";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { useEventStore } from "@/store/eventStore";
+import { EVENT_NOT_FOUND_ERROR, useEventStore } from "@/store/eventStore";
 import type { Event } from "@/types/database";
 
 interface EventPreview extends Event {
@@ -132,7 +132,9 @@ export default function JoinByCodeScreen() {
 					icon="alert-circle"
 					title="No album with that code"
 					body={
-						error || `Nothing matches "${code}". It may have expired, or the code was mistyped.`
+						error && error !== EVENT_NOT_FOUND_ERROR
+							? error
+							: `Nothing matches "${code}". It may have expired, or the code was mistyped.`
 					}
 					action={<Button label="Enter a different code" onPress={handleEnterDifferentCode} />}
 				/>

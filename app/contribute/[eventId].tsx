@@ -43,6 +43,7 @@ const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
 const SCAN_ACTION_DELAY_MS = 4000;
+const LIBRARY_CHANGE_DEBOUNCE_MS = 600;
 
 function formatDurationHms(milliseconds: number): string {
 	if (!Number.isFinite(milliseconds) || milliseconds < 0) return "00:00:00";
@@ -363,6 +364,21 @@ export default function ContributeScreen() {
 	useEffect(() => {
 		loadPhotos();
 	}, [loadPhotos]);
+
+	useEffect(() => {
+		if (step !== "empty") return;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const subscription = MediaLibrary.addListener(() => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
+				loadPhotos();
+			}, LIBRARY_CHANGE_DEBOUNCE_MS);
+		});
+		return () => {
+			if (timer) clearTimeout(timer);
+			subscription.remove();
+		};
+	}, [step, loadPhotos]);
 
 	function handleSkip() {
 		cancelActiveScan();
