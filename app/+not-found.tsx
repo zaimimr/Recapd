@@ -1,50 +1,49 @@
 import { Link, Stack } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
+import { Screen } from "@/components/ui";
+import { space, theme, type } from "@/constants/theme";
 
 export default function NotFoundScreen() {
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
-
 	return (
 		<>
-			<Stack.Screen options={{ title: "Oops!" }} />
-			<View style={[styles.container, isDark && styles.containerDark]}>
-				<Text style={[styles.title, isDark && styles.textDark]}>This screen doesn't exist.</Text>
-
+			<Stack.Screen options={{ title: "Not found", headerShown: false }} />
+			<Screen style={styles.container}>
+				<Text style={styles.title}>This screen doesn't exist</Text>
+				<Text style={styles.body}>
+					The link may be old, or the album it pointed at has already closed.
+				</Text>
 				<Link href="/" style={styles.link}>
-					<Text style={[styles.linkText]}>Go to home screen!</Text>
+					<Text style={styles.linkText}>Back to Recapd</Text>
 				</Link>
-			</View>
+			</Screen>
 		</>
 	);
 }
 
 const styles = StyleSheet.create({
 	container: {
-		flex: 1,
 		alignItems: "center",
 		justifyContent: "center",
-		padding: 20,
-		backgroundColor: "#fff",
-	},
-	containerDark: {
-		backgroundColor: "#000",
+		paddingHorizontal: space.xl,
+		gap: space.md,
 	},
 	title: {
-		fontSize: 20,
-		fontWeight: "bold",
-		color: "#000",
+		...type.title,
+		color: theme.textPrimary,
+		textAlign: "center",
 	},
-	textDark: {
-		color: "#fff",
+	body: {
+		...type.body,
+		color: theme.textMuted,
+		textAlign: "center",
+		maxWidth: 300,
 	},
 	link: {
-		marginTop: 15,
-		paddingVertical: 15,
+		marginTop: space.lg,
+		paddingVertical: space.md,
 	},
 	linkText: {
-		fontSize: 14,
-		color: "#2e78b7",
+		...type.bodyStrong,
+		color: theme.accent,
 	},
 });

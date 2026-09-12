@@ -1,16 +1,8 @@
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-	ActivityIndicator,
-	KeyboardAvoidingView,
-	Platform,
-	StyleSheet,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from "react-native";
+import { Button, Field, Screen, SectionHeader } from "@/components/ui";
+import { space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
 
 export default function OnboardingScreen() {
@@ -18,8 +10,6 @@ export default function OnboardingScreen() {
 	const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
 	const createUser = useAuthStore((state) => state.createUser);
 	const isLoading = useAuthStore((state) => state.isLoading);
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
 	const [displayName, setDisplayName] = useState("");
 	const [error, setError] = useState("");
@@ -48,164 +38,80 @@ export default function OnboardingScreen() {
 	}
 
 	return (
-		<KeyboardAvoidingView
-			style={[styles.container, isDark && styles.containerDark]}
-			behavior={Platform.OS === "ios" ? "padding" : "height"}
-		>
-			<View style={styles.content}>
-				<View style={[styles.hero, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Recapd</Text>
-					<Text style={[styles.logo, isDark && styles.textDark]}>Tell us what to call you.</Text>
-					<Text style={[styles.tagline, isDark && styles.textMuted]}>
-						Your name shows up on events, uploads, and the shared feed.
-					</Text>
-				</View>
+		<Screen edges="both">
+			<KeyboardAvoidingView
+				style={styles.flex}
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
+			>
+				<View style={styles.content}>
+					<View style={styles.brand}>
+						<Text style={styles.wordmark}>
+							Recap<Text style={styles.wordmarkDot}>d</Text>
+						</Text>
+					</View>
 
-				<View style={[styles.form, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Profile</Text>
-					<Text style={[styles.label, isDark && styles.textDark]}>What should we call you?</Text>
-					<TextInput
-						style={[styles.input, isDark && styles.inputDark, error ? styles.inputError : null]}
-						placeholder="Enter your name"
-						placeholderTextColor={isDark ? "#666" : "#999"}
+					<SectionHeader eyebrow="One quick thing" title="Tell us what to call you." />
+					<Text style={styles.lede}>
+						Your name shows up on the photos you add. No email, no password, nothing else.
+					</Text>
+
+					<Field
+						placeholder="Your first name"
 						value={displayName}
 						onChangeText={(text) => {
 							setDisplayName(text);
 							setError("");
 						}}
+						error={error || null}
 						autoCapitalize="words"
 						autoCorrect={false}
 						maxLength={30}
 						returnKeyType="done"
 						onSubmitEditing={handleContinue}
+						accessibilityLabel="Your name"
+						containerStyle={styles.field}
 					/>
-					{error ? <Text style={styles.errorText}>{error}</Text> : null}
-					<Text style={[styles.hint, isDark && styles.textMuted]}>
-						This is how you'll appear to others
-					</Text>
-				</View>
 
-				<TouchableOpacity
-					style={[styles.button, (!displayName.trim() || isLoading) && styles.buttonDisabled]}
-					onPress={handleContinue}
-					disabled={!displayName.trim() || isLoading}
-				>
-					{isLoading ? (
-						<ActivityIndicator color="#fff" />
-					) : (
-						<Text style={styles.buttonText}>Continue</Text>
-					)}
-				</TouchableOpacity>
-			</View>
-		</KeyboardAvoidingView>
+					<Button
+						label="Continue"
+						loading={isLoading}
+						disabled={!displayName.trim()}
+						onPress={handleContinue}
+					/>
+				</View>
+			</KeyboardAvoidingView>
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	flex: {
 		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
 	},
 	content: {
 		flex: 1,
-		padding: 16,
 		justifyContent: "center",
-		gap: 16,
+		paddingHorizontal: space.xl,
+		gap: space.lg,
 	},
-	hero: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 18,
-		gap: 6,
+	brand: {
+		marginBottom: space.sm,
 	},
-	panelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
+	wordmark: {
+		fontSize: 26,
+		fontWeight: "800",
+		letterSpacing: -1,
+		color: theme.textPrimary,
 	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#6b7280",
+	wordmarkDot: {
+		color: theme.accent,
 	},
-	logo: {
-		fontSize: 34,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -1.1,
-		lineHeight: 38,
+	lede: {
+		...type.body,
+		color: theme.textMuted,
+		marginTop: -space.sm,
 	},
-	tagline: {
-		fontSize: 15,
-		color: "#6b7280",
-		lineHeight: 22,
-	},
-	form: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-	},
-	label: {
-		fontSize: 22,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 12,
-		letterSpacing: -0.5,
-	},
-	input: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		fontSize: 18,
-		color: "#111827",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-	},
-	inputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
-	},
-	inputError: {
-		borderColor: "#ef4444",
-	},
-	errorText: {
-		color: "#ef4444",
-		fontSize: 14,
-		marginTop: 8,
-	},
-	hint: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 8,
-	},
-	button: {
-		backgroundColor: "#111827",
-		paddingVertical: 18,
-		borderRadius: 999,
-		alignItems: "center",
-	},
-	buttonDisabled: {
-		opacity: 0.5,
-	},
-	buttonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
+	field: {
+		marginTop: space.xs,
 	},
 });
