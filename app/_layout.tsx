@@ -1,5 +1,27 @@
+/*
+ * DIRECTION CONTRACT — Recapd "Sunset Pop" (seed: store-screenshots-2026-09-11)
+ *
+ * THESIS: The album is the interface. Photos carry the screen edge to edge and the
+ *   chrome gets out of the way. Refuses the light, grey, bordered form-app it was.
+ * OWN-WORLD: Near-black #0B0B12 ground, #15151F cards with 1px #2A2A38 edges and
+ *   20px corners, one coral→pink→violet gradient reserved for the primary action,
+ *   pink eyebrows, Feather icons at a single stroke weight, white on dark type.
+ * STORY: A guest arrives mid-event, sees everyone's photos already piling up,
+ *   adds theirs in two taps, and leaves with the whole night in their camera roll.
+ * FIRST VIEWPORT: Event screen — inline nav, album card with title, live pill,
+ *   guest stack and Photos/Videos/Guests tiles, gradient "Add your photos" as the
+ *   only filled control, then the masonry feed running to the tab bar.
+ * FORM: Native dark product UI, Operate mode; platform affordances kept intact.
+ * FINISH: unreviewed and undocumented is unfinished; this build ends with the
+ *   finish review, the verdict, DESIGN.md, and every shipping raster carrying its
+ *   provenance.
+ */
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import {
+	DarkTheme as DefaultNavigationTheme,
+	type Theme,
+	ThemeProvider,
+} from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Image as ExpoImage } from "expo-image";
 import {
@@ -14,7 +36,7 @@ import { AppState, StatusBar } from "react-native";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
-import { useColorScheme } from "@/components/useColorScheme";
+import { theme } from "@/constants/theme";
 import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import {
 	flushTelemetryQueue,
@@ -92,8 +114,26 @@ function RootLayout() {
 	return <RootLayoutNav />;
 }
 
+const navigationTheme: Theme = {
+	dark: true,
+	colors: {
+		primary: theme.accent,
+		background: theme.page,
+		card: theme.page,
+		text: theme.textPrimary,
+		border: theme.border,
+		notification: theme.accent,
+	},
+	fonts: DefaultNavigationTheme.fonts,
+};
+
+const stackScreenOptions = {
+	headerShown: false,
+	contentStyle: { backgroundColor: theme.page },
+	animation: "slide_from_right",
+} as const;
+
 function RootLayoutNav() {
-	const colorScheme = useColorScheme();
 	const pathname = usePathname();
 	const user = useAuthStore((state) => state.user);
 	const initializePendingUploads = useEventStore((state) => state.initializePendingUploads);
@@ -218,44 +258,24 @@ function RootLayoutNav() {
 	}, [user?.id]);
 
 	return (
-		<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-			<StatusBar hidden />
-			<Stack>
+		<ThemeProvider value={navigationTheme}>
+			<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+			<Stack screenOptions={stackScreenOptions}>
 				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 				<Stack.Screen
 					name="event/create"
-					options={{
-						title: "Create Event",
-						presentation: "modal",
-					}}
+					options={{ headerShown: false, presentation: "modal" }}
 				/>
-				<Stack.Screen
-					name="event/join"
-					options={{
-						title: "Join Event",
-						presentation: "modal",
-					}}
-				/>
-				<Stack.Screen
-					name="event/[id]"
-					options={{
-						title: "Event",
-						headerBackTitle: "Back",
-					}}
-				/>
+				<Stack.Screen name="event/join" options={{ headerShown: false, presentation: "modal" }} />
+				<Stack.Screen name="event/[id]" options={{ headerShown: false }} />
+				<Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
 				<Stack.Screen
 					name="event/share/[id]"
-					options={{
-						title: "Share Event",
-						presentation: "modal",
-					}}
+					options={{ headerShown: false, presentation: "modal" }}
 				/>
 				<Stack.Screen
 					name="contribute/[eventId]"
-					options={{
-						title: "Add Photos",
-						presentation: "modal",
-					}}
+					options={{ headerShown: false, presentation: "modal" }}
 				/>
 				<Stack.Screen
 					name="onboarding"

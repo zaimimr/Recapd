@@ -1,100 +1,175 @@
-import type { ColorSchemeName } from "react-native";
-
 const palette = {
 	coral: "#FF5E62",
 	hotPink: "#FF2D8E",
 	violet: "#8B2FE0",
 	warm: "#FF7A45",
+	pinkSoft: "#FF7FB4",
 
 	white: "#FFFFFF",
 
-	pageDark: "#0B0B12",
-	cardDark: "#15151F",
-	cardElevatedDark: "#1E1E2B",
-	borderDark: "#2A2A38",
-	textMutedDark: "#A0A0B2",
-
-	pageLight: "#FFF9F6",
-	cardLight: "#FFFFFF",
-	borderLight: "#F0E6E0",
-	textPrimaryLight: "#1A1421",
-	textMutedLight: "#6B6478",
+	page: "#0B0B12",
+	pageDeep: "#07070C",
+	card: "#15151F",
+	cardElevated: "#1E1E2B",
+	border: "#2A2A38",
+	borderStrong: "#3A3A4A",
+	textMuted: "#A0A0B2",
+	textFaint: "#6B6B7E",
+	textDisabled: "#5C5C6E",
 
 	danger: "#EF4444",
 	success: "#22C55E",
 	warning: "#F59E0B",
+	info: "#3BA9FF",
 };
 
 export const brandGradient = ["#FF5E62", "#FF2D8E", "#8B2FE0"] as const;
 
+export const gradients = {
+	brand: brandGradient,
+	brandSoft: ["rgba(255,94,98,0.18)", "rgba(139,47,224,0.18)"] as const,
+	danger: ["#F97066", "#EF4444"] as const,
+	scrimTop: ["rgba(7,7,12,0.78)", "rgba(7,7,12,0)"] as const,
+	scrimBottom: ["rgba(7,7,12,0)", "rgba(7,7,12,0.92)"] as const,
+};
+
+export const space = {
+	xs: 4,
+	sm: 8,
+	md: 12,
+	lg: 16,
+	xl: 20,
+	xxl: 24,
+	xxxl: 32,
+	huge: 40,
+} as const;
+
+export const radius = {
+	sm: 8,
+	md: 12,
+	lg: 16,
+	xl: 20,
+	xxl: 24,
+	pill: 999,
+} as const;
+
+export const type = {
+	display: { fontSize: 30, fontWeight: "800", letterSpacing: -1, lineHeight: 34 },
+	title: { fontSize: 24, fontWeight: "800", letterSpacing: -0.7, lineHeight: 28 },
+	heading: { fontSize: 19, fontWeight: "700", letterSpacing: -0.4, lineHeight: 24 },
+	subheading: { fontSize: 16, fontWeight: "700", letterSpacing: -0.3, lineHeight: 21 },
+	body: { fontSize: 15, fontWeight: "500", letterSpacing: -0.1, lineHeight: 21 },
+	bodyStrong: { fontSize: 15, fontWeight: "700", letterSpacing: -0.2, lineHeight: 21 },
+	callout: { fontSize: 13.5, fontWeight: "500", letterSpacing: 0, lineHeight: 19 },
+	caption: { fontSize: 12, fontWeight: "600", letterSpacing: 0, lineHeight: 16 },
+	eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, lineHeight: 14 },
+	mono: { fontSize: 22, fontWeight: "800", letterSpacing: 2 },
+} as const;
+
+export const shadow = {
+	card: {
+		shadowColor: "#000",
+		shadowOpacity: 0.35,
+		shadowRadius: 18,
+		shadowOffset: { width: 0, height: 8 },
+		elevation: 6,
+	},
+	accent: {
+		shadowColor: palette.hotPink,
+		shadowOpacity: 0.45,
+		shadowRadius: 20,
+		shadowOffset: { width: 0, height: 10 },
+		elevation: 10,
+	},
+	sheet: {
+		shadowColor: "#000",
+		shadowOpacity: 0.5,
+		shadowRadius: 28,
+		shadowOffset: { width: 0, height: -6 },
+		elevation: 18,
+	},
+} as const;
+
+export const hitSlop = { top: 10, bottom: 10, left: 10, right: 10 } as const;
+
 export interface AppTheme {
 	page: string;
+	pageDeep: string;
 	card: string;
 	cardElevated: string;
 	border: string;
+	borderStrong: string;
 	textPrimary: string;
 	textMuted: string;
+	textFaint: string;
+	textDisabled: string;
 	textOnAccent: string;
 	accent: string;
 	accentSecondary: string;
 	accentWarm: string;
 	accentMuted: string;
+	accentSoft: string;
 	accentSurface: string;
 	accentSurfaceStrong: string;
 	accentBorder: string;
 	gradient: readonly string[];
 	danger: string;
+	dangerSurface: string;
 	success: string;
+	successSurface: string;
 	warning: string;
+	warningSurface: string;
+	info: string;
 	pillSurface: string;
 	pillBorder: string;
+	overlay: string;
+	glass: string;
+	glassBorder: string;
 }
 
-const sharedAccents = {
+const dark: AppTheme = {
+	page: palette.page,
+	pageDeep: palette.pageDeep,
+	card: palette.card,
+	cardElevated: palette.cardElevated,
+	border: palette.border,
+	borderStrong: palette.borderStrong,
+	textPrimary: palette.white,
+	textMuted: palette.textMuted,
+	textFaint: palette.textFaint,
+	textDisabled: palette.textDisabled,
+	textOnAccent: palette.white,
 	accent: palette.hotPink,
 	accentSecondary: palette.violet,
 	accentWarm: palette.warm,
-	gradient: brandGradient,
-	textOnAccent: palette.white,
-	danger: palette.danger,
-	success: palette.success,
-	warning: palette.warning,
-};
-
-const light: AppTheme = {
-	...sharedAccents,
-	page: palette.pageLight,
-	card: palette.cardLight,
-	cardElevated: palette.cardLight,
-	border: palette.borderLight,
-	textPrimary: palette.textPrimaryLight,
-	textMuted: palette.textMutedLight,
-	accentMuted: palette.violet,
-	accentSurface: "rgba(255,45,142,0.10)",
-	accentSurfaceStrong: "rgba(255,45,142,0.16)",
-	accentBorder: "rgba(255,45,142,0.30)",
-	pillSurface: "rgba(255,45,142,0.10)",
-	pillBorder: "rgba(255,45,142,0.30)",
-};
-
-const dark: AppTheme = {
-	...sharedAccents,
-	page: palette.pageDark,
-	card: palette.cardDark,
-	cardElevated: palette.cardElevatedDark,
-	border: palette.borderDark,
-	textPrimary: palette.white,
-	textMuted: palette.textMutedDark,
 	accentMuted: palette.coral,
+	accentSoft: palette.pinkSoft,
 	accentSurface: "rgba(255,45,142,0.14)",
-	accentSurfaceStrong: "rgba(255,45,142,0.22)",
+	accentSurfaceStrong: "rgba(255,45,142,0.24)",
 	accentBorder: "rgba(255,45,142,0.38)",
-	pillSurface: "rgba(255,45,142,0.14)",
-	pillBorder: "rgba(255,45,142,0.38)",
+	gradient: brandGradient,
+	danger: palette.danger,
+	dangerSurface: "rgba(239,68,68,0.16)",
+	success: palette.success,
+	successSurface: "rgba(34,197,94,0.16)",
+	warning: palette.warning,
+	warningSurface: "rgba(245,158,11,0.16)",
+	info: palette.info,
+	pillSurface: "rgba(255,255,255,0.08)",
+	pillBorder: "rgba(255,255,255,0.14)",
+	overlay: "rgba(7,7,12,0.82)",
+	glass: "rgba(255,255,255,0.14)",
+	glassBorder: "rgba(255,255,255,0.18)",
 };
 
-export const themes = { light, dark, palette };
+export const themes = { light: dark, dark, palette };
 
-export function getTheme(scheme: ColorSchemeName | null | undefined): AppTheme {
-	return scheme === "dark" ? dark : light;
+/**
+ * Recapd ships a single dark appearance. The scheme argument is accepted so
+ * existing call sites keep compiling, but it never changes the result.
+ */
+export function getTheme(_scheme?: unknown): AppTheme {
+	return dark;
 }
+
+export const theme = dark;

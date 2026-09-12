@@ -285,6 +285,10 @@ export interface EventWithParticipants extends Event {
 	userRole?: "host" | "guest";
 	hostIsPro?: boolean;
 	hostDisplayName?: string;
+	/** Newest media item, used as the album cover in lists. */
+	coverPath?: string | null;
+	photoCount?: number;
+	videoCount?: number;
 }
 
 export interface ParticipantWithStats {
@@ -492,6 +496,27 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				if (eventsError) throw eventsError;
 
+				// One pass over media for every event, rather than a query per card:
+				// newest item per event becomes the cover, and the rest feed the counts.
+				const { data: media } = await supabase
+					.from("media_items")
+					.select("event_id, media_type, thumbnail_path, storage_path, captured_at")
+					.in("event_id", eventIds)
+					.is("deleted_at", null)
+					.order("captured_at", { ascending: false });
+
+				const coverByEvent = new Map<string, string>();
+				const photoCountByEvent = new Map<string, number>();
+				const videoCountByEvent = new Map<string, number>();
+				for (const item of media || []) {
+					const cover = item.thumbnail_path || item.storage_path;
+					if (cover && !coverByEvent.has(item.event_id)) {
+						coverByEvent.set(item.event_id, cover);
+					}
+					const bucket = item.media_type === "video" ? videoCountByEvent : photoCountByEvent;
+					bucket.set(item.event_id, (bucket.get(item.event_id) || 0) + 1);
+				}
+
 				const eventsWithCounts = await Promise.all(
 					(events || []).map(async (event) => {
 						const { count } = await supabase
@@ -503,6 +528,9 @@ export const useEventStore = create<EventState>((set, get) => {
 							...(event as Event),
 							participant_count: count || 0,
 							userRole: roleMap.get(event.id) as "host" | "guest",
+							coverPath: coverByEvent.get(event.id) ?? null,
+							photoCount: photoCountByEvent.get(event.id) || 0,
+							videoCount: videoCountByEvent.get(event.id) || 0,
 						};
 					})
 				);

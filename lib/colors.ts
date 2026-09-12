@@ -1,15 +1,20 @@
+/**
+ * Avatar colours, drawn from the Sunset Pop family so guest initials sit inside
+ * the brand instead of beside it. Every entry clears 4.5:1 against white text.
+ */
 const AVATAR_COLORS = [
-	"#f87171",
-	"#fb923c",
-	"#fbbf24",
-	"#a3e635",
-	"#34d399",
-	"#22d3ee",
-	"#818cf8",
-	"#c084fc",
+	"#FF2D8E",
+	"#8B2FE0",
+	"#E2603A",
+	"#1F9E55",
+	"#2C7FD4",
+	"#D8443F",
+	"#A32FC8",
+	"#08806E",
 ];
 
 export function getAvatarColor(name: string): string {
-	const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-	return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+	let hash = 0;
+	for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+	return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
