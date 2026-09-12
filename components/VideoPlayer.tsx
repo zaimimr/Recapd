@@ -5,7 +5,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlaybackUri } from "@/lib/storage";
-import type { MergedMediaItem } from "./MomentCluster";
+import type { MergedMediaItem } from "@/types/media";
 
 interface VideoPlayerProps {
 	media: MergedMediaItem;

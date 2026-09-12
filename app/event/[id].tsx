@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import GuestSheet from "@/components/GuestSheet";
 import MasonryGrid from "@/components/MasonryGrid";
-import type { MergedMediaItem } from "@/components/MomentCluster";
 import NotificationPromptModal from "@/components/NotificationPromptModal";
 import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
@@ -59,6 +58,7 @@ import {
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
+import type { MergedMediaItem } from "@/types/media";
 
 function UploadProgressBar({ eventId }: { eventId: string }) {
 	const retryFailedUpload = useEventStore((state) => state.retryFailedUpload);

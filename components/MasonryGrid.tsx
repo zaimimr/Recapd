@@ -21,7 +21,7 @@ import {
 	useStorageUrl,
 } from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
-import type { MergedMediaItem } from "./MomentCluster";
+import type { MergedMediaItem } from "@/types/media";
 import { useImageMemoryGuard } from "./useImageMemoryGuard";
 
 const _GRID_GAP = 2;

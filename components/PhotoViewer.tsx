@@ -33,8 +33,8 @@ import {
 	useStorageUrl,
 } from "@/lib/storage";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
+import type { MergedMediaItem } from "@/types/media";
 import MediaViewerPager, { type MediaViewerPagerHandle } from "./MediaViewerPager";
-import type { MergedMediaItem } from "./MomentCluster";
 import VideoPlayer from "./VideoPlayer";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
