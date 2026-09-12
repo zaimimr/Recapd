@@ -408,6 +408,17 @@ export interface Database {
 					host_is_pro: boolean;
 				}[];
 			};
+			event_media_summaries: {
+				Args: {
+					p_event_ids: string[];
+				};
+				Returns: {
+					event_id: string;
+					cover_path: string | null;
+					photo_count: number;
+					video_count: number;
+				}[];
+			};
 		};
 		Enums: {
 			telemetry_event_kind: TelemetryEventKind;

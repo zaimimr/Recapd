@@ -1,4 +1,3 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Camera } from "expo-camera";
 import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
@@ -6,20 +5,30 @@ import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	Keyboard,
 	Linking,
 	Platform,
-	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
-import { getAvatarColor } from "@/lib/colors";
+import {
+	Avatar,
+	Button,
+	Card,
+	Eyebrow,
+	IconButton,
+	ListRow,
+	Pill,
+	type PillTone,
+	Screen,
+	ScreenScroll,
+	SectionHeader,
+} from "@/components/ui";
+import Icon, { type IconName } from "@/components/ui/Icon";
+import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -37,13 +46,18 @@ interface PermissionInfo {
 	name: string;
 	description: string;
 	status: PermissionStatus;
-	icon: "image" | "bell" | "camera";
+	icon: IconName;
 	required: boolean;
 }
 
+function permissionTone(status: PermissionStatus): PillTone {
+	if (status === "granted") return "success";
+	if (status === "limited") return "warning";
+	if (status === "denied") return "danger";
+	return "neutral";
+}
+
 export default function SettingsScreen() {
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 	const user = useAuthStore((state) => state.user);
 	const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
 	const logout = useAuthStore((state) => state.logout);
@@ -256,19 +270,6 @@ export default function SettingsScreen() {
 		}
 	}
 
-	function getStatusColor(status: PermissionStatus): string {
-		switch (status) {
-			case "granted":
-				return "#22c55e";
-			case "limited":
-				return "#f59e0b";
-			case "denied":
-				return "#ef4444";
-			default:
-				return "#6b7280";
-		}
-	}
-
 	function getStatusText(status: PermissionStatus): string {
 		switch (status) {
 			case "granted":
@@ -278,721 +279,361 @@ export default function SettingsScreen() {
 			case "denied":
 				return "Denied";
 			default:
-				return "Not Set";
-		}
-	}
-
-	function getStatusIcon(
-		status: PermissionStatus
-	): "check-circle" | "exclamation-circle" | "times-circle" {
-		switch (status) {
-			case "granted":
-				return "check-circle";
-			case "limited":
-				return "exclamation-circle";
-			case "denied":
-				return "times-circle";
-			default:
-				return "exclamation-circle";
+				return "Not asked yet";
 		}
 	}
 
 	const allPermissionsGranted = permissions.every((p) => p.status === "granted");
+	const anyPermissionDenied = permissions.some((p) => p.status === "denied");
 	const currentPlan = plans[planId];
 	const currentPlanHighlights = getPlanMarketingHighlights(planId, plans);
 
 	return (
-		<ScrollView
-			style={[styles.container, isDark && styles.containerDark]}
-			contentContainerStyle={styles.content}
-		>
-			<View style={[styles.hero, isDark && styles.sectionDark]}>
-				<Text style={styles.kicker}>Settings</Text>
-				<Text style={[styles.heroTitle, isDark && styles.textDark]}>
-					Control your profile, access, and plan
-				</Text>
-			</View>
+		<Screen>
+			<ScreenScroll contentContainerStyle={styles.content}>
+				<SectionHeader title="You and your access" style={styles.pageHeader} />
 
-			{user && (
-				<View style={[styles.section, isDark && styles.sectionDark]}>
-					<Text style={styles.kicker}>Profile</Text>
-					<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your identity</Text>
-					<View style={styles.profileRow}>
-						<View
-							style={[styles.avatar, { backgroundColor: getAvatarColor(user.display_name || "?") }]}
-						>
-							<Text style={styles.avatarText}>
-								{(isEditingName ? editedName : user.display_name)?.charAt(0).toUpperCase() || "?"}
-							</Text>
-						</View>
-						<View style={styles.profileInfo}>
-							{isEditingName ? (
-								<TextInput
-									style={[styles.nameInput, isDark && styles.nameInputDark]}
-									value={editedName}
-									onChangeText={setEditedName}
-									placeholder="Enter your name"
-									placeholderTextColor={isDark ? "#666" : "#999"}
-									autoFocus
-									maxLength={50}
-									returnKeyType="done"
-									onSubmitEditing={handleSaveName}
-								/>
-							) : (
-								<Text style={[styles.profileName, isDark && styles.textDark]}>
-									{user.display_name}
-								</Text>
-							)}
-							<Text style={[styles.profileSubtext, isDark && styles.textMuted]}>
-								Joined{" "}
-								{formatLocalizedDate(user.created_at, {
-									month: "short",
-									day: "numeric",
-									year: "numeric",
-								})}
-							</Text>
-						</View>
-						{isEditingName ? (
-							<View style={styles.editActions}>
-								<TouchableOpacity
-									style={styles.cancelButton}
-									onPress={handleCancelEdit}
-									disabled={isSaving}
-									accessibilityRole="button"
-									accessibilityLabel="Cancel editing name"
-								>
-									<FontAwesome name="times" size={18} color={isDark ? "#888" : "#666"} />
-								</TouchableOpacity>
-								<TouchableOpacity
-									style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-									onPress={handleSaveName}
-									disabled={isSaving}
-									accessibilityRole="button"
-									accessibilityLabel="Save name"
-									accessibilityState={{ disabled: isSaving }}
-								>
-									<FontAwesome name="check" size={18} color="#fff" />
-								</TouchableOpacity>
+				{user ? (
+					<View style={styles.group}>
+						<Card padded={false}>
+							<View style={styles.profileRow}>
+								<Avatar name={user.display_name || "?"} size={52} />
+								<View style={styles.profileInfo}>
+									{isEditingName ? (
+										<TextInput
+											style={styles.nameInput}
+											value={editedName}
+											onChangeText={setEditedName}
+											placeholder="Your name"
+											placeholderTextColor={theme.textMuted}
+											selectionColor={theme.accent}
+											autoFocus
+											maxLength={50}
+											returnKeyType="done"
+											onSubmitEditing={handleSaveName}
+											accessibilityLabel="Display name"
+										/>
+									) : (
+										<Text style={styles.profileName} numberOfLines={1}>
+											{user.display_name}
+										</Text>
+									)}
+									<Text style={styles.profileSubtext}>
+										Joined{" "}
+										{formatLocalizedDate(user.created_at, {
+											month: "short",
+											day: "numeric",
+											year: "numeric",
+										})}
+									</Text>
+								</View>
+								{isEditingName ? (
+									<View style={styles.editActions}>
+										<IconButton
+											icon="x"
+											accessibilityLabel="Cancel editing name"
+											onPress={handleCancelEdit}
+											disabled={isSaving}
+										/>
+										<IconButton
+											icon="check"
+											accessibilityLabel="Save name"
+											onPress={handleSaveName}
+											disabled={isSaving}
+										/>
+									</View>
+								) : (
+									<IconButton
+										icon="edit-2"
+										accessibilityLabel="Edit display name"
+										onPress={() => {
+											setEditedName(user.display_name);
+											setIsEditingName(true);
+										}}
+									/>
+								)}
 							</View>
-						) : (
-							<TouchableOpacity
-								style={[styles.editButton, isDark && styles.editButtonDark]}
-								onPress={() => {
-									setEditedName(user.display_name);
-									setIsEditingName(true);
-								}}
-								accessibilityRole="button"
-								accessibilityLabel="Edit display name"
-								hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-							>
-								<FontAwesome name="pencil" size={14} color={isDark ? "#fff" : "#000"} />
-							</TouchableOpacity>
-						)}
+						</Card>
 					</View>
-				</View>
-			)}
+				) : null}
 
-			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={styles.kicker}>Subscription</Text>
-				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Plan</Text>
-				<View style={styles.subscriptionRow}>
-					<View style={[styles.subscriptionIcon, isPro && styles.subscriptionIconPro]}>
-						<FontAwesome
-							name={isPro ? "star" : "star-o"}
-							size={20}
-							color={isPro ? "#f59e0b" : isDark ? "#666" : "#999"}
-						/>
-					</View>
-					<View style={styles.subscriptionInfo}>
-						<Text style={[styles.subscriptionTitle, isDark && styles.textDark]}>
-							{currentPlan.displayName}
-						</Text>
-						<Text style={[styles.subscriptionSubtext, isDark && styles.textMuted]}>
-							{isPro
-								? status.expiresAt
-									? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
-									: "Active subscription"
-								: SUBSCRIPTIONS_ENABLED
-									? currentPlanHighlights
-									: "Subscription controls are unavailable in this build"}
-						</Text>
-					</View>
-					{isPro && (
-						<View style={styles.proBadge}>
-							<Text style={styles.proBadgeText}>PRO</Text>
-						</View>
-					)}
-				</View>
-
-				{isPro ? (
-					<TouchableOpacity
-						style={[styles.manageButton, isDark && styles.manageButtonDark]}
-						onPress={async () => {
-							const opened = await showCustomerCenter();
-							if (!opened) {
-								Alert.alert(
-									"Subscription Unavailable",
-									"Could not open subscription management right now."
-								);
-							}
-						}}
-						disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
-					>
-						<FontAwesome name="cog" size={16} color={isDark ? "#fff" : "#000"} />
-						<Text style={[styles.manageButtonText, isDark && styles.textDark]}>
-							Manage Subscription
-						</Text>
-					</TouchableOpacity>
-				) : (
-					<>
-						<TouchableOpacity
-							style={[
-								styles.upgradeButton,
-								isDark && styles.upgradeButtonDark,
-								!SUBSCRIPTIONS_ENABLED && styles.buttonDisabled,
-							]}
-							onPress={showPaywall}
-							disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
-							accessibilityRole="button"
-							accessibilityLabel="Upgrade to Pro"
-						>
-							<FontAwesome name="star" size={16} color="#fff" />
-							<Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
-						</TouchableOpacity>
-						<TouchableOpacity
-							style={styles.restoreButton}
-							onPress={async () => {
-								setIsRestoring(true);
-								const result = await restore();
-								setIsRestoring(false);
-								if (result.success) {
-									Alert.alert("Restored", "Your purchases have been restored.");
-								} else if (!result.userCancelled && result.error) {
-									Alert.alert("Restore Failed", result.error);
-								}
-							}}
-							disabled={isRestoring || subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
-							accessibilityRole="button"
-							accessibilityLabel="Restore Purchases"
-						>
-							{isRestoring ? (
-								<ActivityIndicator size="small" color={isDark ? "#888" : "#666"} />
-							) : (
-								<Text style={[styles.restoreButtonText, isDark && styles.textMuted]}>
-									Restore Purchases
+				<View style={styles.group}>
+					<Eyebrow>Plan</Eyebrow>
+					<Card>
+						<View style={styles.planRow}>
+							<View style={[styles.planIcon, isPro && styles.planIconPro]}>
+								<Icon
+									name={isPro ? "zap" : "user"}
+									size={20}
+									color={isPro ? theme.textOnAccent : theme.textMuted}
+								/>
+							</View>
+							<View style={styles.planInfo}>
+								<Text style={styles.planTitle}>{currentPlan.displayName}</Text>
+								<Text style={styles.planSubtext}>
+									{isPro
+										? status.expiresAt
+											? `${status.willRenew ? "Renews" : "Expires"} ${status.expiresAt.toLocaleDateString()}`
+											: "Active subscription"
+										: SUBSCRIPTIONS_ENABLED
+											? currentPlanHighlights
+											: "Subscription controls are unavailable in this build"}
 								</Text>
-							)}
-						</TouchableOpacity>
-					</>
-				)}
-			</View>
-
-			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={styles.kicker}>Feedback</Text>
-				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tell us what to fix</Text>
-				<TouchableOpacity
-					style={[styles.feedbackButton, isDark && styles.feedbackButtonDark]}
-					onPress={() => Linking.openURL("https://forms.gle/Pt6DyHY4ZY6CZthm8")}
-					accessibilityRole="button"
-					accessibilityLabel="Send Feedback"
-					accessibilityHint="Opens feedback form"
-				>
-					<FontAwesome name="comment" size={18} color={isDark ? "#fff" : "#000"} />
-					<Text style={[styles.feedbackButtonText, isDark && styles.textDark]}>Send Feedback</Text>
-				</TouchableOpacity>
-				<Text style={[styles.feedbackHint, isDark && styles.textMuted]}>
-					We'd love to hear your thoughts and suggestions
-				</Text>
-			</View>
-
-			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<View style={styles.sectionHeader}>
-					<View style={styles.sectionHeadingBlock}>
-						<Text style={styles.kicker}>Permissions</Text>
-						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Access</Text>
-					</View>
-					{!allPermissionsGranted && (
-						<View style={styles.warningBadge}>
-							<FontAwesome name="exclamation" size={10} color="#fff" />
+							</View>
+							{isPro ? <Pill label="PRO" tone="accent" /> : null}
 						</View>
-					)}
-				</View>
-				<Text style={[styles.sectionDescription, isDark && styles.textMuted]}>
-					Recapd needs these permissions to work properly
-				</Text>
 
-				{permissions.map((permission, index) => (
-					<TouchableOpacity
-						key={permission.name}
-						style={[
-							styles.permissionRow,
-							isDark && styles.permissionRowDark,
-							index === 0 && styles.permissionRowFirst,
-							index === permissions.length - 1 && styles.permissionRowLast,
-						]}
-						onPress={() => handlePermissionPress(permission)}
-						activeOpacity={permission.status === "granted" ? 1 : 0.7}
-						accessibilityRole="button"
-						accessibilityLabel={`${permission.name}, ${getStatusText(permission.status)}`}
-						accessibilityHint={
-							permission.status === "granted" ? undefined : "Tap to grant permission"
-						}
-					>
-						<View style={[styles.permissionIcon, isDark && styles.permissionIconDark]}>
-							<FontAwesome name={permission.icon} size={20} color={isDark ? "#fff" : "#000"} />
-						</View>
-						<View style={styles.permissionContent}>
-							<Text style={[styles.permissionName, isDark && styles.textDark]}>
-								{permission.name}
-							</Text>
-							<Text style={[styles.permissionDescription, isDark && styles.textMuted]}>
-								{permission.description}
-							</Text>
-						</View>
-						<View style={styles.permissionStatus}>
-							<FontAwesome
-								name={getStatusIcon(permission.status)}
-								size={20}
-								color={getStatusColor(permission.status)}
+						{isPro ? (
+							<Button
+								label="Manage subscription"
+								icon="settings"
+								variant="secondary"
+								onPress={async () => {
+									const opened = await showCustomerCenter();
+									if (!opened) {
+										Alert.alert(
+											"Subscription unavailable",
+											"Could not open subscription management right now. Try again in a moment."
+										);
+									}
+								}}
+								disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+								style={styles.planAction}
 							/>
-							<Text
-								style={[styles.permissionStatusText, { color: getStatusColor(permission.status) }]}
-							>
-								{getStatusText(permission.status)}
-							</Text>
-						</View>
-					</TouchableOpacity>
-				))}
-
-				{!allPermissionsGranted && (
-					<View style={[styles.warningBox, isDark && styles.warningBoxDark]}>
-						<FontAwesome name="info-circle" size={16} color="#f59e0b" />
-						<Text style={[styles.warningText, isDark && styles.textMuted]}>
-							Some features may not work without all permissions enabled
-						</Text>
-					</View>
-				)}
-			</View>
-
-			<View style={[styles.section, isDark && styles.sectionDark]}>
-				<Text style={styles.kicker}>About</Text>
-				<Text style={[styles.sectionTitle, isDark && styles.textDark]}>App info</Text>
-				<View style={styles.aboutRow}>
-					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Version</Text>
-					<Text style={[styles.aboutValue, isDark && styles.textDark]}>
-						{Constants.expoConfig?.version ?? "1.0.0"}
-					</Text>
+						) : (
+							<>
+								<Button
+									label="Upgrade to Pro"
+									icon="zap"
+									onPress={showPaywall}
+									disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+									style={styles.planAction}
+								/>
+								<Button
+									label="Restore purchases"
+									variant="ghost"
+									size="md"
+									loading={isRestoring}
+									onPress={async () => {
+										setIsRestoring(true);
+										const result = await restore();
+										setIsRestoring(false);
+										if (result.success) {
+											Alert.alert("Restored", "Your purchases have been restored.");
+										} else if (!result.userCancelled && result.error) {
+											Alert.alert("Restore failed", result.error);
+										}
+									}}
+									disabled={isRestoring || subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
+								/>
+							</>
+						)}
+					</Card>
 				</View>
-				<TouchableOpacity
-					style={styles.aboutRow}
-					onPress={() => Linking.openURL("https://recapd.app/privacy")}
-					accessibilityRole="link"
-					accessibilityLabel="Privacy Policy"
-					accessibilityHint="Opens in browser"
-				>
-					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Privacy Policy</Text>
-					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
-				</TouchableOpacity>
-				<TouchableOpacity
-					style={styles.aboutRow}
-					onPress={() => Linking.openURL("https://recapd.app/terms")}
-					accessibilityRole="link"
-					accessibilityLabel="Terms of Service"
-					accessibilityHint="Opens in browser"
-				>
-					<Text style={[styles.aboutLabel, isDark && styles.textMuted]}>Terms of Service</Text>
-					<FontAwesome name="chevron-right" size={14} color={isDark ? "#666" : "#999"} />
-				</TouchableOpacity>
-			</View>
 
-			<TouchableOpacity
-				style={styles.resetButton}
-				onPress={handleResetProfile}
-				accessibilityRole="button"
-				accessibilityLabel="Reset profile"
-			>
-				<Text style={styles.resetButtonText}>Reset profile</Text>
-			</TouchableOpacity>
-		</ScrollView>
+				<View style={styles.group}>
+					<Eyebrow>Privacy</Eyebrow>
+					<Card padded={false}>
+						<ListRow
+							icon="lock"
+							title="Albums are invite-only"
+							subtitle="Only people with the code can open one"
+							trailing={<Icon name="check" size={17} color={theme.success} />}
+						/>
+						<ListRow
+							icon="eye-off"
+							title="No public profiles"
+							subtitle="No feed, no followers, no discovery"
+							trailing={<Icon name="check" size={17} color={theme.success} />}
+						/>
+						<ListRow
+							icon="shield"
+							title="Nothing sold or trained on"
+							subtitle="Your photos are never used for ads or models"
+							trailing={<Icon name="check" size={17} color={theme.success} />}
+							last
+						/>
+					</Card>
+				</View>
+
+				<View style={styles.group}>
+					<View style={styles.groupHeader}>
+						<Eyebrow>Access</Eyebrow>
+						{anyPermissionDenied ? <Pill label="Action needed" tone="warning" /> : null}
+					</View>
+					<Card padded={false}>
+						{permissions.map((permission, index) => (
+							<ListRow
+								key={permission.name}
+								icon={permission.icon}
+								iconTone={permission.status === "granted" ? "neutral" : "accent"}
+								title={permission.name}
+								subtitle={permission.description}
+								onPress={
+									permission.status === "granted"
+										? undefined
+										: () => handlePermissionPress(permission)
+								}
+								accessibilityHint="Grants the permission"
+								last={index === permissions.length - 1}
+								trailing={
+									<Pill
+										label={getStatusText(permission.status)}
+										tone={permissionTone(permission.status)}
+									/>
+								}
+							/>
+						))}
+					</Card>
+					{!allPermissionsGranted ? (
+						<Text style={styles.groupNote}>
+							Recapd needs photo access to add media, camera to scan a join code, and notifications
+							to tell you when the album is about to close.
+						</Text>
+					) : null}
+				</View>
+
+				<View style={styles.group}>
+					<Eyebrow>About</Eyebrow>
+					<Card padded={false}>
+						<ListRow
+							icon="message-circle"
+							title="Send feedback"
+							subtitle="Tell us what to fix"
+							onPress={() => Linking.openURL("https://forms.gle/Pt6DyHY4ZY6CZthm8")}
+							accessibilityHint="Opens the feedback form in your browser"
+						/>
+						<ListRow
+							icon="shield"
+							title="Privacy policy"
+							onPress={() => Linking.openURL("https://recapd.app/privacy")}
+							accessibilityHint="Opens in your browser"
+						/>
+						<ListRow
+							icon="file-text"
+							title="Terms of service"
+							onPress={() => Linking.openURL("https://recapd.app/terms")}
+							accessibilityHint="Opens in your browser"
+						/>
+						<ListRow
+							icon="info"
+							title="Version"
+							trailing={
+								<Text style={styles.versionValue}>{Constants.expoConfig?.version ?? "1.0.0"}</Text>
+							}
+							last
+						/>
+					</Card>
+				</View>
+
+				<Button
+					label="Reset profile"
+					variant="ghost"
+					size="md"
+					onPress={handleResetProfile}
+					style={styles.reset}
+				/>
+			</ScreenScroll>
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
-	},
-	resetButton: {
-		alignItems: "center",
-		marginTop: 8,
-		marginHorizontal: 16,
-		paddingVertical: 14,
-	},
-	resetButtonText: {
-		color: "#ef4444",
-		fontSize: 14,
-		fontWeight: "500",
-	},
 	content: {
-		padding: 16,
-		gap: 16,
+		paddingHorizontal: space.lg,
+		paddingTop: space.lg,
+		paddingBottom: space.huge,
+		gap: space.xxl,
 	},
-	hero: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-		gap: 6,
+	pageHeader: {
+		paddingTop: space.sm,
 	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "800",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#FF2D8E",
+	group: {
+		gap: space.md,
 	},
-	heroTitle: {
-		fontSize: 26,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.8,
-	},
-	heroText: {
-		fontSize: 14,
-		lineHeight: 21,
-		color: "#6b7280",
-	},
-	section: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 16,
-	},
-	sectionDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	sectionHeader: {
+	groupHeader: {
 		flexDirection: "row",
-		alignItems: "flex-start",
-		justifyContent: "space-between",
-		gap: 8,
-	},
-	sectionHeadingBlock: {
-		gap: 4,
-	},
-	sectionTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.5,
-	},
-	sectionDescription: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginBottom: 16,
-	},
-	warningBadge: {
-		backgroundColor: "#f59e0b",
-		width: 18,
-		height: 18,
-		borderRadius: 9,
-		justifyContent: "center",
 		alignItems: "center",
-		marginBottom: 4,
+		justifyContent: "space-between",
 	},
+	groupNote: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
+		lineHeight: 17,
+	},
+
 	profileRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
-		marginTop: 8,
-	},
-	avatar: {
-		width: 56,
-		height: 56,
-		borderRadius: 28,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	avatarText: {
-		fontSize: 24,
-		fontWeight: "600",
-		color: "#fff",
+		gap: space.md,
+		padding: space.lg,
 	},
 	profileInfo: {
 		flex: 1,
+		gap: 3,
+		minWidth: 0,
 	},
 	profileName: {
-		fontSize: 18,
-		fontWeight: "700",
-		color: "#111827",
+		...type.heading,
+		color: theme.textPrimary,
 	},
 	profileSubtext: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 2,
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
 	},
 	nameInput: {
-		fontSize: 18,
-		fontWeight: "700",
-		color: "#111827",
-		paddingVertical: 10,
-		paddingHorizontal: 12,
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 12,
-		backgroundColor: "#f9fafb",
-	},
-	nameInputDark: {
-		color: "#fff",
-		backgroundColor: "#151821",
-		borderColor: "#242833",
+		...type.heading,
+		color: theme.textPrimary,
+		borderBottomWidth: 1.5,
+		borderBottomColor: theme.accent,
+		paddingVertical: 2,
 	},
 	editActions: {
 		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
+		gap: space.sm,
 	},
-	editButton: {
-		width: 36,
-		height: 36,
-		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: "#fff",
-		borderRadius: 18,
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-	},
-	editButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	cancelButton: {
-		padding: 10,
-	},
-	saveButton: {
-		width: 36,
-		height: 36,
-		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: "#FF2D8E",
-		borderRadius: 18,
-	},
-	saveButtonDisabled: {
-		opacity: 0.5,
-	},
-	permissionRow: {
+
+	planRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: 14,
-		borderTopWidth: 1,
-		borderTopColor: "#e5e7eb",
+		gap: space.md,
 	},
-	permissionRowDark: {
-		borderTopColor: "#242833",
-	},
-	permissionRowFirst: {
-		borderTopWidth: 0,
-	},
-	permissionRowLast: {},
-	permissionIcon: {
-		width: 40,
-		height: 40,
-		borderRadius: 999,
-		backgroundColor: "#f9fafb",
-		justifyContent: "center",
+	planIcon: {
+		width: 46,
+		height: 46,
+		borderRadius: radius.md,
+		backgroundColor: theme.cardElevated,
 		alignItems: "center",
-		marginRight: 12,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
+		justifyContent: "center",
 	},
-	permissionIconDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
+	planIconPro: {
+		backgroundColor: theme.accent,
 	},
-	permissionContent: {
+	planInfo: {
 		flex: 1,
+		gap: 3,
 	},
-	permissionName: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111827",
+	planTitle: {
+		...type.subheading,
+		color: theme.textPrimary,
 	},
-	permissionDescription: {
-		fontSize: 13,
-		color: "#6b7280",
-		marginTop: 2,
-	},
-	permissionStatus: {
-		alignItems: "flex-end",
-		marginLeft: 8,
-	},
-	permissionStatusText: {
-		fontSize: 12,
+	planSubtext: {
+		...type.caption,
 		fontWeight: "500",
-		marginTop: 2,
+		color: theme.textMuted,
 	},
-	warningBox: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 10,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#f59e0b",
-		padding: 12,
-		marginTop: 12,
+	planAction: {
+		marginTop: space.lg,
 	},
-	warningBoxDark: {
-		backgroundColor: "rgba(245, 158, 11, 0.15)",
-	},
-	warningText: {
-		flex: 1,
-		fontSize: 13,
-		color: "#92400e",
-	},
-	aboutRow: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		paddingVertical: 12,
-		borderTopWidth: 1,
-		borderTopColor: "#e5e7eb",
-	},
-	aboutLabel: {
-		fontSize: 16,
-		color: "#666",
-	},
-	aboutValue: {
-		fontSize: 16,
-		color: "#000",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
-	},
-	feedbackButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 10,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		paddingVertical: 14,
-		borderRadius: 999,
-		marginTop: 8,
-	},
-	feedbackButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	feedbackButtonText: {
-		fontSize: 16,
+
+	versionValue: {
+		...type.callout,
 		fontWeight: "600",
-		color: "#111827",
+		color: theme.textMuted,
 	},
-	feedbackHint: {
-		fontSize: 13,
-		color: "#666",
-		textAlign: "center",
-		marginTop: 12,
-	},
-	subscriptionRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 12,
-		marginTop: 8,
-		marginBottom: 16,
-	},
-	subscriptionIcon: {
-		width: 48,
-		height: 48,
-		borderRadius: 999,
-		backgroundColor: "#f9fafb",
-		justifyContent: "center",
-		alignItems: "center",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	subscriptionIconPro: {
-		backgroundColor: "#fef3c7",
-	},
-	subscriptionInfo: {
-		flex: 1,
-	},
-	subscriptionTitle: {
-		fontSize: 17,
-		fontWeight: "700",
-		color: "#111827",
-	},
-	subscriptionSubtext: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 2,
-	},
-	proBadge: {
-		backgroundColor: "#FF2D8E",
-		paddingHorizontal: 10,
-		paddingVertical: 5,
-		borderRadius: 999,
-	},
-	proBadgeText: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: "#fff",
-	},
-	upgradeButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 14,
-		borderRadius: 999,
-	},
-	upgradeButtonDark: {
-		backgroundColor: "#FF2D8E",
-	},
-	upgradeButtonText: {
-		fontSize: 16,
-		fontWeight: "700",
-		color: "#fff",
-	},
-	buttonDisabled: {
-		opacity: 0.45,
-	},
-	manageButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		paddingVertical: 14,
-		borderRadius: 999,
-	},
-	manageButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	manageButtonText: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111827",
-	},
-	restoreButton: {
-		paddingVertical: 12,
-		alignItems: "center",
-	},
-	restoreButtonText: {
-		fontSize: 14,
-		color: "#666",
+	reset: {
+		marginTop: space.sm,
 	},
 });

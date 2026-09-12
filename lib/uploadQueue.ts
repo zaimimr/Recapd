@@ -45,7 +45,11 @@ let onUploadComplete:
 	| ((upload: PendingUpload, result: UploadCompletionResult) => void | Promise<void>)
 	| null = null;
 let onUploadFailed:
-	| ((upload: PendingUpload, error: string, failureReason?: UploadFailureReason) => void | Promise<void>)
+	| ((
+			upload: PendingUpload,
+			error: string,
+			failureReason?: UploadFailureReason
+	  ) => void | Promise<void>)
 	| null = null;
 let onStatusChange: ((id: string, updates: Partial<PendingUpload>) => void | Promise<void>) | null =
 	null;

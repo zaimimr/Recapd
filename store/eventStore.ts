@@ -279,12 +279,21 @@ async function loadPendingUploads(): Promise<PendingUpload[]> {
 	}
 }
 
+export const EVENT_NOT_FOUND_ERROR = "Event not found";
+
+export interface ParticipantWithUser extends EventParticipant {
+	user?: { display_name: string } | null;
+}
+
 export interface EventWithParticipants extends Event {
-	participants?: EventParticipant[];
+	participants?: ParticipantWithUser[];
 	participant_count?: number;
 	userRole?: "host" | "guest";
 	hostIsPro?: boolean;
 	hostDisplayName?: string;
+	coverPath?: string | null;
+	photoCount?: number;
+	videoCount?: number;
 }
 
 export interface ParticipantWithStats {
@@ -492,6 +501,12 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				if (eventsError) throw eventsError;
 
+				const { data: summaries } = await supabase.rpc("event_media_summaries", {
+					p_event_ids: eventIds,
+				});
+
+				const summaryByEvent = new Map((summaries || []).map((row) => [row.event_id, row]));
+
 				const eventsWithCounts = await Promise.all(
 					(events || []).map(async (event) => {
 						const { count } = await supabase
@@ -503,6 +518,9 @@ export const useEventStore = create<EventState>((set, get) => {
 							...(event as Event),
 							participant_count: count || 0,
 							userRole: roleMap.get(event.id) as "host" | "guest",
+							coverPath: summaryByEvent.get(event.id)?.cover_path ?? null,
+							photoCount: summaryByEvent.get(event.id)?.photo_count || 0,
+							videoCount: summaryByEvent.get(event.id)?.video_count || 0,
 						};
 					})
 				);
@@ -528,7 +546,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const preview = (data as EventPreviewResult[] | null)?.[0];
 				if (!preview) {
-					set({ error: "Event not found", isLoading: false });
+					set({ error: EVENT_NOT_FOUND_ERROR, isLoading: false });
 					return null;
 				}
 
@@ -560,7 +578,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const { data: participants } = await supabase
 					.from("event_participants")
-					.select("*")
+					.select("*, user:users(display_name)")
 					.eq("event_id", eventId);
 
 				const host = participants?.find((p) => p.role === "host");
@@ -582,7 +600,7 @@ export const useEventStore = create<EventState>((set, get) => {
 
 				const eventWithParticipants: EventWithParticipants = {
 					...(data as Event),
-					participants: (participants || []) as EventParticipant[],
+					participants: (participants || []) as ParticipantWithUser[],
 					participant_count: participants?.length || 0,
 					hostIsPro,
 					hostDisplayName,

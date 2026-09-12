@@ -11,6 +11,7 @@ jest.mock("@/lib/supabase", () => {
 			"order",
 			"single",
 			"filter",
+			"is",
 			"limit",
 		];
 		methods.forEach((m) => {
@@ -792,6 +793,53 @@ describe("loading a user's events", () => {
 		expect(events).toHaveLength(1);
 		expect(events[0].userRole).toBe("host");
 		expect(events[0].participant_count).toBe(3);
+	});
+
+	test("maps the media summary rpc onto each album card", async () => {
+		const partChain = buildChain({
+			data: [
+				{ event_id: "e1", role: "host" },
+				{ event_id: "e2", role: "guest" },
+			],
+			error: null,
+		});
+		const eventsChain = buildChain({
+			data: [
+				{ ...mockEvent, id: "e1" },
+				{ ...mockEvent, id: "e2" },
+			],
+			error: null,
+		});
+		const countChain = buildChain({ data: null, error: null, count: 2 });
+
+		let epCallIndex = 0;
+		supabase.from.mockImplementation((table: string) => {
+			if (table === "event_participants") {
+				epCallIndex++;
+				return epCallIndex === 1 ? partChain : countChain;
+			}
+			if (table === "events") return eventsChain;
+			return buildChain();
+		});
+		supabase.rpc.mockResolvedValue({
+			data: [{ event_id: "e1", cover_path: "e1/cover.jpg", photo_count: 7, video_count: 2 }],
+			error: null,
+		});
+
+		await useEventStore.getState().fetchUserEvents("user-1");
+
+		expect(supabase.rpc).toHaveBeenCalledWith("event_media_summaries", {
+			p_event_ids: ["e1", "e2"],
+		});
+
+		const events = useEventStore.getState().events;
+		expect(events[0].coverPath).toBe("e1/cover.jpg");
+		expect(events[0].photoCount).toBe(7);
+		expect(events[0].videoCount).toBe(2);
+
+		expect(events[1].coverPath).toBeNull();
+		expect(events[1].photoCount).toBe(0);
+		expect(events[1].videoCount).toBe(0);
 	});
 
 	test("sets empty events list when user has no participations", async () => {

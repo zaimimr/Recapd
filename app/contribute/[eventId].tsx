@@ -1,20 +1,21 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image as ExpoImage } from "expo-image";
 import * as MediaLibrary from "expo-media-library";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
 	FlatList,
 	type LayoutChangeEvent,
+	Pressable,
 	StyleSheet,
 	Text,
-	TouchableOpacity,
 	View,
 } from "react-native";
 import SelectionPhotoViewer from "@/components/SelectionPhotoViewer";
-import { useColorScheme } from "@/components/useColorScheme";
+import { Button, EmptyState, IconButton, NavBar, Screen } from "@/components/ui";
+import Icon from "@/components/ui/Icon";
+import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import { logger } from "@/lib/logger";
 import {
@@ -42,6 +43,7 @@ const NUM_COLUMNS = 3;
 const GRID_PADDING = 8;
 const GRID_GAP = 2;
 const SCAN_ACTION_DELAY_MS = 4000;
+const LIBRARY_CHANGE_DEBOUNCE_MS = 600;
 
 function formatDurationHms(milliseconds: number): string {
 	if (!Number.isFinite(milliseconds) || milliseconds < 0) return "00:00:00";
@@ -108,8 +110,6 @@ export default function ContributeScreen() {
 	const user = useAuthStore((state) => state.user);
 	const { currentEvent, fetchEventById, addPendingUploads, getUploadedPhotoIdsForEvent } =
 		useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 	const [containerWidth, setContainerWidth] = useState(0);
 	const photoSize = containerWidth
 		? Math.floor((containerWidth - GRID_PADDING * 2 - GRID_GAP * NUM_COLUMNS) / NUM_COLUMNS)
@@ -365,6 +365,21 @@ export default function ContributeScreen() {
 		loadPhotos();
 	}, [loadPhotos]);
 
+	useEffect(() => {
+		if (step !== "empty") return;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		const subscription = MediaLibrary.addListener(() => {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
+				loadPhotos();
+			}, LIBRARY_CHANGE_DEBOUNCE_MS);
+		});
+		return () => {
+			if (timer) clearTimeout(timer);
+			subscription.remove();
+		};
+	}, [step, loadPhotos]);
+
 	function handleSkip() {
 		cancelActiveScan();
 		router.back();
@@ -520,180 +535,115 @@ export default function ContributeScreen() {
 
 	if (step === "loading") {
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<View style={[styles.statePanel, isDark && styles.statePanelDark]}>
-					<ActivityIndicator size="large" color={isDark ? "#fff" : "#111827"} />
-					<Text style={[styles.loadingText, isDark && styles.textMuted]}>
-						Scanning your photos and videos...
+			<Screen style={styles.centered}>
+				<View style={styles.statePanel}>
+					<ActivityIndicator size="large" color={theme.accent} />
+					<Text style={styles.stateTitle}>Scanning your camera roll…</Text>
+					<Text style={styles.stateBody}>
+						We're checking the event window and preparing previews. Nothing is uploaded yet.
 					</Text>
-					<Text style={[styles.loadingHint, isDark && styles.textMuted]}>
-						We’re checking the event time window and preparing previews.
-					</Text>
-					{showSlowScanActions && (
-						<View style={styles.loadingActions}>
-							<Text style={[styles.loadingSlowText, isDark && styles.textMuted]}>
-								This is taking longer than usual. You can keep waiting, choose media manually, or
-								skip for now.
+					{showSlowScanActions ? (
+						<View style={styles.stateActions}>
+							<Text style={styles.stateNote}>
+								This is taking longer than usual. Keep waiting, pick media by hand, or skip for now.
 							</Text>
-							<TouchableOpacity
-								style={styles.manualPickButton}
+							<Button
+								label="Pick media myself"
+								icon="image"
 								onPress={handleManualPickFromRecovery}
-							>
-								<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-								<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
-							</TouchableOpacity>
-							<TouchableOpacity
-								style={[styles.emptyButtonSecondary, isDark && styles.emptyButtonSecondaryDark]}
-								onPress={handleSkip}
-							>
-								<Text style={[styles.emptyButtonSecondaryText, isDark && styles.textMuted]}>
-									Skip for now
-								</Text>
-							</TouchableOpacity>
+							/>
+							<Button label="Skip for now" variant="ghost" size="md" onPress={handleSkip} />
 						</View>
-					)}
+					) : null}
 				</View>
-			</View>
+			</Screen>
 		);
 	}
 
 	if (step === "error") {
 		const errorTitle = permissionDenied
-			? "Permission Required"
+			? "Photo access is off"
 			: scanError
-				? "Scanning Issue"
+				? "We couldn't scan your library"
 				: "Something went wrong";
 		const errorMessage = permissionDenied
-			? "Please allow access to your photos and videos in Settings to continue"
+			? "Recapd needs access to your photos to add them to the album. Turn it on in Settings."
 			: scanError
-				? "We had trouble scanning your photos and videos automatically"
-				: "Unable to load the event. Please try again.";
+				? "The automatic scan failed. You can still pick your media by hand."
+				: "We couldn't load this album. Try again in a moment.";
 
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<View style={[styles.statePanel, isDark && styles.statePanelDark]}>
-					<FontAwesome name="exclamation-circle" size={48} color="#ef4444" />
-					<Text style={[styles.errorTitle, isDark && styles.textDark]}>{errorTitle}</Text>
-					<Text style={[styles.errorText, isDark && styles.textMuted]}>{errorMessage}</Text>
-					{scanError && (
-						<TouchableOpacity
-							style={styles.manualPickButton}
-							onPress={handleManualPickFromRecovery}
-						>
-							<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-							<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
-						</TouchableOpacity>
-					)}
-					<TouchableOpacity
-						style={[styles.errorButton, styles.retryScanButton]}
-						onPress={loadPhotos}
-					>
-						<Text style={styles.errorButtonText}>Try scanning again</Text>
-					</TouchableOpacity>
-					<TouchableOpacity
-						style={[
-							styles.errorButton,
-							scanError && styles.errorButtonSecondary,
-							scanError && isDark && styles.errorButtonSecondaryDark,
-						]}
-						onPress={handleSkip}
-					>
-						<Text style={[styles.errorButtonText, scanError && styles.errorButtonTextSecondary]}>
-							Go Back
-						</Text>
-					</TouchableOpacity>
+			<Screen edges="both">
+				<NavBar title="Add your photos" onBack={handleSkip} dismiss />
+				<View style={styles.centered}>
+					<EmptyState icon="alert-circle" title={errorTitle} body={errorMessage} />
+					<View style={styles.stateActions}>
+						{scanError ? (
+							<Button
+								label="Pick media myself"
+								icon="image"
+								onPress={handleManualPickFromRecovery}
+							/>
+						) : null}
+						<Button
+							label="Try scanning again"
+							variant={scanError ? "secondary" : "primary"}
+							onPress={loadPhotos}
+						/>
+						<Button label="Go back" variant="ghost" size="md" onPress={handleSkip} />
+					</View>
 				</View>
-			</View>
+			</Screen>
 		);
 	}
 
 	if (step === "empty") {
 		return (
-			<>
-				<Stack.Screen
-					options={{
-						title: "",
-						headerRight: () => (
-							<TouchableOpacity onPress={handleSkip} style={{ padding: 8 }}>
-								<FontAwesome name="times" size={22} color={isDark ? "#fff" : "#000"} />
-							</TouchableOpacity>
-						),
-					}}
-				/>
-				<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-					<View style={[styles.emptyContent, isDark && styles.statePanelDark]}>
-						<View style={[styles.emptyIcon, isDark && styles.emptyIconDark]}>
-							<FontAwesome name="camera" size={32} color={isDark ? "#888" : "#666"} />
-						</View>
-						<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No Media Found</Text>
-						<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-							We couldn't find any photos or videos from the event time window.
-						</Text>
-						<Text style={[styles.emptyHint, isDark && styles.textMuted]}>
-							Select media manually or skip this for now.
-						</Text>
-						<TouchableOpacity
-							style={styles.manualPickButton}
-							onPress={handleManualPickFromRecovery}
-						>
-							<FontAwesome name="photo" size={18} color="#fff" style={{ marginRight: 8 }} />
-							<Text style={styles.manualPickButtonText}>Select Media Manually</Text>
-						</TouchableOpacity>
-						<TouchableOpacity
-							style={[styles.emptyButtonSecondary, isDark && styles.emptyButtonSecondaryDark]}
-							onPress={handleSkip}
-						>
-							<Text style={[styles.emptyButtonSecondaryText, isDark && styles.textMuted]}>
-								Go Back
-							</Text>
-						</TouchableOpacity>
+			<Screen edges="both">
+				<NavBar title="Add your photos" onBack={handleSkip} dismiss />
+				<View style={styles.centered}>
+					<EmptyState
+						icon="camera"
+						title="Nothing from that night"
+						body="We couldn't find photos or videos taken during the event window. You can still pick something by hand."
+					/>
+					<View style={styles.stateActions}>
+						<Button label="Pick media myself" icon="image" onPress={handleManualPickFromRecovery} />
+						<Button label="Go back" variant="ghost" size="md" onPress={handleSkip} />
 					</View>
 				</View>
-			</>
+			</Screen>
 		);
 	}
 
 	return (
-		<>
-			<Stack.Screen options={{ title: `Select Media (${selectedIds.size})` }} />
+		<Screen edges="both">
+			<NavBar
+				title="Add your photos"
+				subtitle={getCountText()}
+				onBack={handleSkip}
+				dismiss
+				right={
+					<IconButton icon="plus" accessibilityLabel="Pick more media" onPress={handleManualPick} />
+				}
+			/>
 
 			<View
-				style={[styles.container, isDark && styles.containerDark]}
+				style={styles.flex}
 				onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)}
 			>
-				<View style={[styles.selectHeader, isDark && styles.selectHeaderDark]}>
-					<View>
-						<Text style={[styles.headerKicker, isDark && styles.textMuted]}>Add Your Media</Text>
-						<Text style={[styles.selectCount, isDark && styles.textMuted]}>{getCountText()}</Text>
-						<Text style={[styles.selectionSummary, isDark && styles.textMuted]}>
+				<View style={styles.selectBar}>
+					<View style={styles.selectBarText}>
+						<Text style={styles.selectSummary} numberOfLines={1}>
 							{getSelectionSummary()}
 						</Text>
-						{alreadyUploadedCount > 0 && (
-							<Text style={[styles.uploadedCount, isDark && styles.textMuted]}>
-								{alreadyUploadedCount} already uploaded
-							</Text>
-						)}
+						{alreadyUploadedCount > 0 ? (
+							<Text style={styles.selectNote}>{alreadyUploadedCount} already in the album</Text>
+						) : null}
 					</View>
-					<View style={styles.selectActions}>
-						<TouchableOpacity
-							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
-							onPress={selectAll}
-						>
-							<Text style={[styles.selectAction, isDark && styles.textDark]}>Select All</Text>
-						</TouchableOpacity>
-						<TouchableOpacity
-							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
-							onPress={deselectAll}
-						>
-							<Text style={[styles.selectAction, isDark && styles.textDark]}>Clear</Text>
-						</TouchableOpacity>
-						<TouchableOpacity
-							onPress={handleManualPick}
-							style={[styles.selectActionButton, isDark && styles.selectActionButtonDark]}
-						>
-							<FontAwesome name="plus" size={12} color={isDark ? "#fff" : "#111827"} />
-							<Text style={[styles.selectAction, isDark && styles.textDark]}>Add Media</Text>
-						</TouchableOpacity>
+					<View style={styles.selectBarActions}>
+						<Button label="All" size="sm" variant="secondary" full={false} onPress={selectAll} />
+						<Button label="None" size="sm" variant="ghost" full={false} onPress={deselectAll} />
 					</View>
 				</View>
 
@@ -705,6 +655,7 @@ export default function ContributeScreen() {
 					maxToRenderPerBatch={12}
 					windowSize={5}
 					removeClippedSubviews
+					showsVerticalScrollIndicator={false}
 					getItemLayout={(_, index) => {
 						const length = photoSize + GRID_GAP;
 						return { length, offset: length * Math.floor(index / NUM_COLUMNS), index };
@@ -714,23 +665,27 @@ export default function ContributeScreen() {
 						const isUploaded = uploadedIds.has(item.id);
 						const isVideo = item.mediaType === "video";
 						return (
-							<TouchableOpacity
-								style={[styles.selectPhotoItem, { width: photoSize, height: photoSize }]}
+							<Pressable
+								style={[styles.tile, { width: photoSize, height: photoSize }]}
 								onPress={() => togglePhotoSelection(item.id)}
 								onLongPress={() => setPreviewIndex(index)}
 								delayLongPress={200}
 								disabled={isUploaded}
+								accessibilityRole="checkbox"
+								accessibilityState={{ checked: isSelected, disabled: isUploaded }}
+								accessibilityLabel={
+									isUploaded
+										? "Already in the album"
+										: `${isVideo ? "Video" : "Photo"}, ${isSelected ? "selected" : "not selected"}`
+								}
+								accessibilityHint={isUploaded ? undefined : "Long press to preview"}
 							>
 								{isVideo ? (
-									<VideoThumbnail
-										uri={item.uri}
-										assetId={item.id}
-										style={styles.selectPhotoImage}
-									/>
+									<VideoThumbnail uri={item.uri} assetId={item.id} style={styles.tileImage} />
 								) : (
 									<ExpoImage
 										source={{ uri: item.uri }}
-										style={styles.selectPhotoImage}
+										style={styles.tileImage}
 										contentFit="cover"
 										cachePolicy="memory-disk"
 										recyclingKey={item.id}
@@ -738,52 +693,44 @@ export default function ContributeScreen() {
 										priority="low"
 									/>
 								)}
-								{isVideo && (
-									<View style={styles.videoIndicator}>
-										<FontAwesome name="play-circle" size={28} color="#fff" />
-										{item.duration > 0 && (
-											<View style={styles.durationBadge}>
-												<Text style={styles.durationText}>{formatDurationHms(item.duration)}</Text>
-											</View>
-										)}
+
+								{isVideo ? (
+									<View style={styles.videoBadge}>
+										<Icon name="play" size={9} color="#FFFFFF" />
+										{item.duration > 0 ? (
+											<Text style={styles.videoDuration}>{formatDurationHms(item.duration)}</Text>
+										) : null}
 									</View>
-								)}
+								) : null}
+
 								{isUploaded ? (
 									<View style={styles.uploadedOverlay}>
 										<View style={styles.uploadedBadge}>
-											<FontAwesome name="cloud" size={10} color="#fff" />
+											<Icon name="check" size={11} color="#FFFFFF" />
 										</View>
 									</View>
 								) : (
-									<View style={[styles.selectOverlay, isSelected && styles.selectOverlaySelected]}>
-										{isSelected && (
-											<View style={styles.selectCheckmark}>
-												<FontAwesome name="check" size={12} color="#fff" />
-											</View>
-										)}
+									<View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
+										{isSelected ? <Icon name="check" size={13} color="#FFFFFF" /> : null}
 									</View>
 								)}
-							</TouchableOpacity>
+							</Pressable>
 						);
 					}}
-					contentContainerStyle={styles.selectGrid}
+					contentContainerStyle={styles.grid}
 				/>
 
-				<View style={[styles.selectFooter, isDark && styles.selectFooterDark]}>
-					<TouchableOpacity
-						style={[styles.uploadButton, selectedIds.size === 0 && styles.uploadButtonDisabled]}
+				<View style={styles.footer}>
+					<Button
+						label={isQueueingUploads ? "Preparing…" : getShareButtonText()}
+						icon="upload-cloud"
+						loading={isQueueingUploads}
+						disabled={selectedIds.size === 0}
 						onPress={handleUpload}
-						disabled={selectedIds.size === 0 || isQueueingUploads}
-					>
-						{isQueueingUploads ? (
-							<ActivityIndicator size="small" color="#fff" style={styles.uploadIcon} />
-						) : (
-							<FontAwesome name="cloud-upload" size={20} color="#fff" style={styles.uploadIcon} />
-						)}
-						<Text style={styles.uploadButtonText}>
-							{isQueueingUploads ? "Preparing uploads..." : getShareButtonText()}
-						</Text>
-					</TouchableOpacity>
+					/>
+					<Text style={styles.footerNote}>
+						Uploads keep going in the background, even with the app closed.
+					</Text>
 				</View>
 			</View>
 
@@ -796,369 +743,156 @@ export default function ContributeScreen() {
 				uploadedIds={uploadedIds}
 				onToggleSelection={togglePhotoSelection}
 			/>
-		</>
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	flex: {
 		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
 	},
 	centered: {
-		justifyContent: "center",
+		flex: 1,
 		alignItems: "center",
-		padding: 24,
+		justifyContent: "center",
+		paddingHorizontal: space.xl,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	statePanel: {
-		width: "100%",
-		maxWidth: 360,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 20,
-		paddingVertical: 24,
 		alignItems: "center",
+		gap: space.md,
 	},
-	statePanelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	loadingText: {
-		fontSize: 16,
-		color: "#6b7280",
-		marginTop: 16,
-		fontWeight: "600",
-	},
-	loadingHint: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 8,
+	stateTitle: {
+		...type.heading,
+		color: theme.textPrimary,
 		textAlign: "center",
+		marginTop: space.sm,
 	},
-	loadingActions: {
-		marginTop: 24,
-		width: "100%",
-		alignItems: "center",
-	},
-	loadingSlowText: {
-		fontSize: 14,
-		color: "#6b7280",
+	stateBody: {
+		...type.body,
+		color: theme.textMuted,
 		textAlign: "center",
-		marginBottom: 16,
-		maxWidth: 320,
+		maxWidth: 300,
 	},
-	errorTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#111827",
-		marginTop: 16,
-		marginBottom: 8,
-	},
-	errorText: {
-		fontSize: 16,
-		color: "#6b7280",
+	stateNote: {
+		...type.callout,
+		color: theme.textMuted,
 		textAlign: "center",
-		marginBottom: 24,
+		marginBottom: space.xs,
 	},
-	errorButton: {
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 14,
-		paddingHorizontal: 32,
-		borderRadius: 999,
+	stateActions: {
+		alignSelf: "stretch",
+		gap: space.md,
+		marginTop: space.lg,
 	},
-	errorButtonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	errorButtonSecondary: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-	},
-	errorButtonSecondaryDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	errorButtonTextSecondary: {
-		color: "#6b7280",
-	},
-	retryScanButton: {
-		marginBottom: 12,
-	},
-	manualPickButton: {
+
+	selectBar: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 14,
-		paddingHorizontal: 24,
-		borderRadius: 999,
-		marginBottom: 12,
+		gap: space.md,
+		paddingHorizontal: space.lg,
+		paddingBottom: space.md,
 	},
-	manualPickButtonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
+	selectBarText: {
+		flex: 1,
+		gap: 2,
 	},
-	emptyContent: {
-		alignItems: "center",
-		paddingHorizontal: 32,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingVertical: 28,
+	selectSummary: {
+		...type.bodyStrong,
+		color: theme.textPrimary,
 	},
-	emptyIcon: {
-		width: 72,
-		height: 72,
-		borderRadius: 36,
-		backgroundColor: "#f9fafb",
-		justifyContent: "center",
-		alignItems: "center",
-		marginBottom: 24,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
+	selectNote: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
 	},
-	emptyIconDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-	},
-	emptyTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#000",
-		marginBottom: 12,
-		textAlign: "center",
-	},
-	emptyText: {
-		fontSize: 16,
-		color: "#6b7280",
-		textAlign: "center",
-		marginBottom: 8,
-	},
-	emptyHint: {
-		fontSize: 14,
-		color: "#6b7280",
-		textAlign: "center",
-		marginBottom: 32,
-	},
-	emptyButton: {
-		backgroundColor: "#000",
-		paddingVertical: 14,
-		paddingHorizontal: 32,
-		borderRadius: 12,
-	},
-	emptyButtonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	emptyButtonSecondary: {
-		paddingVertical: 14,
-		paddingHorizontal: 32,
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-		backgroundColor: "#fff",
-	},
-	emptyButtonSecondaryDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	emptyButtonSecondaryText: {
-		color: "#6b7280",
-		fontSize: 15,
-		fontWeight: "600",
-	},
-	selectHeader: {
-		padding: 16,
-		borderBottomWidth: 1,
-		borderBottomColor: "#e5e7eb",
-		backgroundColor: "#fff",
-		gap: 12,
-	},
-	selectHeaderDark: {
-		backgroundColor: "#0f1115",
-		borderBottomColor: "#242833",
-	},
-	headerKicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.1,
-		textTransform: "uppercase",
-		color: "#6b7280",
-		marginBottom: 4,
-	},
-	selectCount: {
-		fontSize: 15,
-		color: "#374151",
-		fontWeight: "600",
-	},
-	selectionSummary: {
-		fontSize: 12,
-		color: "#6b7280",
-		marginTop: 4,
-	},
-	selectActions: {
+	selectBarActions: {
 		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-		flexWrap: "wrap",
+		gap: space.sm,
 	},
-	selectActionButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		paddingHorizontal: 10,
-		paddingVertical: 8,
-		borderRadius: 999,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
+
+	grid: {
+		paddingHorizontal: GRID_GAP,
+		paddingBottom: space.md,
+		gap: GRID_GAP,
 	},
-	selectActionButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	selectAction: {
-		fontSize: 13,
-		color: "#111827",
-		fontWeight: "600",
-	},
-	selectGrid: {
-		padding: GRID_PADDING,
-	},
-	loadMoreButton: {
-		marginHorizontal: GRID_PADDING,
-		marginVertical: 12,
-		paddingVertical: 14,
-		borderRadius: 8,
-		alignItems: "center",
-		backgroundColor: "#f3f4f6",
-	},
-	loadMoreButtonDark: {
-		backgroundColor: "#1f2937",
-	},
-	loadMoreText: {
-		fontSize: 14,
-		fontWeight: "600",
-		color: "#111827",
-	},
-	selectPhotoItem: {
+	tile: {
 		margin: GRID_GAP / 2,
-		borderRadius: 6,
+		borderRadius: radius.sm,
 		overflow: "hidden",
+		backgroundColor: theme.cardElevated,
 	},
-	selectPhotoImage: {
+	tileImage: {
 		width: "100%",
 		height: "100%",
 	},
-	selectOverlay: {
-		...StyleSheet.absoluteFillObject,
-		borderWidth: 2,
-		borderColor: "transparent",
-		borderRadius: 6,
-	},
-	selectOverlaySelected: {
-		borderColor: "#FF2D8E",
-		backgroundColor: "rgba(255, 45, 142, 0.22)",
-	},
-	selectCheckmark: {
+	videoBadge: {
 		position: "absolute",
-		top: 4,
-		right: 4,
-		width: 20,
-		height: 20,
-		borderRadius: 10,
-		backgroundColor: "#FF2D8E",
-		justifyContent: "center",
+		left: 5,
+		bottom: 5,
+		flexDirection: "row",
 		alignItems: "center",
+		gap: 3,
+		paddingHorizontal: 6,
+		paddingVertical: 3,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(0,0,0,0.62)",
+	},
+	videoDuration: {
+		fontSize: 9,
+		fontWeight: "700",
+		color: "#FFFFFF",
+	},
+	checkbox: {
+		position: "absolute",
+		top: 6,
+		right: 6,
+		width: 22,
+		height: 22,
+		borderRadius: 11,
+		borderWidth: 1.5,
+		borderColor: "rgba(255,255,255,0.85)",
+		backgroundColor: "rgba(0,0,0,0.28)",
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	checkboxOn: {
+		backgroundColor: theme.accent,
+		borderColor: theme.accent,
 	},
 	uploadedOverlay: {
 		...StyleSheet.absoluteFillObject,
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		borderRadius: 6,
+		backgroundColor: "rgba(7,7,12,0.62)",
+		alignItems: "center",
+		justifyContent: "center",
 	},
 	uploadedBadge: {
-		position: "absolute",
-		top: 4,
-		right: 4,
-		width: 20,
-		height: 20,
-		borderRadius: 10,
-		backgroundColor: "#22c55e",
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	uploadedCount: {
-		fontSize: 12,
-		color: "#22c55e",
-		marginTop: 2,
-	},
-	selectFooter: {
-		padding: 16,
-		paddingBottom: 32,
-		backgroundColor: "#fff",
-		borderTopWidth: 1,
-		borderTopColor: "#e5e7eb",
-	},
-	selectFooterDark: {
-		backgroundColor: "#0f1115",
-		borderTopColor: "#242833",
-	},
-	uploadButton: {
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 18,
-		borderRadius: 999,
-		flexDirection: "row",
+		width: 24,
+		height: 24,
+		borderRadius: 12,
+		backgroundColor: theme.success,
 		alignItems: "center",
 		justifyContent: "center",
-		shadowColor: "#FF2D8E",
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.35,
-		shadowRadius: 12,
-		elevation: 8,
 	},
-	uploadButtonDisabled: {
-		opacity: 0.5,
-		shadowOpacity: 0,
+
+	footer: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
+		paddingHorizontal: space.lg,
+		paddingTop: space.md,
+		paddingBottom: space.md,
+		gap: space.sm,
+		borderTopWidth: StyleSheet.hairlineWidth,
+		borderTopColor: theme.border,
+		backgroundColor: theme.page,
 	},
-	uploadIcon: {
-		marginRight: 10,
-	},
-	uploadButtonText: {
-		color: "#fff",
-		fontSize: 17,
-		fontWeight: "600",
-		letterSpacing: -0.4,
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
-	},
-	videoIndicator: {
-		...StyleSheet.absoluteFillObject,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	durationBadge: {
-		position: "absolute",
-		bottom: 4,
-		right: 4,
-		backgroundColor: "rgba(0, 0, 0, 0.7)",
-		paddingHorizontal: 4,
-		paddingVertical: 2,
-		borderRadius: 3,
-	},
-	durationText: {
-		color: "#fff",
-		fontSize: 10,
-		fontWeight: "600",
+	footerNote: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textFaint,
+		textAlign: "center",
 	},
 });

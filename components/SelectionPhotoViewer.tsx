@@ -1,4 +1,3 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +13,8 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Icon, { type IconName } from "@/components/ui/Icon";
+import { radius, theme } from "@/constants/theme";
 import type { LocalPhoto } from "@/lib/mediaLibrary";
 import { createVideoThumbnailUri } from "@/lib/storage";
 import MediaViewerPager from "./MediaViewerPager";
@@ -213,10 +214,10 @@ export default function SelectionPhotoViewer({
 		return "Select";
 	}
 
-	function getButtonIcon() {
-		if (isUploaded) return "cloud";
+	function getButtonIcon(): IconName {
+		if (isUploaded) return "check-circle";
 		if (isSelected) return "check";
-		return "circle-o";
+		return "circle";
 	}
 
 	return (
@@ -234,7 +235,7 @@ export default function SelectionPhotoViewer({
 						onPress={onClose}
 						hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
 					>
-						<FontAwesome name="chevron-down" size={20} color="#fff" />
+						<Icon name="chevron-down" size={20} color="#fff" />
 					</TouchableOpacity>
 					<View style={styles.headerCenter}>
 						<Text style={styles.counter}>
@@ -263,7 +264,7 @@ export default function SelectionPhotoViewer({
 				<View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
 					<View style={styles.mediaMetaRow}>
 						<View style={styles.mediaPill}>
-							<FontAwesome
+							<Icon
 								name={currentPhoto.mediaType === "video" ? "play" : "image"}
 								size={10}
 								color="#fff"
@@ -279,10 +280,10 @@ export default function SelectionPhotoViewer({
 						)}
 					</View>
 					<TouchableOpacity style={getButtonStyle()} onPress={handleToggle} disabled={isUploaded}>
-						<FontAwesome
+						<Icon
 							name={getButtonIcon()}
 							size={18}
-							color={isUploaded ? "#22c55e" : isSelected ? "#fff" : "#3b82f6"}
+							color={isUploaded ? theme.success : isSelected ? "#FFFFFF" : theme.textPrimary}
 							style={styles.buttonIcon}
 						/>
 						<Text style={getButtonTextStyle()}>{getButtonLabel()}</Text>
@@ -408,21 +409,21 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 		paddingVertical: 14,
 		paddingHorizontal: 32,
-		borderRadius: 30,
+		borderRadius: radius.lg,
 		minWidth: 180,
 	},
 	selectionButtonUploaded: {
-		backgroundColor: "rgba(34, 197, 94, 0.2)",
+		backgroundColor: theme.successSurface,
 		borderWidth: 1,
-		borderColor: "#22c55e",
+		borderColor: theme.success,
 	},
 	selectionButtonSelected: {
-		backgroundColor: "#3b82f6",
+		backgroundColor: theme.accent,
 	},
 	selectionButtonUnselected: {
-		backgroundColor: "transparent",
-		borderWidth: 2,
-		borderColor: "#3b82f6",
+		backgroundColor: theme.glass,
+		borderWidth: 1,
+		borderColor: theme.glassBorder,
 	},
 	buttonIcon: {
 		marginRight: 8,
@@ -432,12 +433,12 @@ const styles = StyleSheet.create({
 		fontWeight: "600",
 	},
 	selectionButtonTextUploaded: {
-		color: "#22c55e",
+		color: theme.success,
 	},
 	selectionButtonTextSelected: {
 		color: "#fff",
 	},
 	selectionButtonTextUnselected: {
-		color: "#3b82f6",
+		color: theme.textPrimary,
 	},
 });

@@ -1,60 +1,64 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { Tabs, useRouter } from "expo-router";
-import type React from "react";
-import { TouchableOpacity } from "react-native";
-import { useClientOnlyValue } from "@/components/useClientOnlyValue";
-import { useColorScheme } from "@/components/useColorScheme";
-import Colors from "@/constants/Colors";
+import { Tabs } from "expo-router";
+import { Platform, StyleSheet } from "react-native";
+import Icon, { type IconName } from "@/components/ui/Icon";
+import { theme } from "@/constants/theme";
 
-function TabBarIcon(props: {
-	name: React.ComponentProps<typeof FontAwesome>["name"];
-	color: string;
-}) {
-	return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
+function TabBarIcon({ name, color }: { name: IconName; color: string }) {
+	return <Icon size={22} name={name} color={color} />;
 }
 
 export default function TabLayout() {
-	const colorScheme = useColorScheme();
-	const router = useRouter();
-
 	return (
 		<Tabs
 			screenOptions={{
-				tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
-				headerShown: useClientOnlyValue(false, true),
+				headerShown: false,
+				tabBarActiveTintColor: theme.accent,
+				tabBarInactiveTintColor: theme.textDisabled,
+				tabBarStyle: styles.tabBar,
+				tabBarLabelStyle: styles.tabLabel,
+				tabBarItemStyle: styles.tabItem,
+				sceneStyle: { backgroundColor: theme.page },
 			}}
 		>
 			<Tabs.Screen
 				name="index"
 				options={{
 					title: "Home",
-					headerShown: false,
 					tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
 				}}
 			/>
 			<Tabs.Screen
 				name="events"
 				options={{
-					title: "My Events",
+					title: "Albums",
 					tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
-					headerRight: () => (
-						<TouchableOpacity
-							onPress={() => router.push("/event/create")}
-							style={{ marginRight: 16 }}
-							hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-						>
-							<FontAwesome name="plus" size={22} color={Colors[colorScheme ?? "light"].tint} />
-						</TouchableOpacity>
-					),
 				}}
 			/>
 			<Tabs.Screen
 				name="settings"
 				options={{
 					title: "Settings",
-					tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
+					tabBarIcon: ({ color }) => <TabBarIcon name="settings" color={color} />,
 				}}
 			/>
 		</Tabs>
 	);
 }
+
+const styles = StyleSheet.create({
+	tabBar: {
+		backgroundColor: "rgba(15,15,22,0.98)",
+		borderTopWidth: StyleSheet.hairlineWidth,
+		borderTopColor: theme.border,
+		height: Platform.OS === "ios" ? 84 : 66,
+		paddingTop: 8,
+	},
+	tabLabel: {
+		fontSize: 10.5,
+		fontWeight: "600",
+		letterSpacing: 0,
+	},
+	tabItem: {
+		paddingTop: 2,
+	},
+});

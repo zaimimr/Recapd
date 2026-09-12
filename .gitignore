@@ -13,3 +13,6 @@ node_modules/
 .expo/
 /ios/
 /android/
+
+# Impeccable local design review evidence (the design sidecar itself is tracked)
+.impeccable/review/

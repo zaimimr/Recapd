@@ -45,7 +45,14 @@ function clampIndex(index: number, length: number): number {
 }
 
 function MediaViewerPagerInner<T>(
-	{ data, initialIndex, keyExtractor, onIndexChange, renderPage, pageStyle }: MediaViewerPagerProps<T>,
+	{
+		data,
+		initialIndex,
+		keyExtractor,
+		onIndexChange,
+		renderPage,
+		pageStyle,
+	}: MediaViewerPagerProps<T>,
 	ref: React.Ref<MediaViewerPagerHandle>
 ) {
 	const flatListRef = useRef<FlatList<T>>(null);
@@ -64,15 +71,13 @@ function MediaViewerPagerInner<T>(
 	const onIndexChangeRef = useRef(onIndexChange);
 	onIndexChangeRef.current = onIndexChange;
 
-	const handleViewableItemsChanged = useRef(
-		({ viewableItems }: { viewableItems: ViewToken[] }) => {
-			const first = viewableItems[0];
-			if (first && first.index !== null && first.index !== undefined) {
-				setActiveIndex(first.index);
-				onIndexChangeRef.current?.(first.index);
-			}
+	const handleViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+		const first = viewableItems[0];
+		if (first && first.index !== null && first.index !== undefined) {
+			setActiveIndex(first.index);
+			onIndexChangeRef.current?.(first.index);
 		}
-	).current;
+	}).current;
 
 	const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 

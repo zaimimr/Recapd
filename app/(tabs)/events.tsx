@@ -1,101 +1,17 @@
-import { isFuture, isPast, isWithinInterval } from "date-fns";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-	ActivityIndicator,
-	FlatList,
-	RefreshControl,
-	StyleSheet,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
-import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import AlbumCard from "@/components/AlbumCard";
+import { Button, EmptyState, Field, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
+import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
 import { useAuthStore } from "@/store/authStore";
-import { type EventWithParticipants, useEventStore } from "@/store/eventStore";
-import type { Event } from "@/types/database";
-
-function getEventStatus(event: Event): { label: string; color: string } {
-	const now = new Date();
-	const startsAt = new Date(event.starts_at);
-	const endsAt = new Date(event.ends_at);
-
-	if (event.status === "expired") {
-		return { label: "Expired", color: "#A0A0B2" };
-	}
-	if (isPast(endsAt)) {
-		return { label: "Ended", color: "#A0A0B2" };
-	}
-	if (isWithinInterval(now, { start: startsAt, end: endsAt })) {
-		return { label: "Live", color: "#22C55E" };
-	}
-	if (isFuture(startsAt)) {
-		return { label: "Upcoming", color: "#FF7A45" };
-	}
-	return { label: "Unknown", color: "#A0A0B2" };
-}
-
-function EventCard({
-	event,
-	onPress,
-	isDark,
-}: {
-	event: EventWithParticipants;
-	onPress: () => void;
-	isDark: boolean;
-}) {
-	const status = getEventStatus(event);
-	const isHost = event.userRole === "host";
-
-	return (
-		<TouchableOpacity
-			style={[styles.card, isDark && styles.cardDark]}
-			onPress={onPress}
-			activeOpacity={0.7}
-		>
-			<View style={styles.cardHeader}>
-				<View style={styles.titleRow}>
-					<Text style={[styles.eventTitle, isDark && styles.textDark]} numberOfLines={1}>
-						{event.title}
-					</Text>
-					{isHost && (
-						<View style={styles.hostBadge}>
-							<Text style={styles.hostBadgeText}>Host</Text>
-						</View>
-					)}
-				</View>
-				<View style={[styles.statusBadge, { backgroundColor: `${status.color}20` }]}>
-					<Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-				</View>
-			</View>
-			<Text style={[styles.eventDate, isDark && styles.textMuted]}>
-				{formatLocalizedDate(event.starts_at, {
-					month: "short",
-					day: "numeric",
-					year: "numeric",
-				})}{" "}
-				• {formatLocalizedTimeRange(event.starts_at, event.ends_at)}
-			</Text>
-			<View style={styles.cardFooter}>
-				<Text style={[styles.participantCount, isDark && styles.textMuted]}>
-					{event.participant_count || 0} participant
-					{event.participant_count !== 1 ? "s" : ""}
-				</Text>
-				<Text style={[styles.joinCode, isDark && styles.textMuted]}>Code: {event.join_code}</Text>
-			</View>
-		</TouchableOpacity>
-	);
-}
+import { useEventStore } from "@/store/eventStore";
 
 export default function EventsScreen() {
 	const router = useRouter();
 	const user = useAuthStore((state) => state.user);
 	const createUser = useAuthStore((state) => state.createUser);
 	const { events, isLoading, fetchUserEvents, subscribeToUserEvents } = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 	const [isRefreshing, setIsRefreshing] = useState(false);
 	const [displayName, setDisplayName] = useState("");
 	const [isCreating, setIsCreating] = useState(false);
@@ -114,6 +30,12 @@ export default function EventsScreen() {
 		}
 	}, [user?.id, fetchUserEvents]);
 
+	useFocusEffect(
+		useCallback(() => {
+			loadEvents();
+		}, [loadEvents])
+	);
+
 	const handleRefresh = useCallback(async () => {
 		setIsRefreshing(true);
 		await loadEvents();
@@ -124,7 +46,6 @@ export default function EventsScreen() {
 		loadEvents();
 	}, [loadEvents]);
 
-	// Subscribe to real-time updates for user's events
 	useEffect(() => {
 		if (user?.id) {
 			const unsubscribe = subscribeToUserEvents(user.id);
@@ -134,16 +55,14 @@ export default function EventsScreen() {
 
 	if (!user) {
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<View style={[styles.welcomePanel, isDark && styles.panelDark]}>
-					<Text style={styles.kicker}>Profile</Text>
-					<Text style={[styles.welcomeTitle, isDark && styles.textDark]}>
-						What should we call you?
+			<Screen>
+				<ScreenScroll center contentContainerStyle={styles.welcome}>
+					<SectionHeader title="What should we call you?" />
+					<Text style={styles.welcomeBody}>
+						Your name shows up on the photos you add. Nothing else is stored.
 					</Text>
-					<TextInput
-						style={[styles.nameInput, isDark && styles.nameInputDark]}
-						placeholder="Enter your name"
-						placeholderTextColor={isDark ? "#666" : "#999"}
+					<Field
+						placeholder="Your first name"
 						value={displayName}
 						onChangeText={setDisplayName}
 						autoCapitalize="words"
@@ -151,293 +70,121 @@ export default function EventsScreen() {
 						maxLength={30}
 						returnKeyType="done"
 						onSubmitEditing={handleCreateProfile}
+						containerStyle={styles.welcomeField}
 					/>
-					<TouchableOpacity
-						style={[
-							styles.continueButton,
-							(displayName.trim().length < 2 || isCreating) && styles.buttonDisabled,
-						]}
+					<Button
+						label="Continue"
 						onPress={handleCreateProfile}
-						disabled={displayName.trim().length < 2 || isCreating}
-					>
-						{isCreating ? (
-							<ActivityIndicator color="#fff" size="small" />
-						) : (
-							<Text style={styles.continueButtonText}>Continue</Text>
-						)}
-					</TouchableOpacity>
-				</View>
-			</View>
+						loading={isCreating}
+						disabled={displayName.trim().length < 2}
+					/>
+				</ScreenScroll>
+			</Screen>
 		);
 	}
 
 	return (
-		<View style={[styles.container, isDark && styles.containerDark]}>
+		<Screen>
 			<FlatList
 				data={events}
 				keyExtractor={(item) => item.id}
 				renderItem={({ item }) => (
-					<EventCard
-						event={item}
-						isDark={isDark}
-						onPress={() => router.push(`/event/${item.id}`)}
-					/>
+					<AlbumCard event={item} onPress={() => router.push(`/event/${item.id}`)} />
 				)}
-				contentContainerStyle={[styles.listContent, events.length === 0 && styles.emptyContainer]}
-				refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
-				ListHeaderComponent={
-					<View style={styles.sectionHeader}>
-						<Text style={styles.kicker}>Events</Text>
-						<Text style={[styles.sectionTitle, isDark && styles.textDark]}>Your rooms</Text>
-					</View>
+				contentContainerStyle={[styles.list, events.length === 0 && styles.listEmpty]}
+				style={styles.listShell}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshing}
+						onRefresh={handleRefresh}
+						tintColor={theme.accent}
+						colors={[theme.accent]}
+					/>
 				}
+				showsVerticalScrollIndicator={false}
+				ListHeaderComponent={<SectionHeader title="Every night, kept" style={styles.header} />}
 				ListEmptyComponent={
 					isLoading ? (
-						<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
+						<ActivityIndicator size="large" color={theme.accent} style={styles.loader} />
 					) : (
-						<View style={[styles.emptyState, isDark && styles.panelDark]}>
-							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No events yet</Text>
-							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Join a room or start your own and let the photos pile up
-							</Text>
-							<View style={styles.emptyActions}>
-								<TouchableOpacity
-									style={styles.emptyButton}
-									onPress={() => router.push("/event/join")}
-								>
-									<Text style={styles.emptyButtonText}>Join Event</Text>
-								</TouchableOpacity>
-								<TouchableOpacity
-									style={[styles.emptyButton, styles.emptyButtonSecondary]}
-									onPress={() => router.push("/event/create")}
-								>
-									<Text style={[styles.emptyButtonText, styles.emptyButtonTextSecondary]}>
-										Create Event
-									</Text>
-								</TouchableOpacity>
-							</View>
-						</View>
+						<EmptyState
+							icon="calendar"
+							title="No albums yet"
+							body="Start one for tonight, or join someone else's with their code."
+						/>
 					)
 				}
 			/>
-		</View>
+
+			<View style={styles.actions}>
+				<Button
+					label="New album"
+					icon="plus"
+					onPress={() => router.push("/event/create")}
+					style={styles.action}
+				/>
+				<Button
+					label="Join"
+					icon="search"
+					variant="secondary"
+					onPress={() => router.push("/event/join")}
+					style={styles.action}
+				/>
+			</View>
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#f3f4f6",
+	list: {
+		paddingHorizontal: space.lg,
+		paddingBottom: space.md,
+		gap: space.md,
+		alignItems: "stretch",
 	},
-	containerDark: {
-		backgroundColor: "#05070b",
-	},
-	centered: {
-		justifyContent: "center",
-		alignItems: "center",
-		padding: 24,
-	},
-	listContent: {
-		padding: 16,
-		gap: 12,
+	listEmpty: {
 		flexGrow: 1,
 	},
-	sectionHeader: {
-		paddingHorizontal: 2,
-		paddingVertical: 2,
-		marginBottom: 12,
-		gap: 4,
+	listShell: {
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
-	panelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
+	header: {
+		paddingTop: space.sm,
+		paddingBottom: space.lg,
 	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "800",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#FF2D8E",
+	loader: {
+		marginTop: space.huge,
 	},
-	sectionTitle: {
-		fontSize: 22,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.6,
+	actions: {
+		flexDirection: "row",
+		gap: space.md,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
+		paddingHorizontal: space.lg,
+		paddingTop: space.md,
+		paddingBottom: space.lg,
+		borderTopWidth: StyleSheet.hairlineWidth,
+		borderTopColor: theme.border,
+		backgroundColor: theme.page,
 	},
-	emptyContainer: {
+	action: {
 		flex: 1,
-		padding: 16,
 	},
-	card: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-		marginBottom: 12,
-	},
-	cardDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	cardHeader: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		marginBottom: 8,
-	},
-	titleRow: {
-		flexDirection: "row",
-		alignItems: "center",
-		flex: 1,
-		marginRight: 12,
-		gap: 8,
-	},
-	eventTitle: {
-		fontSize: 18,
-		fontWeight: "700",
-		color: "#111827",
-		flexShrink: 1,
-	},
-	hostBadge: {
-		backgroundColor: "#FF2D8E",
-		paddingHorizontal: 9,
-		paddingVertical: 4,
-		borderRadius: 999,
-	},
-	hostBadgeText: {
-		fontSize: 11,
-		fontWeight: "700",
-		color: "#fff",
-	},
-	statusBadge: {
-		paddingHorizontal: 10,
-		paddingVertical: 5,
-		borderRadius: 999,
-	},
-	statusText: {
-		fontSize: 12,
-		fontWeight: "600",
-	},
-	eventDate: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginBottom: 12,
-	},
-	cardFooter: {
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-	},
-	participantCount: {
-		fontSize: 13,
-		color: "#6b7280",
-	},
-	joinCode: {
-		fontSize: 13,
-		color: "#6b7280",
-		fontFamily: "SpaceMono",
-	},
-	emptyState: {
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 20,
-		paddingVertical: 28,
-	},
-	emptyTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 8,
-	},
-	emptyText: {
-		fontSize: 15,
-		color: "#6b7280",
-		textAlign: "center",
-		marginBottom: 24,
-	},
-	emptyActions: {
-		gap: 12,
+	welcome: {
+		paddingHorizontal: space.xl,
+		gap: space.lg,
 		width: "100%",
-		maxWidth: 280,
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
-	emptyButton: {
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 14,
-		paddingHorizontal: 24,
-		borderRadius: 999,
-		alignItems: "center",
+	welcomeBody: {
+		...type.body,
+		color: theme.textMuted,
 	},
-	emptyButtonSecondary: {
-		backgroundColor: "rgba(255,45,142,0.12)",
-		borderWidth: 1.5,
-		borderColor: "rgba(255,45,142,0.38)",
-	},
-	emptyButtonText: {
-		color: "#fff",
-		fontSize: 15,
-		fontWeight: "700",
-	},
-	emptyButtonTextSecondary: {
-		color: "#FF2D8E",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
-	},
-	welcomeTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 18,
-		textAlign: "left",
-		letterSpacing: -0.5,
-	},
-	welcomePanel: {
-		width: "100%",
-		maxWidth: 360,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 18,
-		paddingVertical: 18,
-	},
-	nameInput: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		fontSize: 18,
-		color: "#111827",
-		width: "100%",
-		marginBottom: 16,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	nameInputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
-	},
-	continueButton: {
-		backgroundColor: "#FF2D8E",
-		paddingVertical: 16,
-		paddingHorizontal: 48,
-		borderRadius: 999,
-		alignItems: "center",
-		minWidth: 200,
-	},
-	continueButtonText: {
-		color: "#fff",
-		fontSize: 18,
-		fontWeight: "700",
-	},
-	buttonDisabled: {
-		opacity: 0.5,
+	welcomeField: {
+		marginTop: space.xs,
 	},
 });

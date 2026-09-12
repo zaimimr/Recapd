@@ -1,4 +1,3 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import type { ReactElement } from "react";
@@ -6,12 +5,16 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Animated,
+	Easing,
+	type NativeScrollEvent,
 	type RefreshControlProps,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View,
 } from "react-native";
+import Icon from "@/components/ui/Icon";
+import { CONTENT_MAX_WIDTH, radius, space, theme, type } from "@/constants/theme";
 import { getAvatarColor } from "@/lib/colors";
 import {
 	createVideoThumbnailUri,
@@ -20,10 +23,10 @@ import {
 	useStorageUrl,
 } from "@/lib/storage";
 import { formatDuration } from "@/lib/utils";
-import type { MergedMediaItem } from "./MomentCluster";
+import type { MergedMediaItem } from "@/types/media";
 import { useImageMemoryGuard } from "./useImageMemoryGuard";
 
-const GRID_GAP = 2;
+const _GRID_GAP = 2;
 const GRID_PADDING = 2;
 const GRID_DENSITY_OPTIONS = [
 	{ columns: 2, label: "Large" },
@@ -39,16 +42,15 @@ interface MasonryGridProps {
 	onRetry?: (id: string) => void;
 	onSkip?: (id: string) => void;
 	onRemove?: (id: string) => void;
-	isDark: boolean;
 	headerComponent?: ReactElement | null;
 	emptyComponent?: ReactElement | null;
 	refreshControl?: ReactElement<RefreshControlProps>;
+	onScroll?: (offsetY: number) => void;
 }
 
 function GridTile({
 	photo,
 	index,
-	isDark,
 	onPhotoPress,
 	onRetry,
 	onSkip,
@@ -56,7 +58,6 @@ function GridTile({
 }: {
 	photo: MergedMediaItem;
 	index: number;
-	isDark: boolean;
 	onPhotoPress: (photo: MergedMediaItem, index: number) => void;
 	onRetry?: (id: string) => void;
 	onSkip?: (id: string) => void;
@@ -135,6 +136,20 @@ function GridTile({
 		return signedThumbnailUrl || legacyTransformUrl;
 	})();
 
+	const arrival = useRef(new Animated.Value(photo.isPending ? 1 : 0)).current;
+	const hasArrived = useRef(false);
+
+	useEffect(() => {
+		if (hasArrived.current || !imageUri || photo.isPending) return;
+		hasArrived.current = true;
+		Animated.timing(arrival, {
+			toValue: 1,
+			duration: 320,
+			easing: Easing.out(Easing.cubic),
+			useNativeDriver: true,
+		}).start();
+	}, [imageUri, photo.isPending, arrival]);
+
 	const isSyncing = photo.isPending && photo.syncStatus === "syncing";
 	const isFailed = photo.isPending && photo.syncStatus === "failed";
 	const isQueued = photo.isPending && (photo.syncStatus === "pending" || !photo.syncStatus);
@@ -142,10 +157,33 @@ function GridTile({
 	const uploaderInitial = photo.uploader?.display_name?.charAt(0).toUpperCase();
 
 	return (
-		<View style={styles.tileShell}>
+		<Animated.View
+			style={[
+				styles.tileShell,
+				{
+					opacity: arrival,
+					transform: [
+						{
+							scale: arrival.interpolate({
+								inputRange: [0, 1],
+								outputRange: [0.94, 1],
+							}),
+						},
+					],
+				},
+			]}
+		>
 			<TouchableOpacity
 				activeOpacity={0.9}
-				style={[styles.tile, isDark ? styles.tileDark : styles.tileLight]}
+				style={styles.tile}
+				accessibilityRole="imagebutton"
+				accessibilityLabel={[
+					isVideo ? "Video" : "Photo",
+					photo.uploader?.display_name ? `from ${photo.uploader.display_name}` : null,
+					showPendingOverlay ? "uploading" : null,
+				]
+					.filter(Boolean)
+					.join(", ")}
 				onPress={() => onPhotoPress(photo, index)}
 			>
 				{imageUri ? (
@@ -171,11 +209,7 @@ function GridTile({
 					/>
 				) : (
 					<View style={[styles.media, styles.placeholder]}>
-						<FontAwesome
-							name={isVideo ? "video-camera" : "image"}
-							size={24}
-							color={isDark ? "#5f6570" : "#9ca3af"}
-						/>
+						<Icon name={isVideo ? "video" : "image"} size={22} color={theme.textDisabled} />
 					</View>
 				)}
 
@@ -194,7 +228,7 @@ function GridTile({
 					)}
 					{isVideo && (
 						<View style={styles.kindBadge}>
-							<FontAwesome name="play" size={9} color="#fff" style={styles.playGlyph} />
+							<Icon name="play" size={9} color="#fff" />
 							<Text style={styles.kindBadgeText}>VID</Text>
 						</View>
 					)}
@@ -203,7 +237,7 @@ function GridTile({
 				{isVideo && !photo.isPending && (
 					<View style={styles.videoCenter}>
 						<View style={styles.videoPlayButton}>
-							<FontAwesome name="play" size={14} color="#fff" style={styles.playGlyph} />
+							<Icon name="play" size={14} color="#fff" />
 						</View>
 					</View>
 				)}
@@ -224,12 +258,12 @@ function GridTile({
 								</>
 							) : isFailed ? (
 								<>
-									<FontAwesome name="warning" size={12} color="#fff" />
+									<Icon name="alert-triangle" size={12} color="#fff" />
 									<Text style={styles.pendingText}>Failed</Text>
 								</>
 							) : (
 								<>
-									<FontAwesome name="clock-o" size={12} color="#fff" />
+									<Icon name="clock" size={12} color="#fff" />
 									<Text style={styles.pendingText}>{isQueued ? "Queued" : "Pending"}</Text>
 								</>
 							)}
@@ -242,7 +276,7 @@ function GridTile({
 									onPress={() => onRetry(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<FontAwesome name="refresh" size={11} color="#fff" />
+									<Icon name="refresh-cw" size={11} color="#fff" />
 								</TouchableOpacity>
 							)}
 							{(isFailed || isQueued || isSyncing) && onSkip && (
@@ -251,7 +285,7 @@ function GridTile({
 									onPress={() => onSkip(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<FontAwesome name="forward" size={10} color="#fff" />
+									<Icon name="skip-forward" size={10} color="#fff" />
 								</TouchableOpacity>
 							)}
 							{(isFailed || isQueued || isSyncing) && onRemove && (
@@ -260,27 +294,37 @@ function GridTile({
 									onPress={() => onRemove(photo.id)}
 									hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
 								>
-									<FontAwesome name="trash" size={10} color="#fff" />
+									<Icon name="trash-2" size={10} color="#fff" />
 								</TouchableOpacity>
 							)}
 						</View>
 					</View>
 				)}
 			</TouchableOpacity>
-		</View>
+		</Animated.View>
 	);
 }
 
 const MemoizedGridTile = memo(GridTile);
 
-function SkeletonTile({ isDark, syncing }: { isDark: boolean; syncing: boolean }) {
+function SkeletonTile({ syncing }: { syncing: boolean }) {
 	const pulse = useRef(new Animated.Value(0.45)).current;
 
 	useEffect(() => {
 		const loop = Animated.loop(
 			Animated.sequence([
-				Animated.timing(pulse, { toValue: 1, duration: 760, useNativeDriver: true }),
-				Animated.timing(pulse, { toValue: 0.45, duration: 760, useNativeDriver: true }),
+				Animated.timing(pulse, {
+					toValue: 1,
+					duration: 760,
+					easing: Easing.inOut(Easing.quad),
+					useNativeDriver: true,
+				}),
+				Animated.timing(pulse, {
+					toValue: 0.45,
+					duration: 760,
+					easing: Easing.inOut(Easing.quad),
+					useNativeDriver: true,
+				}),
 			])
 		);
 		loop.start();
@@ -289,22 +333,16 @@ function SkeletonTile({ isDark, syncing }: { isDark: boolean; syncing: boolean }
 
 	return (
 		<View style={styles.tileShell}>
-			<View style={[styles.tile, isDark ? styles.tileDark : styles.tileLight]}>
-				<Animated.View
-					style={[
-						StyleSheet.absoluteFill,
-						isDark ? styles.skeletonFillDark : styles.skeletonFillLight,
-						{ opacity: pulse },
-					]}
-				/>
+			<View style={styles.tile}>
+				<Animated.View style={[StyleSheet.absoluteFill, styles.skeletonFill, { opacity: pulse }]} />
 				<View style={styles.skeletonCenter}>
-					<ActivityIndicator size="small" color={isDark ? "#aeb6c5" : "#6b7280"} />
+					<ActivityIndicator size="small" color={theme.textMuted} />
 				</View>
 				<View style={styles.skeletonBadge}>
 					{syncing ? (
 						<ActivityIndicator size="small" color="#fff" />
 					) : (
-						<FontAwesome name="clock-o" size={12} color="#fff" />
+						<Icon name="clock" size={12} color="#fff" />
 					)}
 					<Text style={styles.pendingText}>{syncing ? "Uploading" : "Waiting"}</Text>
 				</View>
@@ -321,10 +359,10 @@ export default function MasonryGrid({
 	onRetry,
 	onSkip,
 	onRemove,
-	isDark,
 	headerComponent,
 	emptyComponent,
 	refreshControl,
+	onScroll,
 }: MasonryGridProps) {
 	const [gridColumns, setGridColumns] = useState<GridColumns>(3);
 
@@ -343,19 +381,18 @@ export default function MasonryGrid({
 	const renderItem = useCallback(
 		({ item }: { item: (typeof feedItems)[number] }) =>
 			item.photo.isSkeleton ? (
-				<MemoizedSkeletonTile isDark={isDark} syncing={item.photo.syncStatus === "syncing"} />
+				<MemoizedSkeletonTile syncing={item.photo.syncStatus === "syncing"} />
 			) : (
 				<MemoizedGridTile
 					photo={item.photo}
 					index={item.index}
-					isDark={isDark}
 					onPhotoPress={onPhotoPress}
 					onRetry={onRetry}
 					onSkip={onSkip}
 					onRemove={onRemove}
 				/>
 			),
-		[isDark, onPhotoPress, onRemove, onRetry, onSkip]
+		[onPhotoPress, onRemove, onRetry, onSkip]
 	);
 
 	const getItemType = useCallback(
@@ -369,8 +406,8 @@ export default function MasonryGrid({
 			{headerComponent}
 			{photos.length > 0 && (
 				<View style={styles.controlsRow}>
-					<Text style={[styles.controlsLabel, isDark && styles.controlsLabelDark]}>Grid size</Text>
-					<View style={[styles.controlsGroup, isDark && styles.controlsGroupDark]}>
+					<Text style={styles.controlsLabel}>GRID</Text>
+					<View style={styles.controlsGroup}>
 						{GRID_DENSITY_OPTIONS.map((option) => {
 							const isActive = option.columns === gridColumns;
 							return (
@@ -378,20 +415,13 @@ export default function MasonryGrid({
 									key={option.columns}
 									onPress={() => setGridColumns(option.columns)}
 									activeOpacity={0.85}
-									style={[
-										styles.controlButton,
-										isActive && styles.controlButtonActive,
-										isDark && styles.controlButtonDark,
-										isDark && isActive && styles.controlButtonActiveDark,
-									]}
+									accessibilityRole="button"
+									accessibilityState={{ selected: isActive }}
+									accessibilityLabel={`${option.label} grid`}
+									style={[styles.controlButton, isActive && styles.controlButtonActive]}
 								>
 									<Text
-										style={[
-											styles.controlButtonText,
-											isDark && styles.controlButtonTextDark,
-											isActive && styles.controlButtonTextActive,
-											isDark && isActive && styles.controlButtonTextActiveDark,
-										]}
+										style={[styles.controlButtonText, isActive && styles.controlButtonTextActive]}
 									>
 										{option.label}
 									</Text>
@@ -405,100 +435,89 @@ export default function MasonryGrid({
 	);
 
 	return (
-		<FlashList
-			key={`grid-${gridColumns}`}
-			data={feedItems}
-			renderItem={renderItem}
-			keyExtractor={(item) => item.id}
-			getItemType={getItemType}
-			numColumns={gridColumns}
-			masonry
-			contentContainerStyle={styles.container}
-			showsVerticalScrollIndicator={false}
-			ListHeaderComponent={listHeader}
-			ListEmptyComponent={emptyComponent ?? null}
-			refreshControl={refreshControl}
-			drawDistance={250}
-			maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
-		/>
+		<View style={styles.measure}>
+			<FlashList
+				key={`grid-${gridColumns}`}
+				data={feedItems}
+				renderItem={renderItem}
+				keyExtractor={(item) => item.id}
+				getItemType={getItemType}
+				numColumns={gridColumns}
+				contentContainerStyle={styles.container}
+				showsVerticalScrollIndicator={false}
+				ListHeaderComponent={listHeader}
+				ListEmptyComponent={emptyComponent ?? null}
+				refreshControl={refreshControl}
+				onScroll={
+					onScroll
+						? (event: { nativeEvent: NativeScrollEvent }) =>
+								onScroll(event.nativeEvent.contentOffset.y)
+						: undefined
+				}
+				scrollEventThrottle={32}
+				drawDistance={250}
+				maxItemsInRecyclePool={Math.max(gridColumns * 8, 24)}
+			/>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
 	controlsRow: {
-		paddingHorizontal: 16,
-		paddingBottom: 12,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		gap: 12,
+		paddingHorizontal: space.lg,
+		paddingBottom: space.md,
 	},
 	controlsLabel: {
-		fontSize: 12,
-		fontWeight: "700",
-		letterSpacing: 0.8,
-		textTransform: "uppercase",
-		color: "#6b7280",
-	},
-	controlsLabelDark: {
-		color: "#8b93a7",
+		...type.eyebrow,
+		color: theme.textMuted,
 	},
 	controlsGroup: {
 		flexDirection: "row",
-		alignItems: "center",
-		padding: 4,
-		borderRadius: 999,
-		backgroundColor: "#e5e7eb",
-	},
-	controlsGroupDark: {
-		backgroundColor: "#161b24",
+		backgroundColor: theme.cardElevated,
+		borderRadius: radius.pill,
+		borderWidth: 1,
+		borderColor: theme.border,
+		padding: 3,
+		gap: 2,
 	},
 	controlButton: {
-		paddingHorizontal: 12,
-		paddingVertical: 8,
-		borderRadius: 999,
-	},
-	controlButtonDark: {
-		backgroundColor: "transparent",
+		paddingHorizontal: 13,
+		paddingVertical: 6,
+		borderRadius: radius.pill,
 	},
 	controlButtonActive: {
-		backgroundColor: "#fff",
-	},
-	controlButtonActiveDark: {
-		backgroundColor: "#2a3242",
+		backgroundColor: theme.accentSurfaceStrong,
 	},
 	controlButtonText: {
 		fontSize: 12,
 		fontWeight: "700",
-		color: "#4b5563",
-	},
-	controlButtonTextDark: {
-		color: "#9ca3af",
+		color: theme.textMuted,
 	},
 	controlButtonTextActive: {
-		color: "#111827",
+		color: theme.accentSoft,
 	},
-	controlButtonTextActiveDark: {
-		color: "#fff",
+
+	measure: {
+		flex: 1,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
 	container: {
-		paddingHorizontal: GRID_PADDING,
-		paddingBottom: 24,
+		paddingBottom: space.huge,
 	},
 	tileShell: {
-		padding: GRID_GAP / 2,
+		padding: GRID_PADDING,
 	},
 	tile: {
 		width: "100%",
 		aspectRatio: 1,
 		overflow: "hidden",
-		position: "relative",
-	},
-	tileLight: {
-		backgroundColor: "#d1d5db",
-	},
-	tileDark: {
-		backgroundColor: "#131720",
+		borderRadius: radius.sm,
+		backgroundColor: theme.cardElevated,
 	},
 	media: {
 		width: "100%",
@@ -509,13 +528,10 @@ const styles = StyleSheet.create({
 		justifyContent: "center",
 	},
 	pendingImage: {
-		opacity: 0.68,
+		opacity: 0.4,
 	},
-	skeletonFillLight: {
-		backgroundColor: "#c2c7d0",
-	},
-	skeletonFillDark: {
-		backgroundColor: "#1b212c",
+	skeletonFill: {
+		backgroundColor: theme.cardElevated,
 	},
 	skeletonCenter: {
 		...StyleSheet.absoluteFillObject,
@@ -524,106 +540,106 @@ const styles = StyleSheet.create({
 	},
 	skeletonBadge: {
 		position: "absolute",
-		top: 8,
-		left: 8,
+		left: 6,
+		bottom: 6,
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
-		paddingHorizontal: 8,
-		paddingVertical: 6,
-		backgroundColor: "rgba(0, 0, 0, 0.56)",
-		borderRadius: 999,
+		gap: 4,
+		paddingHorizontal: 7,
+		paddingVertical: 4,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(0,0,0,0.6)",
 	},
+
 	topRow: {
 		position: "absolute",
-		top: 7,
-		left: 7,
-		right: 7,
+		top: 5,
+		left: 5,
+		right: 5,
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
 	},
 	avatarBadge: {
-		width: 22,
-		height: 22,
-		borderRadius: 11,
+		width: 18,
+		height: 18,
+		borderRadius: 9,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	avatarText: {
-		color: "#fff",
-		fontSize: 11,
-		fontWeight: "700",
+		fontSize: 9,
+		fontWeight: "800",
+		color: "#FFFFFF",
 	},
 	kindBadge: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 4,
+		gap: 3,
 		paddingHorizontal: 6,
-		paddingVertical: 4,
-		backgroundColor: "rgba(15, 23, 42, 0.72)",
-		borderRadius: 999,
+		paddingVertical: 3,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(0,0,0,0.6)",
 	},
 	kindBadgeText: {
-		color: "#fff",
-		fontSize: 9,
-		fontWeight: "700",
-		letterSpacing: 0.5,
+		fontSize: 8.5,
+		fontWeight: "800",
+		letterSpacing: 0.4,
+		color: "#FFFFFF",
 	},
+
 	videoCenter: {
 		...StyleSheet.absoluteFillObject,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	videoPlayButton: {
-		width: 34,
-		height: 34,
-		borderRadius: 17,
-		backgroundColor: "rgba(0, 0, 0, 0.52)",
+		width: 38,
+		height: 38,
+		borderRadius: 19,
+		backgroundColor: "rgba(0,0,0,0.45)",
 		alignItems: "center",
 		justifyContent: "center",
-	},
-	playGlyph: {
-		marginLeft: 2,
+		paddingLeft: 2,
 	},
 	durationBadge: {
 		position: "absolute",
-		right: 7,
-		bottom: 7,
+		right: 5,
+		bottom: 5,
 		paddingHorizontal: 6,
-		paddingVertical: 4,
-		backgroundColor: "rgba(0, 0, 0, 0.72)",
-		borderRadius: 999,
+		paddingVertical: 3,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(0,0,0,0.6)",
 	},
 	durationText: {
-		color: "#fff",
-		fontSize: 10,
+		fontSize: 9.5,
 		fontWeight: "700",
+		color: "#FFFFFF",
 	},
+
 	pendingOverlay: {
 		...StyleSheet.absoluteFillObject,
-		backgroundColor: "rgba(3, 7, 18, 0.42)",
-		padding: 8,
-		justifyContent: "space-between",
+		backgroundColor: "rgba(7,7,12,0.55)",
+		alignItems: "center",
+		justifyContent: "center",
+		gap: space.sm,
 	},
 	pendingBadge: {
-		alignSelf: "flex-start",
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 6,
-		paddingHorizontal: 8,
-		paddingVertical: 6,
-		backgroundColor: "rgba(0, 0, 0, 0.56)",
-		borderRadius: 999,
+		gap: 5,
+		paddingHorizontal: 9,
+		paddingVertical: 5,
+		borderRadius: radius.pill,
+		backgroundColor: "rgba(0,0,0,0.55)",
 	},
 	pendingText: {
-		color: "#fff",
-		fontSize: 10,
+		fontSize: 10.5,
 		fontWeight: "700",
+		color: "#FFFFFF",
 	},
 	pendingActions: {
 		flexDirection: "row",
-		alignSelf: "flex-end",
 		gap: 6,
 	},
 	actionChip: {
@@ -632,12 +648,12 @@ const styles = StyleSheet.create({
 		borderRadius: 14,
 		alignItems: "center",
 		justifyContent: "center",
-		backgroundColor: "rgba(0, 0, 0, 0.58)",
+		backgroundColor: "rgba(255,255,255,0.16)",
 	},
 	actionChipPrimary: {
-		backgroundColor: "rgba(37, 99, 235, 0.88)",
+		backgroundColor: theme.accent,
 	},
 	actionChipDanger: {
-		backgroundColor: "rgba(190, 24, 93, 0.86)",
+		backgroundColor: theme.danger,
 	},
 });

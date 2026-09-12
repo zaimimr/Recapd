@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-12T00:00:00Z",
+  "title": "Design System: Recapd",
+  "extensions": {
+    "colorMeta": {
+      "coral": {
+        "role": "primary",
+        "displayName": "Sunset Coral",
+        "canonical": "#FF5E62",
+        "note": "First stop of the brand gradient. Never used as a flat fill on its own.",
+        "tonalRamp": [
+          "oklch(0.20 0.09 20)",
+          "oklch(0.31 0.13 20)",
+          "oklch(0.42 0.16 20)",
+          "oklch(0.53 0.18 20)",
+          "oklch(0.64 0.19 20)",
+          "oklch(0.70 0.19 20)",
+          "oklch(0.82 0.12 20)",
+          "oklch(0.94 0.05 20)"
+        ]
+      },
+      "hot-pink": {
+        "role": "primary",
+        "displayName": "Hot Pink",
+        "canonical": "#FF2D8E",
+        "note": "The flat accent: active tab tint, cursor and selection, refresh spinner, ghost-button label, the d in the wordmark.",
+        "tonalRamp": [
+          "oklch(0.18 0.11 355)",
+          "oklch(0.29 0.16 355)",
+          "oklch(0.40 0.20 355)",
+          "oklch(0.51 0.23 355)",
+          "oklch(0.60 0.25 355)",
+          "oklch(0.65 0.25 355)",
+          "oklch(0.78 0.16 355)",
+          "oklch(0.93 0.06 355)"
+        ]
+      },
+      "violet": {
+        "role": "primary",
+        "displayName": "Deep Violet",
+        "canonical": "#8B2FE0",
+        "note": "Last stop of the brand gradient, at the right-hand end of the 135 degree diagonal.",
+        "tonalRamp": [
+          "oklch(0.17 0.11 305)",
+          "oklch(0.26 0.16 305)",
+          "oklch(0.35 0.21 305)",
+          "oklch(0.44 0.24 305)",
+          "oklch(0.50 0.25 305)",
+          "oklch(0.62 0.21 305)",
+          "oklch(0.76 0.14 305)",
+          "oklch(0.92 0.05 305)"
+        ]
+      },
+      "pink-soft": {
+        "role": "primary",
+        "displayName": "Readable Pink",
+        "canonical": "#FF7FB4",
+        "note": "Small pink text and glyphs. Hot pink at 11px on near-black fails contrast; this is the substitute.",
+        "tonalRamp": [
+          "oklch(0.22 0.07 355)",
+          "oklch(0.33 0.10 355)",
+          "oklch(0.44 0.12 355)",
+          "oklch(0.55 0.14 355)",
+          "oklch(0.66 0.15 355)",
+          "oklch(0.76 0.15 355)",
+          "oklch(0.86 0.09 355)",
+          "oklch(0.95 0.04 355)"
+        ]
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#0B0B12",
+        "note": "Page ground and splash background, so launch does not flash a different dark.",
+        "tonalRamp": [
+          "#07070C",
+          "#0B0B12",
+          "#15151F",
+          "#1E1E2B",
+          "#2A2A38",
+          "#3A3A4A",
+          "#6B6B7E",
+          "#A0A0B2"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card",
+        "canonical": "#15151F",
+        "note": "Every card and panel, and the fill a disabled button falls back to.",
+        "tonalRamp": [
+          "#07070C",
+          "#0B0B12",
+          "#15151F",
+          "#1E1E2B",
+          "#2A2A38",
+          "#3A3A4A",
+          "#6B6B7E",
+          "#A0A0B2"
+        ]
+      },
+      "card-elevated": {
+        "role": "neutral",
+        "displayName": "Raised Card",
+        "canonical": "#1E1E2B",
+        "note": "One step above a card: input shells, stat tiles, grid-tile backing, the secondary button.",
+        "tonalRamp": [
+          "#07070C",
+          "#0B0B12",
+          "#15151F",
+          "#1E1E2B",
+          "#2A2A38",
+          "#3A3A4A",
+          "#6B6B7E",
+          "#A0A0B2"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Edge",
+        "canonical": "#2A2A38",
+        "note": "The 1px line that does the structural work in this system, and the hairline between list rows.",
+        "tonalRamp": [
+          "#07070C",
+          "#0B0B12",
+          "#15151F",
+          "#1E1E2B",
+          "#2A2A38",
+          "#3A3A4A",
+          "#6B6B7E",
+          "#A0A0B2"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#A0A0B2",
+        "note": "The contrast floor for body copy. Secondary text, metadata, placeholders.",
+        "tonalRamp": [
+          "#15151F",
+          "#1E1E2B",
+          "#2A2A38",
+          "#3A3A4A",
+          "#5C5C6E",
+          "#6B6B7E",
+          "#A0A0B2",
+          "#FFFFFF"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#EF4444",
+        "note": "Destructive actions, field errors, the remove chip. Paired with a 16% alpha surface.",
+        "tonalRamp": [
+          "oklch(0.20 0.08 27)",
+          "oklch(0.31 0.12 27)",
+          "oklch(0.42 0.16 27)",
+          "oklch(0.52 0.19 27)",
+          "oklch(0.63 0.21 27)",
+          "oklch(0.74 0.16 27)",
+          "oklch(0.85 0.10 27)",
+          "oklch(0.95 0.04 27)"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Live Green",
+        "canonical": "#22C55E",
+        "note": "The Live pill and its dot, and privacy checkmarks. The only state colour that also carries a dot.",
+        "tonalRamp": [
+          "oklch(0.22 0.06 149)",
+          "oklch(0.33 0.09 149)",
+          "oklch(0.44 0.12 149)",
+          "oklch(0.55 0.15 149)",
+          "oklch(0.66 0.17 149)",
+          "oklch(0.77 0.14 149)",
+          "oklch(0.87 0.09 149)",
+          "oklch(0.95 0.04 149)"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Countdown Amber",
+        "canonical": "#F59E0B",
+        "note": "Upcoming events, expiry inside five days, permission Action needed.",
+        "tonalRamp": [
+          "oklch(0.24 0.06 70)",
+          "oklch(0.35 0.09 70)",
+          "oklch(0.46 0.12 70)",
+          "oklch(0.57 0.14 70)",
+          "oklch(0.68 0.16 70)",
+          "oklch(0.78 0.15 70)",
+          "oklch(0.88 0.09 70)",
+          "oklch(0.96 0.04 70)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The home hero, and the one statement a screen is allowed to make." },
+      "title": { "displayName": "Title", "purpose": "Section headers, which double as the app's large page titles. Album titles override to 26px." },
+      "heading": { "displayName": "Heading", "purpose": "Empty-state titles and in-card headings." },
+      "subheading": { "displayName": "Subheading", "purpose": "Album card titles, button labels, nav-bar titles at 17px." },
+      "body": { "displayName": "Body", "purpose": "Ledes, descriptions, input text. Capped at a 680pt measure." },
+      "bodyStrong": { "displayName": "Body Strong", "purpose": "List-row titles and field labels." },
+      "callout": { "displayName": "Callout", "purpose": "In-card secondary lines and small-button labels." },
+      "caption": { "displayName": "Caption", "purpose": "Metadata, hints, field errors, nav subtitles." },
+      "eyebrow": { "displayName": "Eyebrow", "purpose": "Grouped-section labels only. The component uppercases its own children. Four decorative kickers remain as a stated exception." }
+    },
+    "shadows": [
+      {
+        "name": "card-seat",
+        "value": "0 8px 18px rgba(0,0,0,0.35)",
+        "purpose": "Every Card and AlbumCard. Android elevation 6. Perceptible only at the card's bottom edge; the 1px edge does the real separating."
+      },
+      {
+        "name": "accent-glow",
+        "value": "0 10px 20px rgba(255,45,142,0.45)",
+        "purpose": "The gradient primary button only. Android elevation 10. The one shadow meant to be seen; it disappears the moment the button is disabled. These two are the entire shadow vocabulary - there is no third depth step and no sheet shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "tile-arrival",
+        "value": "320ms cubic-bezier(0.215, 0.61, 0.355, 1)",
+        "purpose": "The one authored moment. A feed tile settles in: opacity 0 to 1, scale 0.94 to 1, on Easing.out(Easing.cubic). Keyed so recycled and cached tiles start already visible."
+      },
+      {
+        "name": "skeleton-pulse",
+        "value": "760ms cubic-bezier(0.455, 0.03, 0.515, 0.955) alternate infinite",
+        "purpose": "Skeleton tiles breathe between 0.45 and 1 opacity on Easing.inOut(Easing.quad). A progress indicator, not decoration."
+      },
+      {
+        "name": "image-fade",
+        "value": "120ms",
+        "purpose": "expo-image transition on grid thumbnails; 160ms on album cover art."
+      },
+      {
+        "name": "press",
+        "value": "instant",
+        "purpose": "Buttons drop to 0.82 opacity and 0.985 scale while pressed; cards and rows drop to 0.75. No duration, no easing, no hover state."
+      }
+    ],
+    "breakpoints": [
+      { "name": "measure-cap", "value": "680px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one gradient-filled control on a screen. Coral to pink to violet at 135 degrees, with the accent glow beneath.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"></line></svg><span>Add your photos</span></button>",
+      "css": ".ds-btn-primary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 54px; padding: 0 20px; border: none; border-radius: 16px; background: linear-gradient(135deg, #FF5E62 0%, #FF2D8E 50%, #8B2FE0 100%); color: #FFFFFF; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; box-shadow: 0 10px 20px rgba(255,45,142,0.45); cursor: pointer; } .ds-btn-primary:hover { opacity: 0.92; } .ds-btn-primary:active { opacity: 0.82; transform: scale(0.985); } .ds-btn-primary:focus-visible { outline: 2px solid #FF7FB4; outline-offset: 3px; }"
+    },
+    {
+      "name": "Primary Button (disabled)",
+      "kind": "button",
+      "refersTo": "button-primary-disabled",
+      "description": "A disabled control stops being the primary action, so it drops the gradient and the glow entirely rather than fading them.",
+      "html": "<button class=\"ds-btn-primary-disabled\" disabled><span>Find the album</span></button>",
+      "css": ".ds-btn-primary-disabled { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 54px; padding: 0 20px; border: none; border-radius: 16px; background: #15151F; color: #A0A0B2; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; box-shadow: none; cursor: not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The workhorse. Raised card fill, one hairline edge, white label. Most buttons in the app are this one.",
+      "html": "<button class=\"ds-btn-secondary\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"></path><polyline points=\"7 10 12 15 17 10\"></polyline><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"></line></svg><span>Save all to camera roll</span></button>",
+      "css": ".ds-btn-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 54px; padding: 0 20px; border: 1px solid #2A2A38; border-radius: 16px; background: #1E1E2B; color: #FFFFFF; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; cursor: pointer; } .ds-btn-secondary:hover { opacity: 0.92; } .ds-btn-secondary:active { opacity: 0.82; transform: scale(0.985); } .ds-btn-secondary:focus-visible { outline: 2px solid #FF7FB4; outline-offset: 3px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "The low-stakes third option. No fill, no border, hot-pink label.",
+      "html": "<button class=\"ds-btn-ghost\"><span>Restore purchases</span></button>",
+      "css": ".ds-btn-ghost { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 46px; padding: 0 16px; border: none; border-radius: 16px; background: transparent; color: #FF2D8E; font-size: 15px; font-weight: 700; letter-spacing: -0.2px; cursor: pointer; } .ds-btn-ghost:hover { opacity: 0.92; } .ds-btn-ghost:active { opacity: 0.82; transform: scale(0.985); } .ds-btn-ghost:focus-visible { outline: 2px solid #FF7FB4; outline-offset: 3px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Label above, hint below, optional leading glyph. Focus is carried entirely by the hot-pink caret, not by a border change.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-field-input\">What should we call you?</label><div class=\"ds-field-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#A0A0B2\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"></path><circle cx=\"12\" cy=\"7\" r=\"4\"></circle></svg><input id=\"ds-field-input\" class=\"ds-field-input\" type=\"text\" placeholder=\"Your first name\" /></div><p class=\"ds-field-hint\">This is how you show up on the photos you add.</p></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 8px; } .ds-field-label { color: #FFFFFF; font-size: 15px; font-weight: 700; letter-spacing: -0.2px; } .ds-field-shell { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; border: 1px solid #2A2A38; border-radius: 16px; background: #1E1E2B; } .ds-field-shell:focus-within { border-color: #2A2A38; } .ds-field-input { flex: 1; padding: 12px 0; border: none; background: transparent; color: #FFFFFF; font-size: 15px; font-weight: 600; letter-spacing: -0.1px; caret-color: #FF2D8E; outline: none; } .ds-field-input::placeholder { color: #A0A0B2; font-weight: 500; } .ds-field-input::selection { background: rgba(255,45,142,0.38); } .ds-field-hint { margin: 0; color: #A0A0B2; font-size: 12px; font-weight: 500; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The container everything sits in. 20pt corners, one hairline edge, a shadow you can barely see.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-top\"><span class=\"ds-eyebrow\">EVENT ALBUM</span><span class=\"ds-pill-live\"><i class=\"ds-pill-dot\"></i>Live</span></div><h2 class=\"ds-card-title\">Sofie &amp; Marius</h2><p class=\"ds-card-meta\">14 guests adding photos</p></div>",
+      "css": ".ds-card { padding: 16px; border: 1px solid #2A2A38; border-radius: 20px; background: #15151F; box-shadow: 0 8px 18px rgba(0,0,0,0.35); } .ds-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; } .ds-eyebrow { color: #FF7FB4; font-size: 11px; font-weight: 800; letter-spacing: 1.4px; } .ds-card-title { margin: 0; color: #FFFFFF; font-size: 26px; line-height: 30px; font-weight: 800; letter-spacing: -0.7px; } .ds-card-meta { margin: 6px 0 0; color: #A0A0B2; font-size: 13.5px; font-weight: 500; } .ds-pill-live { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: rgba(34,197,94,0.16); color: #22C55E; font-size: 11.5px; font-weight: 700; letter-spacing: -0.1px; } .ds-pill-dot { width: 6px; height: 6px; border-radius: 3px; background: #22C55E; }"
+    },
+    {
+      "name": "Pill",
+      "kind": "chip",
+      "refersTo": "pill",
+      "description": "Status and count chips. Tone comes from lib/eventStatus.ts, never chosen by hand. Live is the only tone that earns a dot.",
+      "html": "<div class=\"ds-pill-row\"><span class=\"ds-pill ds-pill--live\"><i class=\"ds-dot\"></i>Live</span><span class=\"ds-pill\">128 items</span><span class=\"ds-pill ds-pill--warning\">2 days left</span><span class=\"ds-pill ds-pill--accent\">PRO</span></div>",
+      "css": ".ds-pill-row { display: flex; flex-wrap: wrap; gap: 6px; } .ds-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #A0A0B2; font-size: 11.5px; font-weight: 700; letter-spacing: -0.1px; } .ds-pill--live { background: rgba(34,197,94,0.16); color: #22C55E; } .ds-pill--warning { background: rgba(245,158,11,0.16); color: #F59E0B; } .ds-pill--accent { background: rgba(255,45,142,0.14); color: #FF7FB4; } .ds-dot { width: 6px; height: 6px; border-radius: 3px; background: currentColor; }"
+    },
+    {
+      "name": "List Row",
+      "kind": "nav",
+      "refersTo": "list-row",
+      "description": "The settings and privacy row. A 36pt tinted icon chip, a two-line text stack, and a trailing chevron or badge. Lives inside an unpadded Card.",
+      "html": "<div class=\"ds-list\"><div class=\"ds-row\"><span class=\"ds-row-icon\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FF7FB4\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"11\" width=\"18\" height=\"11\" rx=\"2\" ry=\"2\"></rect><path d=\"M7 11V7a5 5 0 0 1 10 0v4\"></path></svg></span><span class=\"ds-row-text\"><span class=\"ds-row-title\">Albums are invite-only</span><span class=\"ds-row-sub\">Only people with the code can open one</span></span><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#22C55E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"20 6 9 17 4 12\"></polyline></svg></div><div class=\"ds-row ds-row--last\"><span class=\"ds-row-icon\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FF7FB4\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"></path></svg></span><span class=\"ds-row-text\"><span class=\"ds-row-title\">Nothing sold or trained on</span><span class=\"ds-row-sub\">Your photos are never used for ads or models</span></span><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#5C5C6E\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 18 15 12 9 6\"></polyline></svg></div></div>",
+      "css": ".ds-list { overflow: hidden; border: 1px solid #2A2A38; border-radius: 20px; background: #15151F; box-shadow: 0 8px 18px rgba(0,0,0,0.35); } .ds-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 13px 16px; border-bottom: 1px solid #2A2A38; cursor: pointer; } .ds-row--last { border-bottom: none; } .ds-row:hover { opacity: 0.9; } .ds-row:active { opacity: 0.75; } .ds-row-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: rgba(255,45,142,0.14); flex: none; } .ds-row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; } .ds-row-title { color: #FFFFFF; font-size: 15px; font-weight: 700; letter-spacing: -0.2px; } .ds-row-sub { color: #A0A0B2; font-size: 12px; font-weight: 500; }"
+    },
+    {
+      "name": "Stat Row",
+      "kind": "custom",
+      "refersTo": "stat-tile",
+      "description": "Three equal tiles inside the event card: Photos, Videos, Guests. Values shrink to fit rather than wrap.",
+      "html": "<div class=\"ds-stats\"><div class=\"ds-stat\"><span class=\"ds-stat-value\">128</span><span class=\"ds-stat-label\">PHOTOS</span></div><div class=\"ds-stat\"><span class=\"ds-stat-value\">12</span><span class=\"ds-stat-label\">VIDEOS</span></div><div class=\"ds-stat\"><span class=\"ds-stat-value\">14</span><span class=\"ds-stat-label\">GUESTS</span></div></div>",
+      "css": ".ds-stats { display: flex; gap: 8px; } .ds-stat { display: flex; flex-direction: column; align-items: center; flex: 1; padding: 12px 8px; border: 1px solid #2A2A38; border-radius: 16px; background: #1E1E2B; } .ds-stat-value { color: #FFFFFF; font-size: 20px; font-weight: 800; letter-spacing: -0.6px; } .ds-stat-label { margin-top: 2px; color: #A0A0B2; font-size: 10px; font-weight: 700; letter-spacing: 0.6px; }"
+    },
+    {
+      "name": "Feed Grid Tile",
+      "kind": "custom",
+      "refersTo": "grid-tile",
+      "description": "The signature component. An 8pt-cornered photo at a 2pt gutter, with dark-on-photo overlays only: a coloured uploader initial, a VID chip, and an upload scrim when the item is still syncing.",
+      "html": "<div class=\"ds-grid\"><div class=\"ds-tile\"><div class=\"ds-tile-media ds-tile-media--a\"></div><span class=\"ds-tile-initial\" style=\"background:#8B2FE0\">M</span></div><div class=\"ds-tile\"><div class=\"ds-tile-media ds-tile-media--b\"></div><span class=\"ds-tile-initial\" style=\"background:#2C7FD4\">S</span><span class=\"ds-tile-kind\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 24 24\" fill=\"#fff\" stroke=\"none\"><polygon points=\"5 3 19 12 5 21 5 3\"></polygon></svg>VID</span></div><div class=\"ds-tile\"><div class=\"ds-tile-media ds-tile-media--c\"></div><div class=\"ds-tile-scrim\"><span class=\"ds-tile-status\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><polyline points=\"12 6 12 12 16 14\"></polyline></svg>Queued</span></div></div></div>",
+      "css": ".ds-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 2px; } .ds-tile { position: relative; aspect-ratio: 1; overflow: hidden; border-radius: 8px; background: #1E1E2B; cursor: pointer; animation: ds-tile-arrive 320ms cubic-bezier(0.215, 0.61, 0.355, 1) both; } .ds-tile:active { opacity: 0.9; } @keyframes ds-tile-arrive { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } } .ds-tile-media { width: 100%; height: 100%; } .ds-tile-media--a { background: linear-gradient(160deg, #FF5E62, #8B2FE0); } .ds-tile-media--b { background: linear-gradient(200deg, #2A2A38, #FF2D8E); } .ds-tile-media--c { background: linear-gradient(120deg, #1E1E2B, #3A3A4A); } .ds-tile-initial { position: absolute; top: 5px; left: 5px; display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 9px; color: #FFFFFF; font-size: 9px; font-weight: 800; } .ds-tile-kind { position: absolute; top: 5px; right: 5px; display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px; border-radius: 999px; background: rgba(0,0,0,0.6); color: #FFFFFF; font-size: 8.5px; font-weight: 800; letter-spacing: 0.4px; } .ds-tile-scrim { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(7,7,12,0.55); } .ds-tile-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; background: rgba(0,0,0,0.55); color: #FFFFFF; font-size: 10.5px; font-weight: 700; }"
+    },
+    {
+      "name": "Nav Bar",
+      "kind": "nav",
+      "refersTo": "icon-button",
+      "description": "Inline and transparent. A 38pt circular control on white-8%, a centred title, up to two icon buttons trailing. The dismiss variant swaps the chevron for an X and relabels it Close.",
+      "html": "<div class=\"ds-nav\"><button class=\"ds-nav-btn\" aria-label=\"Close\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"></line><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"></line></svg></button><span class=\"ds-nav-title\">Join an album</span><span class=\"ds-nav-side\"><button class=\"ds-nav-btn\" aria-label=\"Invite guests\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8\"></path><polyline points=\"16 6 12 2 8 6\"></polyline><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"></line></svg></button></span></div>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 12px; padding: 4px 16px 12px; background: transparent; } .ds-nav-title { flex: 1; text-align: center; color: #FFFFFF; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; } .ds-nav-side { display: flex; justify-content: flex-end; gap: 8px; min-width: 38px; } .ds-nav-btn { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: none; border-radius: 19px; background: rgba(255,255,255,0.08); color: #FFFFFF; cursor: pointer; flex: none; } .ds-nav-btn:hover { opacity: 0.8; } .ds-nav-btn:active { opacity: 0.6; } .ds-nav-btn:focus-visible { outline: 2px solid #FF7FB4; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Dark Room with One Lit Door",
+    "overview": "Recapd is a room with the lights off. The ground is near-black (#0B0B12), every surface above it is a slightly lighter grey-violet, and the only things that glow are the photos people brought and the single gradient control that says what to do next. That is the whole idea: the album is the interface, chrome recedes, and the sunset gradient is rationed so hard that its appearance reads as an instruction rather than as decoration.\n\nThe density is generous rather than tight. Cards are big, corners are soft (20px on the outer card), and every interactive target clears a thumb in the dark. Type is heavy and tightly tracked - the headline voice is a blunt statement, not a display flourish - and it runs on the platform's own system face, so the app never spends a frame waiting on a webfont and never looks imported. Where the product is a form (join, onboarding, create), the form is short, centred, and capped at a readable measure; where the product is photographs, the photographs run to the edges at two-pixel gutters and nothing but a status badge sits on top of them.\n\nThis world is a deliberate refusal of what the app used to be: a light, grey, bordered, form-shaped utility. It is also a refusal of the other obvious direction - a gradient-drenched party app. The gradient appears once per screen. Everything else is black, grey, and photographs.",
+    "keyCharacteristics": [
+      "Dark only, one appearance, no light theme and no toggle.",
+      "One coral-to-pink-to-violet gradient, spent on one filled control per screen.",
+      "Depth from a 1px #2A2A38 edge and a lighter fill, not from shadow.",
+      "One icon family (Feather), one stroke weight, no exceptions.",
+      "One authored motion moment: feed tiles settling in. Everything else is instant.",
+      "Type hierarchy carried entirely by weight and tracking on the system face."
+    ],
+    "rules": [
+      { "name": "The One Lit Door Rule", "body": "Exactly one gradient-filled control per screen. If a screen wants two, one of them is secondary and wears #1E1E2B with a #2A2A38 edge instead.", "section": "colors" },
+      { "name": "The Dropped Gradient Rule", "body": "A disabled control is not the primary action any more, so it drops the gradient entirely and falls to flat #15151F with muted text. Never fade the gradient; a translucent gradient reads as broken rendering, not as unavailable.", "section": "colors" },
+      { "name": "The Readable Pink Rule", "body": "Hot pink is for fills, tints and single glyphs. Anything small and pink that must be read uses soft pink #FF7FB4.", "section": "colors" },
+      { "name": "The Single Appearance Rule", "body": "There is one theme object and it is dark. constants/theme.ts exports a single theme const with no light variant and no getTheme switch; app.json pins userInterfaceStyle dark and the splash background to #0B0B12. Do not add a light palette, a system-appearance listener, or a theme toggle.", "section": "colors" },
+      { "name": "The Weight-Not-Family Rule", "body": "One platform system face carries the entire hierarchy, and it is expressed through weight (500 to 700 to 800) and tracking. Do not introduce a second font family, a serif, or a display webfont. The app loads exactly one font at boot - the Feather icon set - and ships no text font of its own.", "section": "typography" },
+      { "name": "The Tightening Rule", "body": "The bigger the type, the tighter the tracking: -1px at 30px, -0.3px at 16px, 0 at 13.5px and below. Eyebrows invert this and open to +1.4px, which is what makes them read as labels instead of as small headlines.", "section": "typography" },
+      { "name": "The Real Child Rule", "body": "maxWidth plus alignSelf center must sit on a real View child. The same properties on a ScrollView or FlatList contentContainerStyle are silently ignored and the capped column left-aligns on a tablet. This was a shipped bug; do not reintroduce it.", "section": "layout" },
+      { "name": "The Anchored Masthead Rule", "body": "A brand mark is an anchor, not content. The home wordmark sits outside the centred scroll block, pinned to the top of the screen, so it does not drift into the vertical middle when the page is short.", "section": "layout" },
+      { "name": "The Edge-Before-Shadow Rule", "body": "If two surfaces need separating, change the fill one step up the ladder and draw a 1px #2A2A38 edge. Reach for a shadow only when the element is the primary action.", "section": "elevation" },
+      { "name": "The Nesting Radius Rule", "body": "Radius decreases as you nest: a 20pt card holds 16pt buttons and inputs, which hold 12pt icon chips. Never nest a larger radius inside a smaller one.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do spend the gradient once per screen, on the one control you want pressed, and give everything else the secondary treatment.",
+      "Do drop the gradient entirely when a control is disabled - flat #15151F and #A0A0B2 text, never a faded gradient.",
+      "Do separate surfaces by moving up the tonal ladder (#0B0B12 to #15151F to #1E1E2B) and drawing a 1px #2A2A38 edge.",
+      "Do use Feather, at one stroke weight, for every icon in the app. FontAwesome and Ionicons were removed on purpose and all 19 icon imports now point at Feather.",
+      "Do put maxWidth: CONTENT_MAX_WIDTH plus alignSelf: center on a real View, never on a contentContainerStyle.",
+      "Do pull event status, tone and copy from lib/eventStatus.ts rather than deciding per screen what Live looks like.",
+      "Do use soft pink #FF7FB4 for small pink text and hot pink #FF2D8E for fills, tints and single glyphs.",
+      "Do keep touch targets at 44pt or larger, and give small controls the shared hitSlop (10 on every side).",
+      "Do let sheets close with an X and reserve the back chevron for steps inside a flow."
+    ],
+    "donts": [
+      "Don't add a light theme, a system-appearance listener, or a theme toggle. There is one theme const and it is dark.",
+      "Don't use the gradient as a background, a header wash, a card fill, or a divider. It fills controls.",
+      "Don't put a second gradient-filled button on a screen that already has one.",
+      "Don't introduce a second icon family, a second font family, or a second stroke weight.",
+      "Don't add entrance or transition animations. The feed tile's 320ms settle is the only authored moment; everything else is instant on purpose, because the app is used one-handed on a phone that is already busy uploading.",
+      "Don't reach for a shadow to separate two surfaces - change the fill and draw the edge.",
+      "Don't nest a larger corner radius inside a smaller one.",
+      "Don't use expo-linear-gradient. The Gradient primitive is built on react-native-svg specifically so the design system requires no native rebuild.",
+      "Don't use #6B6B7E or #5C5C6E for anything a user has to read. They are for chevrons, inactive labels and dividers.",
+      "Don't reintroduce the decorative eyebrow. The eyebrow prop was deliberately removed from SectionHeader so a kicker cannot be added above a title by accident. Four decorative kickers remain by explicit user-backed decision (app/join/[code].tsx:153, app/event/join.tsx:188, app/event/[id].tsx:681, app/event/share/[id].tsx:84); the craft floor bans them outright and they are not a precedent."
+    ]
+  }
+}

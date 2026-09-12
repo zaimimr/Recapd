@@ -109,7 +109,7 @@ describe("formatDuration", () => {
 
 describe("getAvatarColor", () => {
 	it("returns a valid hex color", () => {
-		expect(getAvatarColor("Alice")).toMatch(/^#[0-9a-f]{6}$/);
+		expect(getAvatarColor("Alice")).toMatch(/^#[0-9a-fA-F]{6}$/);
 	});
 
 	it("is deterministic for the same name", () => {
@@ -117,11 +117,11 @@ describe("getAvatarColor", () => {
 	});
 
 	it("returns a color for empty string", () => {
-		expect(getAvatarColor("")).toMatch(/^#[0-9a-f]{6}$/);
+		expect(getAvatarColor("")).toMatch(/^#[0-9a-fA-F]{6}$/);
 	});
 
 	it("empty string hashes to index 0", () => {
-		expect(getAvatarColor("")).toBe("#f87171");
+		expect(getAvatarColor("")).toBe("#FF2D8E");
 	});
 
 	it("produces different colors for different names", () => {

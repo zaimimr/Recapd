@@ -1,29 +1,44 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { differenceInDays, differenceInHours, isPast } from "date-fns";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
+	AppState,
+	type AppStateStatus,
+	Pressable,
 	RefreshControl,
 	StyleSheet,
 	Text,
-	TouchableOpacity,
 	View,
 } from "react-native";
 import GuestSheet from "@/components/GuestSheet";
 import MasonryGrid from "@/components/MasonryGrid";
-import type { MergedMediaItem } from "@/components/MomentCluster";
 import NotificationPromptModal from "@/components/NotificationPromptModal";
 import ParticipantLimitBanner from "@/components/ParticipantLimitBanner";
 import PhotoViewer from "@/components/PhotoViewer";
-import { useColorScheme } from "@/components/useColorScheme";
+import {
+	AvatarStack,
+	Button,
+	Card,
+	EmptyState,
+	Eyebrow,
+	IconButton,
+	NavBar,
+	Pill,
+	Screen,
+	StatRow,
+} from "@/components/ui";
+import Gradient from "@/components/ui/Gradient";
+import Icon from "@/components/ui/Icon";
+import { CONTENT_MAX_WIDTH, radius, shadow, space, theme, type } from "@/constants/theme";
 import { checkDiskBudget, formatBytes } from "@/lib/diskSpace";
 import {
 	DELETION_DELAY_DAYS,
 	DELETION_DELAY_WINDOW_DAYS,
 	delayEventDeletion,
 } from "@/lib/eventDeletion";
+import { getEventStatus } from "@/lib/eventStatus";
 import { logger } from "@/lib/logger";
 import { saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
@@ -45,8 +60,11 @@ import {
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
+import type { MergedMediaItem } from "@/types/media";
 
-function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boolean }) {
+const HERO_TITLE_OFFSET = 120;
+
+function UploadProgressBar({ eventId }: { eventId: string }) {
 	const retryFailedUpload = useEventStore((state) => state.retryFailedUpload);
 	const clearAllPendingUploads = useEventStore((state) => state.clearAllPendingUploads);
 	const [counts, setCounts] = useState<RecapdQueueCounts | null>(null);
@@ -107,42 +125,36 @@ function UploadProgressBar({ eventId, isDark }: { eventId: string; isDark: boole
 	const fraction = peak > 0 ? Math.min(1, (done + counts.inFlightFraction) / peak) : 0;
 
 	return (
-		<View style={[styles.uploadBar, isDark && styles.uploadBarDark]}>
+		<View style={styles.uploadBar}>
 			<View style={styles.uploadBarRow}>
-				{counts.remaining > 0 && (
-					<Text style={[styles.uploadBarText, isDark && styles.uploadBarTextDark]}>
+				{counts.remaining > 0 ? (
+					<Text style={styles.uploadBarText}>
 						Uploading {done} of {peak}
 					</Text>
-				)}
-				{counts.failed > 0 && (
-					<Text style={[styles.uploadBarFailed, isDark && styles.uploadBarFailedDark]}>
-						{counts.failed} failed
-					</Text>
-				)}
-				{counts.failed > 0 && (
-					<TouchableOpacity
-						style={styles.uploadBarRetry}
-						onPress={handleRetryAll}
-						hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-					>
-						<FontAwesome name="refresh" size={11} color="#fff" />
-						<Text style={styles.uploadBarRetryText}>Retry</Text>
-					</TouchableOpacity>
-				)}
+				) : null}
+				{counts.failed > 0 ? (
+					<Text style={styles.uploadBarFailed}>{counts.failed} failed</Text>
+				) : null}
 				<View style={styles.uploadBarSpacer} />
-				<TouchableOpacity
-					style={styles.uploadBarCancel}
+				{counts.failed > 0 ? (
+					<Button label="Retry" icon="refresh-cw" size="sm" full={false} onPress={handleRetryAll} />
+				) : null}
+				<Button
+					label="Cancel all"
+					variant="ghost"
+					size="sm"
+					full={false}
 					onPress={handleCancelAll}
-					hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-				>
-					<Text style={styles.uploadBarCancelText}>Cancel all</Text>
-				</TouchableOpacity>
+				/>
 			</View>
-			{counts.remaining > 0 && (
-				<View style={[styles.uploadBarTrack, isDark && styles.uploadBarTrackDark]}>
-					<View style={[styles.uploadBarFill, { width: `${Math.round(fraction * 100)}%` }]} />
+			{counts.remaining > 0 ? (
+				<View style={styles.uploadBarTrack}>
+					<Gradient
+						colors={theme.gradient}
+						style={[styles.uploadBarFill, { width: `${Math.round(fraction * 100)}%` }]}
+					/>
 				</View>
-			)}
+			) : null}
 		</View>
 	);
 }
@@ -174,9 +186,8 @@ export default function EventScreen() {
 		leaveEvent,
 		removeParticipant,
 	} = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
+	const [titleInNav, setTitleInNav] = useState(false);
 	const [viewerVisible, setViewerVisible] = useState(false);
 	const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
 	const [selectedThumbnailUri, setSelectedThumbnailUri] = useState<string | undefined>();
@@ -217,7 +228,6 @@ export default function EventScreen() {
 		checkNoPhotosStatus();
 	}, [id, user?.id, getNoPhotosToUpload]);
 
-	// Refresh participant stats when currentEvent participants change (real-time updates)
 	useEffect(() => {
 		if (id && currentEvent?.participants) {
 			const currentEventId = id;
@@ -229,12 +239,34 @@ export default function EventScreen() {
 		}
 	}, [id, fetchParticipantStats, currentEvent?.participants]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the media count is the trigger, not a value the body reads
+	useEffect(() => {
+		if (!id || !guestSheetVisible) return;
+		let cancelled = false;
+		fetchParticipantStats(id).then((stats) => {
+			if (!cancelled) setParticipants(stats);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [id, guestSheetVisible, fetchParticipantStats, mediaItems.length]);
+
 	useEffect(() => {
 		if (id) {
 			const unsubscribe = subscribeToMediaItems(id);
 			return unsubscribe;
 		}
 	}, [id, subscribeToMediaItems]);
+
+	useEffect(() => {
+		if (!id) return;
+		const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
+			if (state === "active") {
+				fetchMediaItems(id);
+			}
+		});
+		return () => subscription.remove();
+	}, [id, fetchMediaItems]);
 
 	useEffect(() => {
 		if (id) {
@@ -569,17 +601,25 @@ export default function EventScreen() {
 
 	if (isLoading && !currentEvent) {
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-			</View>
+			<Screen style={styles.centered}>
+				<ActivityIndicator size="large" color={theme.accent} />
+			</Screen>
 		);
 	}
 
 	if (!currentEvent) {
 		return (
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<Text style={[styles.errorText, isDark && styles.textDark]}>Event not found</Text>
-			</View>
+			<Screen>
+				<NavBar onBack={() => router.replace("/(tabs)/events")} />
+				<EmptyState
+					icon="alert-circle"
+					title="Album not found"
+					body="It may have expired, or the link was wrong."
+					action={
+						<Button label="Back to my albums" onPress={() => router.replace("/(tabs)/events")} />
+					}
+				/>
+			</Screen>
 		);
 	}
 
@@ -599,640 +639,369 @@ export default function EventScreen() {
 		daysUntilExpiry <= DELETION_DELAY_WINDOW_DAYS;
 	const myMediaCount = mergedPhotos.filter((p) => p.uploaded_by_user_id === user?.id).length;
 
-	const getExpiryColor = () => {
-		if (daysUntilExpiry <= 1) return "#ef4444";
-		if (daysUntilExpiry <= 3) return "#f59e0b";
-		return "#22c55e";
-	};
+	const status = getEventStatus(currentEvent);
+	const uploaded = mergedPhotos.filter((p) => !p.isPending);
+	const photoCount = uploaded.filter((p) => p.media_type !== "video").length;
+	const videoCount = uploaded.filter((p) => p.media_type === "video").length;
+	const guestNames = (currentEvent.participants ?? [])
+		.map((p) => p.nickname || p.user?.display_name || "")
+		.filter((name) => name.length > 0);
 
 	return (
-		<>
-			<Stack.Screen
-				options={{
-					title: currentEvent.title,
-					headerBackVisible: false,
-					headerLeft: () => (
-						<TouchableOpacity
-							onPress={() =>
-								router.canGoBack() ? router.back() : router.replace("/(tabs)/events")
-							}
-							style={styles.headerButton}
-						>
-							<FontAwesome name="angle-left" size={28} color={isDark ? "#fff" : "#000"} />
-						</TouchableOpacity>
-					),
-					headerRight: () => (
-						<View style={styles.headerRight}>
-							{isHost && (
-								<TouchableOpacity
-									onPress={() => router.push(`/event/edit/${id}`)}
-									style={styles.headerButton}
-								>
-									<FontAwesome name="pencil" size={18} color={isDark ? "#fff" : "#000"} />
-								</TouchableOpacity>
-							)}
-							<TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-								<FontAwesome name="share-alt" size={20} color={isDark ? "#fff" : "#000"} />
-							</TouchableOpacity>
-						</View>
-					),
-				}}
+		<Screen>
+			<NavBar
+				title={
+					titleInNav
+						? currentEvent.title
+						: `${formatLocalizedDate(currentEvent.starts_at, {
+								month: "short",
+								day: "numeric",
+							})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}`
+				}
+				onBack={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/events"))}
+				right={
+					<>
+						{isHost ? (
+							<IconButton
+								icon="edit-2"
+								accessibilityLabel="Edit album"
+								onPress={() => router.push(`/event/edit/${id}`)}
+							/>
+						) : null}
+						<IconButton icon="share" accessibilityLabel="Invite guests" onPress={handleShare} />
+					</>
+				}
 			/>
 
-			<View style={[styles.container, isDark && styles.containerDark]}>
-				<MasonryGrid
-					photos={mergedPhotos}
-					onPhotoPress={handlePhotoPress}
-					onRetry={retryFailedUpload}
-					onSkip={handleSkipUpload}
-					onRemove={handleRemoveUpload}
-					isDark={isDark}
-					refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
-					emptyComponent={
-						<View style={[styles.emptyState, isDark && styles.panelDark]}>
-							<FontAwesome name="camera" size={48} color="#FF2D8E" />
-							<Text style={[styles.emptyTitle, isDark && styles.textDark]}>No media yet</Text>
-							<Text style={[styles.emptyText, isDark && styles.textMuted]}>
-								Be the first to drop a photo and kick things off.
+			<MasonryGrid
+				onScroll={(offsetY) => setTitleInNav(offsetY > HERO_TITLE_OFFSET)}
+				photos={mergedPhotos}
+				onPhotoPress={handlePhotoPress}
+				onRetry={retryFailedUpload}
+				onSkip={handleSkipUpload}
+				onRemove={handleRemoveUpload}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshing}
+						onRefresh={handleRefresh}
+						tintColor={theme.accent}
+						colors={[theme.accent]}
+					/>
+				}
+				emptyComponent={
+					<EmptyState
+						icon="camera"
+						title="Nothing here yet"
+						body="Be the first to drop a photo in and kick the album off."
+					/>
+				}
+				headerComponent={
+					<View style={styles.header}>
+						<Card>
+							<View style={styles.cardTop}>
+								<Eyebrow>Event album</Eyebrow>
+								<Pill label={status.label} tone={status.tone} dot={status.dot} />
+							</View>
+
+							<Text style={styles.albumTitle} numberOfLines={2}>
+								{currentEvent.title}
 							</Text>
-						</View>
-					}
-					headerComponent={
-						<View style={styles.header}>
-							<View style={styles.eventInfo}>
-								<Text style={styles.sectionEyebrow}>Event</Text>
-								<Text style={[styles.eventDate, isDark && styles.textDark]}>
-									{formatLocalizedDate(currentEvent.starts_at, {
-										weekday: "long",
-										month: "long",
-										day: "numeric",
-										year: "numeric",
-									})}
+
+							<Pressable
+								onPress={handleOpenGuestSheet}
+								accessibilityRole="button"
+								accessibilityLabel={`${currentEvent.participant_count || 0} guests`}
+								accessibilityHint="Opens the guest list"
+								style={({ pressed }) => [styles.guestRow, pressed && { opacity: 0.7 }]}
+							>
+								{guestNames.length > 0 ? <AvatarStack names={guestNames} size={22} /> : null}
+								<Text style={styles.guestText}>
+									{currentEvent.participant_count || 0}{" "}
+									{currentEvent.participant_count === 1 ? "guest" : "guests"}
+									{status.key === "live" ? " adding photos" : ""}
 								</Text>
-								<Text style={[styles.eventTime, isDark && styles.textMuted]}>
-									{formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at)}
-								</Text>
-							</View>
+								<Icon name="chevron-right" size={14} color={theme.textDisabled} />
+							</Pressable>
 
-							{isEnded && daysUntilExpiry > 0 && (
-								<View style={[styles.expiryBanner, isDark && styles.expiryBannerDark]}>
-									<View style={[styles.expiryIconContainer, { backgroundColor: getExpiryColor() }]}>
-										<FontAwesome name="clock-o" size={16} color="#fff" />
-									</View>
-									<View style={styles.expiryContent}>
-										<Text style={[styles.expiryLabel, isDark && styles.textMuted]}>
-											Media expire in
-										</Text>
-										<Text style={[styles.expiryValue, { color: getExpiryColor() }]}>
-											{daysUntilExpiry <= 1
-												? `${hoursUntilExpiry} hours`
-												: `${daysUntilExpiry} days`}
-										</Text>
-									</View>
-									{canDelayDeletion && (
-										<TouchableOpacity
-											style={[styles.delayButton, isDark && styles.delayButtonDark]}
-											onPress={handleDelayDeletion}
-											disabled={delayingDeletion}
-										>
-											{delayingDeletion ? (
-												<ActivityIndicator size="small" color="#FF2D8E" />
-											) : (
-												<Text style={styles.delayButtonText}>Delay {DELETION_DELAY_DAYS}d</Text>
-											)}
-										</TouchableOpacity>
-									)}
-								</View>
-							)}
-
-							<View style={[styles.stats, isDark && styles.statsDark]}>
-								<View style={styles.stat}>
-									<Text style={styles.statValue}>
-										{mergedPhotos.filter((p) => !p.isPending).length}
-									</Text>
-									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Media</Text>
-								</View>
-								<View style={[styles.statDivider, isDark && styles.statDividerDark]} />
-								<TouchableOpacity style={styles.stat} onPress={handleOpenGuestSheet}>
-									<Text style={styles.statValue}>{currentEvent.participant_count || 0}</Text>
-									<Text style={[styles.statLabel, isDark && styles.textMuted]}>Guests</Text>
-								</TouchableOpacity>
-							</View>
-
-							<ParticipantLimitBanner
-								participantCount={currentEvent.participant_count || 0}
-								hostIsPro={currentEvent.hostIsPro || false}
-								isHost={isHost || false}
-								isDark={isDark}
+							<StatRow
+								items={[
+									{ value: photoCount.toLocaleString(), label: "Photos" },
+									{ value: videoCount.toLocaleString(), label: "Videos" },
+									{ value: currentEvent.participant_count || 0, label: "Guests" },
+								]}
 							/>
 
-							<View style={styles.actionStack}>
-								<TouchableOpacity
-									style={[
-										styles.secondaryActionButton,
-										styles.remindButton,
-										isDark && styles.remindButtonDark,
-									]}
-									onPress={handleContribute}
-								>
-									<FontAwesome name="plus" size={16} color="#fff" />
-									<Text style={styles.contributeButtonText}>Add Your Media</Text>
-								</TouchableOpacity>
+							<Button
+								label="Add your photos"
+								icon="plus"
+								onPress={handleContribute}
+								style={styles.primaryAction}
+							/>
 
-								{mediaItems.length > 0 ? (
-									<View style={styles.secondaryActionRow}>
-										{mediaItems.length > 0 && (
-											<TouchableOpacity
-												style={[
-													styles.secondaryActionButton,
-													isDark && styles.secondaryActionButtonDark,
-												]}
-												onPress={handleDownloadAll}
-												disabled={downloadingAll}
-											>
-												{downloadingAll ? (
-													<>
-														<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
-														<Text
-															style={[styles.secondaryActionText, isDark && styles.textDark]}
-															numberOfLines={1}
-														>
-															{downloadProgress.current}/{downloadProgress.total}
-														</Text>
-													</>
-												) : (
-													<>
-														<FontAwesome
-															name="download"
-															size={15}
-															color={isDark ? "#fff" : "#111827"}
-														/>
-														<Text style={[styles.secondaryActionText, isDark && styles.textDark]}>
-															Download All
-														</Text>
-													</>
-												)}
-											</TouchableOpacity>
-										)}
+							{mediaItems.length > 0 ? (
+								<Button
+									label={
+										downloadingAll
+											? `Saving ${downloadProgress.current} of ${downloadProgress.total}`
+											: "Save all to camera roll"
+									}
+									icon="download"
+									variant="secondary"
+									loading={downloadingAll}
+									onPress={handleDownloadAll}
+									style={styles.secondaryAction}
+								/>
+							) : null}
+						</Card>
+
+						{isEnded && daysUntilExpiry > 0 ? (
+							<Card accent style={styles.expiryCard}>
+								<View style={styles.expiryRow}>
+									<View style={styles.expiryIcon}>
+										<Icon name="clock" size={17} color={theme.accentSoft} />
 									</View>
-								) : null}
-
-								{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos && (
-									<TouchableOpacity
-										style={[styles.noPhotosButton, isDark && styles.noPhotosButtonDark]}
-										onPress={handleNoPhotosToShare}
-										disabled={markingNoPhotos}
-									>
-										{markingNoPhotos ? (
-											<ActivityIndicator size="small" color={isDark ? "#d1d5db" : "#374151"} />
-										) : (
-											<FontAwesome name="check" size={14} color={isDark ? "#d1d5db" : "#374151"} />
-										)}
-										<Text style={[styles.noPhotosButtonText, isDark && styles.textMuted]}>
-											I don't have media to share
+									<View style={styles.expiryText}>
+										<Text style={styles.expiryTitle}>
+											{daysUntilExpiry <= 1
+												? `${hoursUntilExpiry} hours left to download`
+												: `${daysUntilExpiry} days left to download`}
 										</Text>
-									</TouchableOpacity>
-								)}
-
-								{isEnded && myMediaCount === 0 && hasMarkedNoPhotos && (
-									<View
-										style={[styles.noPhotosConfirmation, isDark && styles.noPhotosConfirmationDark]}
-									>
-										<FontAwesome name="check-circle" size={16} color="#22c55e" />
-										<Text style={[styles.noPhotosConfirmationText, isDark && styles.textMuted]}>
-											Thanks! We won't remind you about this event.
+										<Text style={styles.expiryBody}>
+											The album closes and wipes itself when the timer runs out.
 										</Text>
 									</View>
-								)}
-							</View>
-
-							{mergedPhotos.length > 0 && (
-								<View style={styles.sectionHeader}>
-									<Text style={styles.sectionEyebrow}>Feed</Text>
-									<Text style={[styles.timelineTitle, isDark && styles.textDark]}>
-										Everyone's media
-									</Text>
 								</View>
-							)}
-						</View>
-					}
-				/>
-				<PhotoViewer
-					photos={mergedPhotos}
-					initialIndex={selectedPhotoIndex}
-					visible={viewerVisible}
-					onClose={handleCloseViewer}
-					onDelete={handleDeletePhoto}
-					currentUserId={user?.id}
-					isDark={isDark}
-					initialThumbnailUri={selectedThumbnailUri}
-				/>
+								{canDelayDeletion ? (
+									<Button
+										label={`Give everyone ${DELETION_DELAY_DAYS} more days`}
+										icon="calendar"
+										variant="secondary"
+										size="md"
+										loading={delayingDeletion}
+										onPress={handleDelayDeletion}
+										style={styles.expiryAction}
+									/>
+								) : null}
+							</Card>
+						) : null}
 
-				<GuestSheet
-					visible={guestSheetVisible}
-					onClose={() => setGuestSheetVisible(false)}
-					participants={participants}
-					isDark={isDark}
-					isHost={isHost || false}
-					currentUserId={user?.id || ""}
-					eventId={id}
-					onRemoveParticipant={handleRemoveParticipant}
-					onLeaveEvent={handleLeaveEvent}
-				/>
+						<ParticipantLimitBanner
+							participantCount={currentEvent.participant_count || 0}
+							hostIsPro={currentEvent.hostIsPro || false}
+							isHost={isHost || false}
+						/>
 
-				<NotificationPromptModal
-					visible={notificationPromptVisible}
-					onEnable={handleEnableNotifications}
-					onMaybeLater={handleMaybeLater}
-					isDark={isDark}
-				/>
+						{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos ? (
+							<Button
+								label="I don't have media to share"
+								icon="check"
+								variant="ghost"
+								size="md"
+								loading={markingNoPhotos}
+								onPress={handleNoPhotosToShare}
+							/>
+						) : null}
 
-				{id && <UploadProgressBar eventId={id} isDark={isDark} />}
-			</View>
-		</>
+						{isEnded && myMediaCount === 0 && hasMarkedNoPhotos ? (
+							<View style={styles.noPhotos}>
+								<Icon name="check-circle" size={15} color={theme.success} />
+								<Text style={styles.noPhotosText}>
+									Thanks. We won't remind you about this album.
+								</Text>
+							</View>
+						) : null}
+
+						{mergedPhotos.length > 0 ? (
+							<View style={styles.feedHeader}>
+								<Eyebrow>The feed</Eyebrow>
+								<Pill label={`${mergedPhotos.length} items`} />
+							</View>
+						) : null}
+					</View>
+				}
+			/>
+
+			<PhotoViewer
+				photos={mergedPhotos}
+				initialIndex={selectedPhotoIndex}
+				visible={viewerVisible}
+				onClose={handleCloseViewer}
+				onDelete={handleDeletePhoto}
+				currentUserId={user?.id}
+				initialThumbnailUri={selectedThumbnailUri}
+			/>
+
+			<GuestSheet
+				visible={guestSheetVisible}
+				onClose={() => setGuestSheetVisible(false)}
+				participants={participants}
+				isHost={isHost || false}
+				currentUserId={user?.id || ""}
+				eventId={id}
+				onRemoveParticipant={handleRemoveParticipant}
+				onLeaveEvent={handleLeaveEvent}
+			/>
+
+			<NotificationPromptModal
+				visible={notificationPromptVisible}
+				onEnable={handleEnableNotifications}
+				onMaybeLater={handleMaybeLater}
+			/>
+
+			{id ? (
+				<View style={styles.uploadBarDock} pointerEvents="box-none">
+					<UploadProgressBar eventId={id} />
+				</View>
+			) : null}
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
-	},
 	centered: {
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	scrollContent: {
-		paddingTop: 18,
-		paddingBottom: 28,
-	},
-	headerRight: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 8,
-	},
-	headerButton: {
-		width: 36,
-		height: 36,
-		borderRadius: 18,
 		alignItems: "center",
 		justifyContent: "center",
 	},
 	header: {
-		marginBottom: 16,
-		paddingHorizontal: 16,
-		gap: 12,
+		paddingHorizontal: space.lg,
+		paddingBottom: space.lg,
+		gap: space.md,
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		alignSelf: "center",
 	},
-	eventInfo: {
+	cardTop: {
+		flexDirection: "row",
+		alignItems: "center",
+		justifyContent: "space-between",
+		marginBottom: space.sm,
+	},
+	albumTitle: {
+		...type.title,
+		fontSize: 26,
+		lineHeight: 30,
+		color: theme.textPrimary,
+	},
+	guestRow: {
+		flexDirection: "row",
+		alignItems: "center",
+		gap: space.sm,
+		marginTop: 6,
+		marginBottom: space.lg,
+	},
+	guestText: {
+		...type.callout,
+		color: theme.textMuted,
+		flex: 1,
+	},
+	primaryAction: {
+		marginTop: space.lg,
+	},
+	secondaryAction: {
+		marginTop: space.sm,
+	},
+
+	expiryCard: {
+		gap: space.md,
+	},
+	expiryRow: {
+		flexDirection: "row",
+		gap: space.md,
+		alignItems: "flex-start",
+	},
+	expiryIcon: {
+		width: 38,
+		height: 38,
+		borderRadius: radius.md,
+		backgroundColor: theme.accentSurface,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	expiryText: {
+		flex: 1,
 		gap: 3,
 	},
-	panelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
+	expiryTitle: {
+		...type.bodyStrong,
+		color: theme.textPrimary,
 	},
-	sectionEyebrow: {
-		fontSize: 11,
-		fontWeight: "800",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#FF2D8E",
-	},
-	eventDate: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.8,
-	},
-	eventTime: {
-		fontSize: 14,
-		color: "#6b7280",
+	expiryBody: {
+		...type.caption,
 		fontWeight: "500",
+		color: theme.textMuted,
 	},
-	expiryBanner: {
+	expiryAction: {
+		marginTop: space.xs,
+	},
+
+	noPhotos: {
 		flexDirection: "row",
 		alignItems: "center",
-		backgroundColor: "#fff",
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		gap: 12,
+		gap: space.sm,
+		paddingVertical: space.md,
+		paddingHorizontal: space.lg,
+		borderRadius: radius.lg,
+		backgroundColor: theme.successSurface,
 	},
-	expiryBannerDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	expiryIconContainer: {
-		width: 36,
-		height: 36,
-		borderRadius: 999,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	expiryContent: {
+	noPhotosText: {
+		...type.callout,
+		color: theme.textMuted,
 		flex: 1,
 	},
-	expiryLabel: {
-		fontSize: 12,
-		color: "#6b7280",
-		marginBottom: 2,
-		textTransform: "uppercase",
-		letterSpacing: 0.8,
-	},
-	expiryValue: {
-		fontSize: 16,
-		fontWeight: "700",
-	},
-	delayButton: {
-		paddingHorizontal: 14,
-		paddingVertical: 8,
-		borderRadius: 999,
-		borderWidth: 1,
-		borderColor: "#FF2D8E",
-		justifyContent: "center",
-		alignItems: "center",
-		minWidth: 72,
-	},
-	delayButtonDark: {
-		backgroundColor: "rgba(255, 45, 142, 0.12)",
-	},
-	delayButtonText: {
-		fontSize: 13,
-		fontWeight: "700",
-		color: "#FF2D8E",
-	},
-	stats: {
-		flexDirection: "row",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-	},
-	statsDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	stat: {
-		flex: 1,
-		alignItems: "center",
-		paddingVertical: 2,
-	},
-	statDivider: {
-		width: 1,
-		backgroundColor: "#e5e7eb",
-		marginHorizontal: 16,
-	},
-	statDividerDark: {
-		backgroundColor: "#242833",
-	},
-	statValue: {
-		fontSize: 26,
-		fontWeight: "800",
-		color: "#FF2D8E",
-	},
-	statLabel: {
-		fontSize: 11,
-		color: "#6b7280",
-		marginTop: 5,
-		textTransform: "uppercase",
-		letterSpacing: 1,
-	},
-	actionStack: {
-		gap: 10,
-	},
-	contributeButton: {
+
+	feedHeader: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: "#111827",
-		paddingVertical: 14,
-		borderRadius: 999,
-		gap: 8,
+		justifyContent: "space-between",
+		marginTop: space.sm,
 	},
-	contributeButtonText: {
-		color: "#fff",
-		fontSize: 15,
-		fontWeight: "700",
-	},
-	secondaryActionRow: {
-		flexDirection: "row",
-		gap: 10,
-	},
-	secondaryActionButton: {
-		flex: 1,
-		minHeight: 48,
-		flexDirection: "row",
+
+	uploadBarDock: {
+		position: "absolute",
+		left: 0,
+		right: 0,
+		bottom: space.xl,
 		alignItems: "center",
-		justifyContent: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-		gap: 8,
-		paddingHorizontal: 12,
-	},
-	secondaryActionButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	secondaryActionText: {
-		color: "#111827",
-		fontSize: 14,
-		fontWeight: "600",
-	},
-	remindButton: {
-		backgroundColor: "#FF2D8E",
-		borderColor: "#FF2D8E",
-	},
-	remindButtonDark: {
-		backgroundColor: "#FF2D8E",
-		borderColor: "#FF2D8E",
-	},
-	remindButtonText: {
-		color: "#fff",
-		fontSize: 14,
-		fontWeight: "600",
-	},
-	timelineTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.5,
-	},
-	sectionHeader: {
-		paddingTop: 2,
-		gap: 2,
-	},
-	emptyState: {
-		alignItems: "center",
-		paddingHorizontal: 24,
-		paddingVertical: 52,
-		marginHorizontal: 16,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	emptyTitle: {
-		fontSize: 20,
-		fontWeight: "700",
-		color: "#000",
-		marginTop: 16,
-		marginBottom: 8,
-	},
-	emptyText: {
-		fontSize: 14,
-		color: "#666",
-		textAlign: "center",
-		marginBottom: 24,
-	},
-	emptyButton: {
-		backgroundColor: "#111827",
-		paddingVertical: 13,
-		paddingHorizontal: 24,
-		borderRadius: 999,
-	},
-	emptyButtonText: {
-		color: "#fff",
-		fontSize: 15,
-		fontWeight: "600",
-	},
-	errorText: {
-		fontSize: 16,
-		color: "#666",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
-	},
-	noPhotosButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 12,
-		paddingHorizontal: 14,
-		gap: 6,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-	},
-	noPhotosButtonDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	noPhotosButtonText: {
-		color: "#374151",
-		fontSize: 13,
-		fontWeight: "600",
-	},
-	noPhotosConfirmation: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 12,
-		paddingHorizontal: 14,
-		gap: 8,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-	},
-	noPhotosConfirmationDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	noPhotosConfirmationText: {
-		color: "#374151",
-		fontSize: 13,
-		fontWeight: "600",
+		paddingHorizontal: space.md,
 	},
 	uploadBar: {
-		position: "absolute",
-		left: 12,
-		right: 12,
-		bottom: 24,
-		paddingHorizontal: 16,
-		paddingVertical: 12,
-		borderRadius: 14,
-		backgroundColor: "rgba(15, 23, 42, 0.92)",
-		shadowColor: "#000",
-		shadowOpacity: 0.18,
-		shadowOffset: { width: 0, height: 4 },
-		shadowRadius: 12,
-		elevation: 6,
-	},
-	uploadBarDark: {
-		backgroundColor: "rgba(20, 27, 40, 0.95)",
-	},
-	uploadBarSpacer: {
-		flex: 1,
-	},
-	uploadBarCancel: {
-		paddingHorizontal: 10,
-		paddingVertical: 6,
-		borderRadius: 999,
-		backgroundColor: "rgba(255, 255, 255, 0.14)",
-	},
-	uploadBarCancelText: {
-		color: "#e5e7eb",
-		fontSize: 12,
-		fontWeight: "700",
+		width: "100%",
+		maxWidth: CONTENT_MAX_WIDTH,
+		backgroundColor: theme.cardElevated,
+		borderRadius: radius.lg,
+		borderWidth: 1,
+		borderColor: theme.accentBorder,
+		paddingHorizontal: space.lg,
+		paddingVertical: space.md,
+		gap: space.md,
+		...shadow.card,
 	},
 	uploadBarRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 12,
+		gap: space.sm,
 	},
 	uploadBarText: {
-		color: "#f9fafb",
-		fontSize: 13,
+		...type.caption,
 		fontWeight: "700",
-	},
-	uploadBarTextDark: {
-		color: "#f9fafb",
+		color: theme.textPrimary,
 	},
 	uploadBarFailed: {
-		color: "#fca5a5",
-		fontSize: 12,
-		fontWeight: "600",
-	},
-	uploadBarFailedDark: {
-		color: "#fca5a5",
-	},
-	uploadBarRetry: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 6,
-		marginLeft: "auto",
-		paddingHorizontal: 12,
-		paddingVertical: 6,
-		borderRadius: 999,
-		backgroundColor: "#FF2D8E",
-	},
-	uploadBarRetryText: {
-		color: "#fff",
-		fontSize: 12,
+		...type.caption,
 		fontWeight: "700",
+		color: theme.danger,
+	},
+	uploadBarSpacer: {
+		flex: 1,
 	},
 	uploadBarTrack: {
-		height: 4,
-		marginTop: 10,
-		borderRadius: 999,
-		backgroundColor: "rgba(255, 255, 255, 0.18)",
+		height: 6,
+		borderRadius: 3,
+		backgroundColor: "rgba(255,255,255,0.10)",
 		overflow: "hidden",
-	},
-	uploadBarTrackDark: {
-		backgroundColor: "rgba(255, 255, 255, 0.12)",
 	},
 	uploadBarFill: {
 		height: "100%",
-		backgroundColor: "#FF2D8E",
-		borderRadius: 999,
+		borderRadius: 3,
 	},
 });

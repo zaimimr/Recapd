@@ -1,7 +1,6 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { isBefore } from "date-fns";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
 	ActivityIndicator,
@@ -9,14 +8,23 @@ import {
 	Modal,
 	Platform,
 	Pressable,
-	ScrollView,
 	StyleSheet,
 	Text,
-	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
+import {
+	Button,
+	Card,
+	Eyebrow,
+	Field,
+	ListRow,
+	NavBar,
+	Screen,
+	ScreenScroll,
+	SectionHeader,
+} from "@/components/ui";
+import Icon from "@/components/ui/Icon";
+import { radius, space, theme, type } from "@/constants/theme";
 import { computeEventExpiry } from "@/lib/dateUtils";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -27,8 +35,6 @@ export default function EditEventScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	const user = useAuthStore((state) => state.user);
 	const { currentEvent, fetchEventById, updateEvent, deleteEvent, isLoading } = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
 	const [title, setTitle] = useState("");
 	const [startDate, setStartDate] = useState(new Date());
@@ -174,401 +180,240 @@ export default function EditEventScreen() {
 
 	if (isLoadingEvent) {
 		return (
-			<View style={[styles.container, isDark && styles.containerDark, styles.loadingContainer]}>
-				<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-			</View>
+			<Screen style={styles.loadingContainer}>
+				<ActivityIndicator size="large" color={theme.accent} />
+			</Screen>
 		);
 	}
 
 	const newExpiryDate = computeEventExpiry(endDate, currentEvent?.created_at);
 
 	return (
-		<>
-			<Stack.Screen
-				options={{
-					title: "Edit Event",
-				}}
-			/>
-			<ScrollView
-				style={[styles.container, isDark && styles.containerDark]}
-				contentContainerStyle={styles.content}
-				keyboardShouldPersistTaps="handled"
-			>
-				<View style={[styles.heroPanel, isDark && styles.panelDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Edit</Text>
-					<Text style={[styles.heroTitle, isDark && styles.textDark]}>Refine the event window</Text>
-					<Text style={[styles.heroText, isDark && styles.textMuted]}>
-						Update the title and timing without breaking the clean feed structure guests already
-						see.
+		<Screen edges="both">
+			<NavBar title="Edit album" onBack={() => router.back()} />
+
+			<ScreenScroll contentContainerStyle={styles.content}>
+				<SectionHeader title="Adjust the name and window" />
+				<Text style={styles.lede}>
+					Guests keep everything they have already added. Only the window for new media changes.
+				</Text>
+
+				<Field
+					label="Album name"
+					placeholder="Sarah & James"
+					value={title}
+					onChangeText={(text) => {
+						setTitle(text);
+						setError("");
+					}}
+					maxLength={50}
+				/>
+
+				<Card padded={false}>
+					<ListRow
+						icon="play-circle"
+						title="Starts"
+						subtitle={`${formatLocalizedDate(startDate, {
+							weekday: "short",
+							month: "short",
+							day: "numeric",
+						})} · ${formatLocalizedTime(startDate)}`}
+						onPress={openStartPicker}
+						accessibilityHint="Opens the date and time picker"
+					/>
+					<ListRow
+						icon="stop-circle"
+						title="Ends"
+						subtitle={`${formatLocalizedDate(endDate, {
+							weekday: "short",
+							month: "short",
+							day: "numeric",
+						})} · ${formatLocalizedTime(endDate)}`}
+						onPress={openEndPicker}
+						accessibilityHint="Opens the date and time picker"
+						last
+					/>
+				</Card>
+
+				{error ? (
+					<Text style={styles.errorText} accessibilityLiveRegion="polite">
+						{error}
 					</Text>
-				</View>
-				<View style={styles.form}>
-					<View style={[styles.field, isDark && styles.panelDark]}>
-						<Text style={[styles.label, isDark && styles.textDark]}>Event Name</Text>
-						<TextInput
-							style={[styles.input, isDark && styles.inputDark]}
-							placeholder="e.g., Zaim's Wedding"
-							placeholderTextColor={isDark ? "#666" : "#999"}
-							value={title}
-							onChangeText={(text) => {
-								setTitle(text);
-								setError("");
-							}}
-							maxLength={50}
-						/>
-					</View>
+				) : null}
 
-					<View style={[styles.field, isDark && styles.panelDark]}>
-						<Text style={[styles.label, isDark && styles.textDark]}>Start Time</Text>
-						<TouchableOpacity
-							style={[styles.dateButton, isDark && styles.dateButtonDark]}
-							onPress={openStartPicker}
-						>
-							<Text style={[styles.dateText, isDark && styles.textDark]}>
-								{formatLocalizedDate(startDate, {
-									weekday: "short",
-									month: "short",
-									day: "numeric",
-									year: "numeric",
-								})}
-							</Text>
-							<Text style={[styles.timeText, isDark && styles.textMuted]}>
-								{formatLocalizedTime(startDate)}
-							</Text>
-						</TouchableOpacity>
-					</View>
-
-					<View style={[styles.field, isDark && styles.panelDark]}>
-						<Text style={[styles.label, isDark && styles.textDark]}>End Time</Text>
-						<TouchableOpacity
-							style={[styles.dateButton, isDark && styles.dateButtonDark]}
-							onPress={openEndPicker}
-						>
-							<Text style={[styles.dateText, isDark && styles.textDark]}>
-								{formatLocalizedDate(endDate, {
-									weekday: "short",
-									month: "short",
-									day: "numeric",
-									year: "numeric",
-								})}
-							</Text>
-							<Text style={[styles.timeText, isDark && styles.textMuted]}>
-								{formatLocalizedTime(endDate)}
-							</Text>
-						</TouchableOpacity>
-					</View>
-
-					{error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-					<View style={[styles.infoBox, isDark && styles.panelDark]}>
-						<Text style={[styles.infoText, isDark && styles.textMuted]}>
-							Photos will expire on{" "}
+				<Card style={styles.infoCard}>
+					<View style={styles.infoRow}>
+						<Icon name="clock" size={17} color={theme.textMuted} />
+						<Text style={styles.infoText}>
+							The album closes on{" "}
 							{formatLocalizedDate(newExpiryDate, {
-								month: "short",
+								month: "long",
 								day: "numeric",
 								year: "numeric",
-							})}{" "}
-							(14 days after event ends).
+							})}
+							, two weeks after it ends.
 						</Text>
 					</View>
-				</View>
+				</Card>
 
-				<TouchableOpacity
-					style={[
-						styles.button,
-						(!title.trim() || isSaving || isLoading || isDeleting) && styles.buttonDisabled,
-					]}
+				<Button
+					label="Save changes"
+					loading={isSaving}
+					disabled={!title.trim() || isLoading || isDeleting}
 					onPress={handleSave}
-					disabled={!title.trim() || isSaving || isLoading || isDeleting}
-				>
-					{isSaving ? (
-						<ActivityIndicator color="#fff" />
-					) : (
-						<Text style={styles.buttonText}>Save Changes</Text>
-					)}
-				</TouchableOpacity>
+					style={styles.save}
+				/>
 
-				<View style={[styles.dangerZone, isDark && styles.panelDark]}>
-					<Text style={[styles.dangerZoneTitle, isDark && styles.textMuted]}>Danger Zone</Text>
-					<TouchableOpacity
-						style={[styles.deleteButton, (isDeleting || isSaving) && styles.buttonDisabled]}
+				<View style={styles.danger}>
+					<Eyebrow style={styles.dangerLabel}>Danger zone</Eyebrow>
+					<Button
+						label="Delete this album"
+						icon="trash-2"
+						variant="danger"
+						loading={isDeleting}
+						disabled={isSaving}
 						onPress={handleDelete}
-						disabled={isDeleting || isSaving}
-					>
-						{isDeleting ? (
-							<ActivityIndicator color="#fff" />
-						) : (
-							<>
-								<FontAwesome name="trash" size={16} color="#fff" style={styles.deleteIcon} />
-								<Text style={styles.deleteButtonText}>Delete Event</Text>
-							</>
-						)}
-					</TouchableOpacity>
-				</View>
-
-				{Platform.OS === "ios" && activePicker && (
-					<Modal visible={true} transparent animationType="slide" onRequestClose={cancelSelection}>
-						<Pressable style={styles.modalOverlay} onPress={cancelSelection}>
-							<Pressable style={[styles.pickerSheet, isDark && styles.pickerSheetDark]}>
-								<View style={[styles.pickerHeader, isDark && styles.pickerHeaderDark]}>
-									<TouchableOpacity onPress={cancelSelection} style={styles.pickerHeaderButton}>
-										<Text style={styles.pickerCancelText}>Cancel</Text>
-									</TouchableOpacity>
-									<Text style={[styles.pickerTitle, isDark && styles.textDark]}>
-										{activePicker === "start" ? "Start Time" : "End Time"}
-									</Text>
-									<TouchableOpacity
-										onPress={() => confirmSelection()}
-										style={styles.pickerHeaderButton}
-									>
-										<Text style={styles.pickerDoneText}>Done</Text>
-									</TouchableOpacity>
-								</View>
-								<DateTimePicker
-									value={tempDate}
-									mode="datetime"
-									display="spinner"
-									onChange={handlePickerChange}
-									minimumDate={activePicker === "end" ? startDate : undefined}
-									textColor={isDark ? "#fff" : "#000"}
-									style={styles.picker}
-								/>
-							</Pressable>
-						</Pressable>
-					</Modal>
-				)}
-
-				{Platform.OS === "android" && activePicker && (
-					<DateTimePicker
-						value={tempDate}
-						mode={androidPickerMode}
-						display="default"
-						onChange={handlePickerChange}
-						minimumDate={
-							activePicker === "end" && androidPickerMode === "date" ? startDate : undefined
-						}
 					/>
-				)}
-			</ScrollView>
-		</>
+					<Text style={styles.dangerNote}>
+						Deleting removes every photo for every guest, immediately and permanently.
+					</Text>
+				</View>
+			</ScreenScroll>
+
+			{Platform.OS === "ios" && activePicker ? (
+				<Modal visible transparent animationType="slide" onRequestClose={cancelSelection}>
+					<Pressable style={styles.modalOverlay} onPress={cancelSelection}>
+						<Pressable style={styles.pickerSheet}>
+							<View style={styles.pickerHeader}>
+								<Button
+									label="Cancel"
+									variant="ghost"
+									size="sm"
+									full={false}
+									onPress={cancelSelection}
+								/>
+								<Text style={styles.pickerTitle}>
+									{activePicker === "start" ? "Starts" : "Ends"}
+								</Text>
+								<Button
+									label="Done"
+									variant="ghost"
+									size="sm"
+									full={false}
+									onPress={() => confirmSelection()}
+								/>
+							</View>
+							<DateTimePicker
+								value={tempDate}
+								mode="datetime"
+								display="spinner"
+								onChange={handlePickerChange}
+								minimumDate={activePicker === "end" ? startDate : undefined}
+								textColor={theme.textPrimary}
+								themeVariant="dark"
+								style={styles.picker}
+							/>
+						</Pressable>
+					</Pressable>
+				</Modal>
+			) : null}
+
+			{Platform.OS === "android" && activePicker ? (
+				<DateTimePicker
+					value={tempDate}
+					mode={androidPickerMode}
+					display="default"
+					onChange={handlePickerChange}
+					minimumDate={
+						activePicker === "end" && androidPickerMode === "date" ? startDate : undefined
+					}
+				/>
+			) : null}
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
-	},
 	loadingContainer: {
-		justifyContent: "center",
 		alignItems: "center",
+		justifyContent: "center",
 	},
 	content: {
-		padding: 16,
-		gap: 14,
+		paddingHorizontal: space.lg,
+		paddingTop: space.sm,
+		paddingBottom: space.xxl,
+		gap: space.lg,
 	},
-	heroPanel: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-		gap: 6,
-	},
-	panelDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#6b7280",
-	},
-	heroTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.7,
-	},
-	heroText: {
-		fontSize: 14,
-		lineHeight: 21,
-		color: "#6b7280",
-	},
-	form: {
-		gap: 14,
-		marginBottom: 20,
-	},
-	field: {
-		gap: 10,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-	},
-	label: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: "#111827",
-		textTransform: "uppercase",
-		letterSpacing: 1,
-	},
-	input: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		fontSize: 18,
-		color: "#111827",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	inputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
-	},
-	dateButton: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		flexDirection: "row",
-		justifyContent: "space-between",
-		alignItems: "center",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	dateButtonDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-	},
-	dateText: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111827",
-	},
-	timeText: {
-		fontSize: 16,
-		color: "#6b7280",
+	lede: {
+		...type.body,
+		color: theme.textMuted,
+		marginTop: -space.sm,
 	},
 	errorText: {
-		color: "#ef4444",
-		fontSize: 14,
-	},
-	infoBox: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 16,
-	},
-	infoText: {
-		fontSize: 14,
-		color: "#6b7280",
-		lineHeight: 20,
-	},
-	button: {
-		backgroundColor: "#111827",
-		paddingVertical: 18,
-		borderRadius: 999,
-		alignItems: "center",
-	},
-	buttonDisabled: {
-		opacity: 0.5,
-	},
-	buttonText: {
-		color: "#fff",
-		fontSize: 16,
+		...type.caption,
 		fontWeight: "600",
+		color: theme.danger,
 	},
-	textDark: {
-		color: "#fff",
+	infoCard: {
+		paddingVertical: space.md,
 	},
-	textMuted: {
-		color: "#888",
-	},
-	dangerZone: {
-		marginTop: 12,
-		paddingHorizontal: 16,
-		paddingVertical: 16,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	dangerZoneTitle: {
-		fontSize: 13,
-		fontWeight: "600",
-		color: "#6b7280",
-		textTransform: "uppercase",
-		letterSpacing: 1,
-		marginBottom: 12,
-	},
-	deleteButton: {
-		backgroundColor: "#ef4444",
-		paddingVertical: 16,
-		borderRadius: 999,
+	infoRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		justifyContent: "center",
+		gap: space.md,
 	},
-	deleteIcon: {
-		marginRight: 8,
+	infoText: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
+		flex: 1,
+		lineHeight: 17,
 	},
-	deleteButtonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
+	save: {
+		marginTop: space.sm,
 	},
+	danger: {
+		gap: space.md,
+		marginTop: space.xxl,
+		paddingTop: space.xl,
+		borderTopWidth: StyleSheet.hairlineWidth,
+		borderTopColor: theme.border,
+	},
+	dangerLabel: {
+		color: theme.danger,
+	},
+	dangerNote: {
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textFaint,
+		lineHeight: 17,
+	},
+
 	modalOverlay: {
 		flex: 1,
-		backgroundColor: "rgba(0, 0, 0, 0.4)",
+		backgroundColor: theme.overlay,
 		justifyContent: "flex-end",
 	},
 	pickerSheet: {
-		backgroundColor: "#f8fafc",
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		paddingBottom: 34,
-	},
-	pickerSheetDark: {
-		backgroundColor: "#1c1c1e",
+		backgroundColor: theme.card,
+		borderTopLeftRadius: radius.xxl,
+		borderTopRightRadius: radius.xxl,
+		paddingBottom: space.xxxl,
+		borderTopWidth: 1,
+		borderColor: theme.border,
 	},
 	pickerHeader: {
 		flexDirection: "row",
-		justifyContent: "space-between",
 		alignItems: "center",
-		paddingHorizontal: 16,
-		paddingVertical: 14,
+		justifyContent: "space-between",
+		paddingHorizontal: space.md,
+		paddingVertical: space.sm,
 		borderBottomWidth: StyleSheet.hairlineWidth,
-		borderBottomColor: "rgba(0, 0, 0, 0.1)",
-	},
-	pickerHeaderDark: {
-		borderBottomColor: "rgba(255, 255, 255, 0.1)",
-	},
-	pickerHeaderButton: {
-		paddingHorizontal: 8,
-		paddingVertical: 4,
-		minWidth: 60,
+		borderBottomColor: theme.border,
 	},
 	pickerTitle: {
-		fontSize: 17,
-		fontWeight: "600",
-		color: "#000",
-	},
-	pickerCancelText: {
-		fontSize: 17,
-		color: "#007AFF",
-	},
-	pickerDoneText: {
-		fontSize: 17,
-		fontWeight: "600",
-		color: "#007AFF",
-		textAlign: "right",
+		...type.subheading,
+		color: theme.textPrimary,
 	},
 	picker: {
 		height: 216,

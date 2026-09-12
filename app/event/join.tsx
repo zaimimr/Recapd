@@ -1,9 +1,7 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	KeyboardAvoidingView,
 	Modal,
@@ -11,10 +9,22 @@ import {
 	StyleSheet,
 	Text,
 	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
+import {
+	Button,
+	Card,
+	Eyebrow,
+	Field,
+	IconButton,
+	NavBar,
+	Pill,
+	Screen,
+	ScreenScroll,
+	SectionHeader,
+} from "@/components/ui";
+import Icon from "@/components/ui/Icon";
+import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -28,8 +38,6 @@ export default function JoinEventScreen() {
 	const createUser = useAuthStore((state) => state.createUser);
 	const authLoading = useAuthStore((state) => state.isLoading);
 	const { fetchEventByCode, joinEvent, isLoading, error, clearError } = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
 	const [code, setCode] = useState("");
 	const [eventPreview, setEventPreview] = useState<EventWithParticipants | null>(null);
@@ -169,177 +177,142 @@ export default function JoinEventScreen() {
 
 	if (step === "preview" && eventPreview) {
 		return (
-			<KeyboardAvoidingView
-				style={[styles.container, isDark && styles.containerDark]}
-				behavior={Platform.OS === "ios" ? "padding" : "height"}
-			>
-				<View style={styles.content}>
-					<View style={[styles.previewCard, isDark && styles.previewCardDark]}>
-						<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
-						<Text style={[styles.previewTitle, isDark && styles.textDark]}>
-							{eventPreview.title}
-						</Text>
-						<Text style={[styles.previewDate, isDark && styles.textMuted]}>
-							{formatLocalizedDate(eventPreview.starts_at, {
-								weekday: "long",
-								month: "long",
-								day: "numeric",
-								year: "numeric",
-							})}
-						</Text>
-						<Text style={[styles.previewTime, isDark && styles.textMuted]}>
-							{formatLocalizedTimeRange(eventPreview.starts_at, eventPreview.ends_at)}
-						</Text>
-						<View style={styles.previewStats}>
-							<Text style={[styles.previewParticipants, isDark && styles.textMuted]}>
-								{eventPreview.participant_count || 0} participant
-								{eventPreview.participant_count !== 1 ? "s" : ""}
+			<Screen edges="both">
+				<NavBar title="Join album" onBack={handleBack} />
+				<KeyboardAvoidingView
+					style={styles.flex}
+					behavior={Platform.OS === "ios" ? "padding" : "height"}
+				>
+					<ScreenScroll contentContainerStyle={styles.content}>
+						<Card>
+							<Eyebrow>You're invited to</Eyebrow>
+							<Text style={styles.previewTitle}>{eventPreview.title}</Text>
+							<Text style={styles.previewMeta}>
+								{formatLocalizedDate(eventPreview.starts_at, {
+									weekday: "long",
+									month: "long",
+									day: "numeric",
+								})}
+								{"\n"}
+								{formatLocalizedTimeRange(eventPreview.starts_at, eventPreview.ends_at)}
 							</Text>
-						</View>
-					</View>
+							<View style={styles.previewPills}>
+								<Pill
+									label={`${eventPreview.participant_count || 0} ${
+										eventPreview.participant_count === 1 ? "guest" : "guests"
+									}`}
+									icon="users"
+								/>
+								{eventPreview.hostDisplayName ? (
+									<Pill label={`Hosted by ${eventPreview.hostDisplayName}`} />
+								) : null}
+							</View>
+						</Card>
 
-					{isEventFull && (
-						<View style={styles.eventFullBanner}>
-							<FontAwesome name="exclamation-circle" size={16} color="#ef4444" />
-							<Text style={styles.eventFullText}>
-								This event has reached the current plan limit of {participantLimit} participants.
-								Ask the host to upgrade for more spots.
-							</Text>
-						</View>
-					)}
+						{isEventFull ? (
+							<Card accent style={styles.fullCard}>
+								<View style={styles.fullRow}>
+									<Icon name="alert-circle" size={18} color={theme.danger} />
+									<Text style={styles.fullText}>
+										This album is at its {participantLimit}-guest limit. Ask the host to upgrade for
+										more spots.
+									</Text>
+								</View>
+							</Card>
+						) : null}
 
-					{!user && !isEventFull && (
-						<View style={[styles.nameSection, isDark && styles.previewCardDark]}>
-							<Text style={[styles.nameLabel, isDark && styles.textDark]}>
-								What should we call you?
-							</Text>
-							<TextInput
-								style={[
-									styles.nameInput,
-									isDark && styles.nameInputDark,
-									nameError ? styles.inputError : null,
-								]}
-								placeholder="Enter your name"
-								placeholderTextColor={isDark ? "#666" : "#999"}
+						{!user && !isEventFull ? (
+							<Field
+								label="What should we call you?"
+								placeholder="Your first name"
 								value={displayName}
 								onChangeText={(text) => {
 									setDisplayName(text);
 									setNameError("");
 								}}
+								error={nameError || null}
+								hint="This is how you show up on the photos you add."
 								autoCapitalize="words"
 								autoCorrect={false}
 								maxLength={30}
+								returnKeyType="go"
+								onSubmitEditing={handleJoin}
 								accessibilityLabel="Your name"
-								accessibilityHint="Enter your display name"
 							/>
-							{nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
-							<Text style={[styles.nameHint, isDark && styles.textMuted]}>
-								This is how you'll appear to others
-							</Text>
-						</View>
-					)}
+						) : null}
 
-					<View style={styles.actions}>
-						<TouchableOpacity
-							style={[
-								styles.button,
-								(!canJoin || isJoining || isEventFull) && styles.buttonDisabled,
-							]}
+						<Button
+							label={isEventFull ? "Album is full" : "Join the album"}
+							icon={isEventFull ? undefined : "log-in"}
+							loading={isJoining}
+							disabled={!canJoin || isEventFull}
 							onPress={handleJoin}
-							disabled={!canJoin || isJoining || isEventFull}
-							accessibilityRole="button"
-							accessibilityLabel={isEventFull ? "Event Full" : "Join Event"}
-							accessibilityState={{ disabled: !canJoin || isJoining || isEventFull }}
-						>
-							{isJoining ? (
-								<ActivityIndicator color="#fff" />
-							) : (
-								<Text style={styles.buttonText}>{isEventFull ? "Event Full" : "Join Event"}</Text>
-							)}
-						</TouchableOpacity>
-
-						<TouchableOpacity
-							style={styles.backButton}
-							onPress={handleBack}
-							accessibilityRole="button"
-							accessibilityLabel="Enter Different Code"
-						>
-							<Text style={[styles.backButtonText, isDark && styles.textDark]}>
-								Enter Different Code
-							</Text>
-						</TouchableOpacity>
-					</View>
-				</View>
-			</KeyboardAvoidingView>
+						/>
+						<Button label="Use a different code" variant="ghost" size="md" onPress={handleBack} />
+					</ScreenScroll>
+				</KeyboardAvoidingView>
+			</Screen>
 		);
 	}
 
 	return (
-		<KeyboardAvoidingView
-			style={[styles.container, isDark && styles.containerDark]}
-			behavior={Platform.OS === "ios" ? "padding" : "height"}
-		>
-			<View style={styles.content}>
-				<View style={[styles.header, isDark && styles.previewCardDark]}>
-					<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
-					<Text style={[styles.title, isDark && styles.textDark]}>Join an Event</Text>
-					<Text style={[styles.subtitle, isDark && styles.textMuted]}>
-						Enter the 6-character code shared by the host
+		<Screen edges="both">
+			<NavBar title="Join an album" onBack={() => router.back()} dismiss />
+			<KeyboardAvoidingView
+				style={styles.flex}
+				behavior={Platform.OS === "ios" ? "padding" : "height"}
+			>
+				<ScreenScroll contentContainerStyle={styles.content}>
+					<SectionHeader title="Got a code from the host?" />
+					<Text style={styles.lede}>
+						Type the six characters, or scan the QR they're holding up. No account needed.
 					</Text>
-				</View>
 
-				<View style={[styles.form, isDark && styles.previewCardDark]}>
-					<TextInput
-						style={[styles.codeInput, isDark && styles.codeInputDark]}
-						placeholder="ABC123"
-						placeholderTextColor={isDark ? "#444" : "#ccc"}
-						value={code}
-						onChangeText={(text) => setCode(formatCode(text))}
-						autoCapitalize="characters"
-						autoCorrect={false}
-						maxLength={6}
-						keyboardType="default"
-						returnKeyType="go"
-						onSubmitEditing={() => handleLookup()}
-						accessibilityLabel="Event code"
-						accessibilityHint="Enter 6-character event code"
+					<Card>
+						<TextInput
+							style={styles.codeInput}
+							placeholder="ABC123"
+							placeholderTextColor={theme.textMuted}
+							selectionColor={theme.accent}
+							value={code}
+							onChangeText={(text) => setCode(formatCode(text))}
+							autoCapitalize="characters"
+							autoCorrect={false}
+							maxLength={6}
+							returnKeyType="go"
+							onSubmitEditing={() => handleLookup()}
+							accessibilityLabel="Album code"
+							accessibilityHint="Enter the six character album code"
+						/>
+						{error ? (
+							<Text style={styles.errorText} accessibilityLiveRegion="polite">
+								{error}
+							</Text>
+						) : null}
+					</Card>
+
+					<Button
+						label="Find the album"
+						loading={isLoading}
+						disabled={code.length !== 6}
+						onPress={() => handleLookup()}
 					/>
-					{error && <Text style={styles.errorText}>{error}</Text>}
-				</View>
 
-				<TouchableOpacity
-					style={[styles.button, (code.length !== 6 || isLoading) && styles.buttonDisabled]}
-					onPress={() => handleLookup()}
-					disabled={code.length !== 6 || isLoading}
-					accessibilityRole="button"
-					accessibilityLabel="Find Event"
-					accessibilityHint="Look up event by code"
-					accessibilityState={{ disabled: code.length !== 6 || isLoading }}
-				>
-					{isLoading ? (
-						<ActivityIndicator color="#fff" />
-					) : (
-						<Text style={styles.buttonText}>Find Event</Text>
-					)}
-				</TouchableOpacity>
+					<View style={styles.divider}>
+						<View style={styles.dividerLine} />
+						<Text style={styles.dividerText}>or</Text>
+						<View style={styles.dividerLine} />
+					</View>
 
-				<View style={styles.divider}>
-					<View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
-					<Text style={[styles.dividerText, isDark && styles.textMuted]}>or</Text>
-					<View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
-				</View>
-
-				<TouchableOpacity
-					style={[styles.scanButton, isDark && styles.scanButtonDark]}
-					onPress={handleOpenScanner}
-					accessibilityRole="button"
-					accessibilityLabel="Scan QR Code"
-					accessibilityHint="Opens camera to scan event QR code"
-				>
-					<FontAwesome name="qrcode" size={22} color={isDark ? "#fff" : "#000"} />
-					<Text style={[styles.scanButtonText, isDark && styles.textDark]}>Scan QR Code</Text>
-				</TouchableOpacity>
-			</View>
+					<Button
+						label="Scan QR code"
+						icon="camera"
+						variant="secondary"
+						onPress={handleOpenScanner}
+						accessibilityHint="Opens the camera to scan the album QR code"
+					/>
+				</ScreenScroll>
+			</KeyboardAvoidingView>
 
 			<Modal
 				visible={scannerVisible}
@@ -351,346 +324,177 @@ export default function JoinEventScreen() {
 					<CameraView
 						style={styles.camera}
 						facing="back"
-						barcodeScannerSettings={{
-							barcodeTypes: ["qr"],
-						}}
+						barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
 						onBarcodeScanned={handleBarCodeScanned}
 					/>
 					<View style={styles.scannerOverlay}>
 						<View style={styles.scannerHeader}>
-							<TouchableOpacity
-								style={styles.scannerCloseButton}
-								onPress={() => setScannerVisible(false)}
-								accessibilityRole="button"
+							<IconButton
+								icon="x"
 								accessibilityLabel="Close scanner"
-							>
-								<FontAwesome name="times" size={24} color="#fff" />
-							</TouchableOpacity>
+								onPress={() => setScannerVisible(false)}
+								size={44}
+							/>
 						</View>
 						<View style={styles.scannerContent}>
 							<View style={styles.scannerFrame}>
-								<View style={[styles.cornerTL, styles.corner]} />
-								<View style={[styles.cornerTR, styles.corner]} />
-								<View style={[styles.cornerBL, styles.corner]} />
-								<View style={[styles.cornerBR, styles.corner]} />
+								<View style={[styles.corner, styles.cornerTL]} />
+								<View style={[styles.corner, styles.cornerTR]} />
+								<View style={[styles.corner, styles.cornerBL]} />
+								<View style={[styles.corner, styles.cornerBR]} />
 							</View>
-							<Text style={styles.scannerHint}>Point camera at QR code</Text>
+							<Text style={styles.scannerHint}>Point the camera at the host's code</Text>
 						</View>
 					</View>
 				</View>
 			</Modal>
-		</KeyboardAvoidingView>
+		</Screen>
 	);
 }
 
+const CORNER = 34;
+
 const styles = StyleSheet.create({
-	container: {
+	flex: {
 		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
 	},
 	content: {
-		flex: 1,
-		padding: 16,
-		justifyContent: "center",
-		gap: 14,
+		paddingHorizontal: space.lg,
+		paddingTop: space.sm,
+		paddingBottom: space.xxl,
+		gap: space.lg,
 	},
-	header: {
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		paddingHorizontal: 16,
-		paddingVertical: 16,
+	lede: {
+		...type.body,
+		color: theme.textMuted,
+		marginTop: -space.sm,
+	},
+
+	previewTitle: {
+		...type.title,
+		color: theme.textPrimary,
+		marginTop: space.sm,
+	},
+	previewMeta: {
+		...type.body,
+		color: theme.textMuted,
+		marginTop: space.sm,
+		lineHeight: 22,
+	},
+	previewPills: {
+		flexDirection: "row",
+		flexWrap: "wrap",
 		gap: 6,
+		marginTop: space.lg,
 	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#6b7280",
+	fullCard: {
+		borderColor: theme.danger,
 	},
-	title: {
-		fontSize: 28,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.8,
+	fullRow: {
+		flexDirection: "row",
+		gap: space.md,
+		alignItems: "flex-start",
 	},
-	subtitle: {
-		fontSize: 14,
-		color: "#6b7280",
-		textAlign: "center",
+	fullText: {
+		...type.callout,
+		color: theme.textMuted,
+		flex: 1,
 	},
-	form: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 16,
-	},
+
 	codeInput: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 16,
-		paddingVertical: 24,
-		paddingHorizontal: 24,
-		fontSize: 32,
-		fontWeight: "700",
-		fontFamily: "SpaceMono",
-		color: "#111827",
+		fontSize: 34,
+		fontWeight: "800",
+		letterSpacing: 10,
 		textAlign: "center",
-		letterSpacing: 8,
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-	},
-	codeInputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
+		color: theme.textPrimary,
+		paddingVertical: space.md,
 	},
 	errorText: {
-		color: "#ef4444",
-		fontSize: 14,
-		textAlign: "center",
-		marginTop: 12,
-	},
-	button: {
-		backgroundColor: "#111827",
-		paddingVertical: 18,
-		borderRadius: 999,
-		alignItems: "center",
-	},
-	buttonDisabled: {
-		opacity: 0.5,
-	},
-	buttonText: {
-		color: "#fff",
-		fontSize: 16,
+		...type.caption,
 		fontWeight: "600",
+		color: theme.danger,
+		textAlign: "center",
+		marginTop: space.sm,
 	},
+
 	divider: {
 		flexDirection: "row",
 		alignItems: "center",
-		marginVertical: 24,
+		gap: space.md,
 	},
 	dividerLine: {
 		flex: 1,
-		height: 1,
-		backgroundColor: "#d1d5db",
-	},
-	dividerLineDark: {
-		backgroundColor: "#242833",
+		height: StyleSheet.hairlineWidth,
+		backgroundColor: theme.border,
 	},
 	dividerText: {
-		paddingHorizontal: 16,
-		fontSize: 14,
-		color: "#999",
+		...type.caption,
+		color: theme.textFaint,
 	},
-	scanButton: {
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		paddingVertical: 18,
-		borderRadius: 999,
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		backgroundColor: "#fff",
-		gap: 12,
-	},
-	scanButtonDark: {
-		borderColor: "#242833",
-		backgroundColor: "#0f1115",
-	},
-	scanButtonText: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111827",
-	},
-	eventFullBanner: {
-		flexDirection: "row",
-		alignItems: "flex-start",
-		gap: 10,
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#ef4444",
-		padding: 14,
-	},
-	eventFullText: {
-		flex: 1,
-		fontSize: 14,
-		color: "#991b1b",
-		lineHeight: 20,
-	},
-	previewCard: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 20,
-		alignItems: "center",
-	},
-	previewCardDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	nameSection: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 16,
-	},
-	nameLabel: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 10,
-		textTransform: "uppercase",
-		letterSpacing: 1,
-	},
-	nameInput: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		fontSize: 18,
-		color: "#111827",
-		borderWidth: 2,
-		borderColor: "#e5e7eb",
-	},
-	nameInputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
-	},
-	inputError: {
-		borderColor: "#ef4444",
-	},
-	nameHint: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 8,
-	},
-	previewTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 12,
-		textAlign: "center",
-		letterSpacing: -0.7,
-	},
-	previewDate: {
-		fontSize: 16,
-		color: "#6b7280",
-		marginBottom: 4,
-	},
-	previewTime: {
-		fontSize: 16,
-		color: "#6b7280",
-		marginBottom: 16,
-	},
-	previewStats: {
-		paddingTop: 16,
-		borderTopWidth: 1,
-		borderTopColor: "#e5e7eb",
-		width: "100%",
-		alignItems: "center",
-	},
-	previewParticipants: {
-		fontSize: 14,
-		color: "#6b7280",
-	},
-	actions: {
-		gap: 12,
-	},
-	backButton: {
-		paddingVertical: 16,
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-	},
-	backButtonText: {
-		color: "#111827",
-		fontSize: 15,
-		fontWeight: "600",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
-	},
+
 	scannerContainer: {
 		flex: 1,
 		backgroundColor: "#000",
 	},
 	camera: {
-		flex: 1,
-	},
-	scannerOverlay: {
 		...StyleSheet.absoluteFillObject,
 	},
-	scannerHeader: {
-		paddingTop: 60,
-		paddingHorizontal: 20,
+	scannerOverlay: {
+		flex: 1,
 	},
-	scannerCloseButton: {
-		width: 44,
-		height: 44,
-		borderRadius: 22,
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		justifyContent: "center",
-		alignItems: "center",
+	scannerHeader: {
+		paddingTop: 56,
+		paddingHorizontal: space.lg,
+		alignItems: "flex-start",
 	},
 	scannerContent: {
 		flex: 1,
-		justifyContent: "center",
 		alignItems: "center",
+		justifyContent: "center",
+		gap: space.xxl,
+		paddingBottom: 80,
 	},
 	scannerFrame: {
-		width: 250,
-		height: 250,
-		position: "relative",
+		width: 244,
+		height: 244,
 	},
 	corner: {
 		position: "absolute",
-		width: 30,
-		height: 30,
-		borderColor: "#fff",
+		width: CORNER,
+		height: CORNER,
+		borderColor: theme.accent,
 	},
 	cornerTL: {
 		top: 0,
 		left: 0,
-		borderTopWidth: 4,
-		borderLeftWidth: 4,
-		borderTopLeftRadius: 12,
+		borderTopWidth: 3,
+		borderLeftWidth: 3,
+		borderTopLeftRadius: radius.lg,
 	},
 	cornerTR: {
 		top: 0,
 		right: 0,
-		borderTopWidth: 4,
-		borderRightWidth: 4,
-		borderTopRightRadius: 12,
+		borderTopWidth: 3,
+		borderRightWidth: 3,
+		borderTopRightRadius: radius.lg,
 	},
 	cornerBL: {
 		bottom: 0,
 		left: 0,
-		borderBottomWidth: 4,
-		borderLeftWidth: 4,
-		borderBottomLeftRadius: 12,
+		borderBottomWidth: 3,
+		borderLeftWidth: 3,
+		borderBottomLeftRadius: radius.lg,
 	},
 	cornerBR: {
 		bottom: 0,
 		right: 0,
-		borderBottomWidth: 4,
-		borderRightWidth: 4,
-		borderBottomRightRadius: 12,
+		borderBottomWidth: 3,
+		borderRightWidth: 3,
+		borderBottomRightRadius: radius.lg,
 	},
 	scannerHint: {
-		color: "#fff",
-		fontSize: 16,
-		marginTop: 32,
+		...type.bodyStrong,
+		color: "#FFFFFF",
 		textAlign: "center",
 	},
 });

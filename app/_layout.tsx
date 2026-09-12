@@ -1,5 +1,9 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import Feather from "@expo/vector-icons/Feather";
+import {
+	DarkTheme as DefaultNavigationTheme,
+	type Theme,
+	ThemeProvider,
+} from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Image as ExpoImage } from "expo-image";
 import {
@@ -11,10 +15,11 @@ import {
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { AppState, StatusBar } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
-import { useColorScheme } from "@/components/useColorScheme";
+import { theme } from "@/constants/theme";
 import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import {
 	flushTelemetryQueue,
@@ -57,8 +62,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function RootLayout() {
 	const [loaded, error] = useFonts({
-		SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-		...FontAwesome.font,
+		...Feather.font,
 	});
 	const initializeAuth = useAuthStore((state) => state.initializeAuth);
 	const isInitialized = useAuthStore((state) => state.isInitialized);
@@ -92,8 +96,26 @@ function RootLayout() {
 	return <RootLayoutNav />;
 }
 
+const navigationTheme: Theme = {
+	dark: true,
+	colors: {
+		primary: theme.accent,
+		background: theme.page,
+		card: theme.page,
+		text: theme.textPrimary,
+		border: theme.border,
+		notification: theme.accent,
+	},
+	fonts: DefaultNavigationTheme.fonts,
+};
+
+const stackScreenOptions = {
+	headerShown: false,
+	contentStyle: { backgroundColor: theme.page },
+	animation: "slide_from_right",
+} as const;
+
 function RootLayoutNav() {
-	const colorScheme = useColorScheme();
 	const pathname = usePathname();
 	const user = useAuthStore((state) => state.user);
 	const initializePendingUploads = useEventStore((state) => state.initializePendingUploads);
@@ -218,55 +240,37 @@ function RootLayoutNav() {
 	}, [user?.id]);
 
 	return (
-		<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-			<StatusBar hidden />
-			<Stack>
-				<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-				<Stack.Screen
-					name="event/create"
-					options={{
-						title: "Create Event",
-						presentation: "modal",
-					}}
-				/>
-				<Stack.Screen
-					name="event/join"
-					options={{
-						title: "Join Event",
-						presentation: "modal",
-					}}
-				/>
-				<Stack.Screen
-					name="event/[id]"
-					options={{
-						title: "Event",
-						headerBackTitle: "Back",
-					}}
-				/>
-				<Stack.Screen
-					name="event/share/[id]"
-					options={{
-						title: "Share Event",
-						presentation: "modal",
-					}}
-				/>
-				<Stack.Screen
-					name="contribute/[eventId]"
-					options={{
-						title: "Add Photos",
-						presentation: "modal",
-					}}
-				/>
-				<Stack.Screen
-					name="onboarding"
-					options={{
-						headerShown: false,
-						presentation: "modal",
-						gestureEnabled: false,
-					}}
-				/>
-			</Stack>
-		</ThemeProvider>
+		<SafeAreaProvider>
+			<ThemeProvider value={navigationTheme}>
+				<StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+				<Stack screenOptions={stackScreenOptions}>
+					<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+					<Stack.Screen
+						name="event/create"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen name="event/join" options={{ headerShown: false, presentation: "modal" }} />
+					<Stack.Screen name="event/[id]" options={{ headerShown: false }} />
+					<Stack.Screen name="event/edit/[id]" options={{ headerShown: false }} />
+					<Stack.Screen
+						name="event/share/[id]"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen
+						name="contribute/[eventId]"
+						options={{ headerShown: false, presentation: "modal" }}
+					/>
+					<Stack.Screen
+						name="onboarding"
+						options={{
+							headerShown: false,
+							presentation: "modal",
+							gestureEnabled: false,
+						}}
+					/>
+				</Stack>
+			</ThemeProvider>
+		</SafeAreaProvider>
 	);
 }
 

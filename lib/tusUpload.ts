@@ -94,10 +94,7 @@ async function loadPersistedState(fingerprint: string): Promise<PersistedTusStat
 	}
 }
 
-async function savePersistedState(
-	fingerprint: string,
-	state: PersistedTusState
-): Promise<void> {
+async function savePersistedState(fingerprint: string, state: PersistedTusState): Promise<void> {
 	try {
 		await AsyncStorage.setItem(stateKey(fingerprint), JSON.stringify(state));
 	} catch (error) {
@@ -268,10 +265,7 @@ function encodeObjectPath(objectName: string): string {
 		.join("/");
 }
 
-async function verifyObjectExists(args: {
-	bucket: string;
-	objectName: string;
-}): Promise<void> {
+async function verifyObjectExists(args: { bucket: string; objectName: string }): Promise<void> {
 	const { bucket, objectName } = args;
 	const base = process.env.EXPO_PUBLIC_SUPABASE_URL;
 	if (!base) {
@@ -291,9 +285,7 @@ async function verifyObjectExists(args: {
 	throw err;
 }
 
-export async function uploadMediaResumable(
-	options: TusUploadOptions
-): Promise<TusUploadResult> {
+export async function uploadMediaResumable(options: TusUploadOptions): Promise<TusUploadResult> {
 	const {
 		fileUri,
 		fileSize,
@@ -393,9 +385,7 @@ export async function uploadMediaResumable(
 					patchMs: Date.now() - patchStart,
 					err: chunkError instanceof Error ? chunkError.message : String(chunkError),
 					httpStatus:
-						chunkError &&
-						typeof chunkError === "object" &&
-						"httpStatus" in chunkError
+						chunkError && typeof chunkError === "object" && "httpStatus" in chunkError
 							? (chunkError as { httpStatus?: number }).httpStatus
 							: undefined,
 				},
@@ -490,9 +480,7 @@ export async function uploadMediaResumable(
 					elapsedMs: Date.now() - createStart,
 					err: createError instanceof Error ? createError.message : String(createError),
 					httpStatus:
-						createError &&
-						typeof createError === "object" &&
-						"httpStatus" in createError
+						createError && typeof createError === "object" && "httpStatus" in createError
 							? (createError as { httpStatus?: number }).httpStatus
 							: undefined,
 				},

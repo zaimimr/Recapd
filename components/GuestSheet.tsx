@@ -1,7 +1,5 @@
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	ActivityIndicator,
 	Alert,
 	Animated,
 	Dimensions,
@@ -14,7 +12,8 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getAvatarColor } from "@/lib/colors";
+import { Avatar, Button, Eyebrow, IconButton, Pill } from "@/components/ui";
+import { radius, space, theme, type } from "@/constants/theme";
 import { type HostReminderType, sendHostReminder } from "@/lib/hostReminders";
 import type { ParticipantWithStats } from "@/store/eventStore";
 
@@ -26,7 +25,6 @@ interface GuestSheetProps {
 	visible: boolean;
 	onClose: () => void;
 	participants: ParticipantWithStats[];
-	isDark: boolean;
 	isHost: boolean;
 	currentUserId: string;
 	eventId: string;
@@ -38,7 +36,6 @@ export default function GuestSheet({
 	visible,
 	onClose,
 	participants,
-	isDark,
 	isHost,
 	currentUserId,
 	eventId,
@@ -58,12 +55,15 @@ export default function GuestSheet({
 			setSendingType(null);
 
 			if (result.ok) {
+				if (result.sent === 0) {
+					Alert.alert(
+						"Nobody to remind yet",
+						"None of your guests have turned notifications on, so there was nobody to reach."
+					);
+					return;
+				}
 				const noun = result.sent === 1 ? "guest" : "guests";
-				const message =
-					result.sent === 0
-						? "No guests have notifications enabled yet."
-						: `Reminder sent to ${result.sent} ${noun}.`;
-				Alert.alert("Reminder sent", message);
+				Alert.alert("Reminder sent", `Reminder sent to ${result.sent} ${noun}.`);
 				return;
 			}
 
@@ -187,25 +187,25 @@ export default function GuestSheet({
 				<Animated.View
 					style={[
 						styles.sheet,
-						isDark && styles.sheetDark,
 						{
 							transform: [{ translateY }],
-							paddingBottom: insets.bottom + 16,
+							paddingBottom: insets.bottom + space.lg,
 						},
 					]}
 				>
 					<View {...panResponder.panHandlers}>
 						<View style={styles.handleContainer}>
-							<View style={[styles.handle, isDark && styles.handleDark]} />
+							<View style={styles.handle} />
 						</View>
 
-						<View style={[styles.header, isDark && styles.headerDark]}>
-							<Text style={[styles.title, isDark && styles.textDark]}>
-								{participants.length} Guest{participants.length !== 1 ? "s" : ""}
-							</Text>
-							<TouchableOpacity onPress={closeSheet} style={styles.closeButton}>
-								<FontAwesome name="times" size={20} color={isDark ? "#8e8e93" : "#666"} />
-							</TouchableOpacity>
+						<View style={styles.header}>
+							<View style={styles.headerText}>
+								<Eyebrow>Guest list</Eyebrow>
+								<Text style={styles.title}>
+									{participants.length} {participants.length === 1 ? "guest" : "guests"}
+								</Text>
+							</View>
+							<IconButton icon="x" accessibilityLabel="Close guest list" onPress={closeSheet} />
 						</View>
 					</View>
 
@@ -218,116 +218,69 @@ export default function GuestSheet({
 						renderItem={({ item }) => {
 							const isCurrentUser = item.userId === currentUserId;
 							const canRemove = isHost && item.role !== "host" && !isCurrentUser;
+							const statusLabel =
+								item.photoCount > 0
+									? `${item.photoCount} ${item.photoCount === 1 ? "item" : "items"}`
+									: item.noPhotosToUpload
+										? "Nothing to share"
+										: "Waiting";
 
 							return (
-								<View style={[styles.participantRow, isDark && styles.participantRowDark]}>
-									<View
-										style={[styles.avatar, { backgroundColor: getAvatarColor(item.displayName) }]}
-									>
-										<Text style={styles.avatarText}>
-											{item.displayName.charAt(0).toUpperCase()}
-										</Text>
-									</View>
-									<View style={styles.participantInfo}>
+								<View style={styles.row}>
+									<Avatar name={item.displayName} size={40} />
+									<View style={styles.rowText}>
 										<View style={styles.nameRow}>
-											<Text style={[styles.participantName, isDark && styles.textDark]}>
+											<Text style={styles.name} numberOfLines={1}>
 												{item.displayName}
 											</Text>
-											{isCurrentUser && <Text style={styles.youLabel}>(You)</Text>}
-											{item.role === "host" && (
-												<View style={[styles.hostBadge, isDark && styles.hostBadgeDark]}>
-													<Text style={[styles.hostBadgeText, isDark && styles.hostBadgeTextDark]}>
-														Host
-													</Text>
-												</View>
-											)}
+											{isCurrentUser ? <Text style={styles.you}>you</Text> : null}
 										</View>
-										{!(isCurrentUser && item.role === "host") && (
-											<Text style={styles.status}>
-												{item.photoCount > 0
-													? "shared"
-													: item.noPhotosToUpload
-														? "nothing to share"
-														: "waiting"}
-											</Text>
-										)}
+										<Text style={styles.status}>{statusLabel}</Text>
 									</View>
-									{canRemove && (
-										<TouchableOpacity
+									{item.role === "host" ? <Pill label="Host" tone="accent" /> : null}
+									{item.photoCount > 0 ? (
+										<Pill label={String(item.photoCount)} icon="image" />
+									) : null}
+									{canRemove ? (
+										<IconButton
+											icon="user-minus"
+											tone="danger"
+											size={34}
+											accessibilityLabel={`Remove ${item.displayName}`}
 											onPress={() => onRemoveParticipant(item.userId, item.displayName)}
-											style={styles.removeButton}
-											hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-										>
-											<FontAwesome name="minus-circle" size={20} color="#ef4444" />
-										</TouchableOpacity>
-									)}
-									<View style={styles.photoCount}>
-										<Text style={[styles.photoCountValue, isDark && styles.photoCountValueDark]}>
-											{item.photoCount}
-										</Text>
-										<FontAwesome name="camera" size={12} color="#8e8e93" />
-									</View>
+										/>
+									) : null}
 								</View>
 							);
 						}}
 						ListFooterComponent={
-							<>
-								{isHost && (
+							<View style={styles.footer}>
+								{isHost ? (
 									<View style={styles.hostActions}>
-										<TouchableOpacity
-											style={[
-												styles.reminderButton,
-												isDark && styles.reminderButtonDark,
-												sendingType !== null && styles.reminderButtonDisabled,
-											]}
+										<Button
+											label="Remind to upload"
+											icon="upload-cloud"
+											variant="secondary"
+											size="md"
+											loading={sendingType === "upload"}
+											disabled={sendingType !== null}
 											onPress={() => handleSendReminder("upload")}
+											style={styles.hostAction}
+										/>
+										<Button
+											label="Remind to snap"
+											icon="camera"
+											variant="secondary"
+											size="md"
+											loading={sendingType === "take_photos"}
 											disabled={sendingType !== null}
-										>
-											{sendingType === "upload" ? (
-												<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
-											) : (
-												<>
-													<FontAwesome
-														name="cloud-upload"
-														size={14}
-														color={isDark ? "#fff" : "#111827"}
-													/>
-													<Text style={[styles.reminderButtonText, isDark && styles.textDark]}>
-														Remind to upload
-													</Text>
-												</>
-											)}
-										</TouchableOpacity>
-										<TouchableOpacity
-											style={[
-												styles.reminderButton,
-												isDark && styles.reminderButtonDark,
-												sendingType !== null && styles.reminderButtonDisabled,
-											]}
 											onPress={() => handleSendReminder("take_photos")}
-											disabled={sendingType !== null}
-										>
-											{sendingType === "take_photos" ? (
-												<ActivityIndicator size="small" color={isDark ? "#fff" : "#111827"} />
-											) : (
-												<>
-													<FontAwesome
-														name="camera"
-														size={14}
-														color={isDark ? "#fff" : "#111827"}
-													/>
-													<Text style={[styles.reminderButtonText, isDark && styles.textDark]}>
-														Remind to snap
-													</Text>
-												</>
-											)}
-										</TouchableOpacity>
+											style={styles.hostAction}
+										/>
 									</View>
-								)}
-								<TouchableOpacity style={styles.leaveButton} onPress={onLeaveEvent}>
-									<Text style={styles.leaveButtonText}>Leave Event</Text>
-								</TouchableOpacity>
-							</>
+								) : null}
+								<Button label="Leave this album" variant="ghost" size="md" onPress={onLeaveEvent} />
+							</View>
 						}
 					/>
 				</Animated.View>
@@ -343,185 +296,86 @@ const styles = StyleSheet.create({
 	},
 	backdrop: {
 		...StyleSheet.absoluteFillObject,
-		backgroundColor: "rgba(0, 0, 0, 0.4)",
+		backgroundColor: theme.overlay,
 	},
 	sheet: {
-		backgroundColor: "#fff",
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		maxHeight: SHEET_HEIGHT,
-		shadowColor: "#000",
-		shadowOffset: { width: 0, height: -3 },
-		shadowOpacity: 0.1,
-		shadowRadius: 10,
-		elevation: 20,
-	},
-	sheetDark: {
-		backgroundColor: "#0f1115",
+		maxHeight: "82%",
+		backgroundColor: theme.card,
+		borderTopLeftRadius: radius.xxl,
+		borderTopRightRadius: radius.xxl,
+		borderTopWidth: 1,
+		borderColor: theme.border,
 	},
 	handleContainer: {
 		alignItems: "center",
-		paddingTop: 10,
-		paddingBottom: 6,
+		paddingTop: space.md,
+		paddingBottom: space.sm,
 	},
 	handle: {
-		width: 36,
-		height: 5,
-		backgroundColor: "#d1d1d6",
-		borderRadius: 2.5,
-	},
-	handleDark: {
-		backgroundColor: "#48484a",
+		width: 40,
+		height: 4,
+		borderRadius: 2,
+		backgroundColor: theme.borderStrong,
 	},
 	header: {
 		flexDirection: "row",
 		alignItems: "center",
 		justifyContent: "space-between",
-		paddingHorizontal: 20,
-		paddingTop: 4,
-		paddingBottom: 14,
-		borderBottomWidth: 1,
-		borderBottomColor: "#e5e7eb",
+		paddingHorizontal: space.xl,
+		paddingBottom: space.lg,
 	},
-	headerDark: {
-		borderBottomColor: "#242833",
+	headerText: {
+		gap: space.xs,
 	},
 	title: {
-		fontSize: 19,
-		fontWeight: "700",
-		color: "#111827",
-		letterSpacing: -0.5,
-	},
-	closeButton: {
-		padding: 6,
-		marginRight: -6,
+		...type.title,
+		color: theme.textPrimary,
 	},
 	list: {
-		paddingHorizontal: 20,
-		paddingTop: 6,
+		paddingHorizontal: space.lg,
+		paddingBottom: space.lg,
 	},
-	participantRow: {
+	row: {
 		flexDirection: "row",
 		alignItems: "center",
-		paddingVertical: 12,
-		borderBottomWidth: 1,
-		borderBottomColor: "#e5e7eb",
+		gap: space.md,
+		paddingVertical: space.md,
+		borderBottomWidth: StyleSheet.hairlineWidth,
+		borderBottomColor: theme.border,
 	},
-	participantRowDark: {
-		borderBottomColor: "#242833",
-	},
-	avatar: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		justifyContent: "center",
-		alignItems: "center",
-	},
-	avatarText: {
-		color: "#fff",
-		fontSize: 17,
-		fontWeight: "600",
-	},
-	participantInfo: {
+	rowText: {
 		flex: 1,
-		marginLeft: 12,
+		gap: 2,
+		minWidth: 0,
 	},
 	nameRow: {
 		flexDirection: "row",
 		alignItems: "center",
-		gap: 8,
+		gap: 6,
 	},
-	participantName: {
-		fontSize: 16,
-		fontWeight: "600",
-		color: "#111827",
-		letterSpacing: -0.4,
+	name: {
+		...type.bodyStrong,
+		color: theme.textPrimary,
+		flexShrink: 1,
 	},
-	hostBadge: {
-		backgroundColor: "#111827",
-		paddingHorizontal: 9,
-		paddingVertical: 4,
-		borderRadius: 999,
-	},
-	hostBadgeDark: {
-		backgroundColor: "#ffffff",
-	},
-	hostBadgeText: {
-		color: "#fff",
-		fontSize: 11,
-		fontWeight: "600",
-	},
-	hostBadgeTextDark: {
-		color: "#0a0d12",
+	you: {
+		...type.caption,
+		color: theme.textFaint,
 	},
 	status: {
-		fontSize: 13,
-		color: "#6b7280",
-		marginTop: 2,
-		textTransform: "uppercase",
-		letterSpacing: 0.8,
+		...type.caption,
+		fontWeight: "500",
+		color: theme.textMuted,
 	},
-	photoCount: {
-		flexDirection: "row",
-		alignItems: "center",
-		gap: 5,
-	},
-	photoCountValue: {
-		fontSize: 17,
-		fontWeight: "400",
-		color: "#8e8e93",
-	},
-	photoCountValueDark: {
-		color: "#8e8e93",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	youLabel: {
-		fontSize: 14,
-		color: "#6b7280",
-	},
-	removeButton: {
-		paddingHorizontal: 8,
+	footer: {
+		gap: space.md,
+		paddingTop: space.xl,
 	},
 	hostActions: {
 		flexDirection: "row",
-		gap: 10,
-		marginTop: 14,
+		gap: space.sm,
 	},
-	reminderButton: {
+	hostAction: {
 		flex: 1,
-		flexDirection: "row",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 8,
-		paddingVertical: 12,
-		borderWidth: 1,
-		borderColor: "#111827",
-		borderRadius: 999,
-		minHeight: 44,
-	},
-	reminderButtonDark: {
-		borderColor: "#fff",
-	},
-	reminderButtonDisabled: {
-		opacity: 0.5,
-	},
-	reminderButtonText: {
-		color: "#111827",
-		fontSize: 14,
-		fontWeight: "600",
-		letterSpacing: -0.2,
-	},
-	leaveButton: {
-		alignItems: "center",
-		paddingVertical: 10,
-		marginTop: 16,
-		marginBottom: 4,
-	},
-	leaveButtonText: {
-		color: "#ef4444",
-		fontSize: 14,
-		fontWeight: "500",
 	},
 });

@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
 	ActivityIndicator,
@@ -7,15 +7,24 @@ import {
 	Platform,
 	StyleSheet,
 	Text,
-	TextInput,
-	TouchableOpacity,
 	View,
 } from "react-native";
-import { useColorScheme } from "@/components/useColorScheme";
+import {
+	Button,
+	Card,
+	EmptyState,
+	Eyebrow,
+	Field,
+	NavBar,
+	Pill,
+	Screen,
+	ScreenScroll,
+} from "@/components/ui";
+import { space, theme, type } from "@/constants/theme";
 import { logger } from "@/lib/logger";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { useEventStore } from "@/store/eventStore";
+import { EVENT_NOT_FOUND_ERROR, useEventStore } from "@/store/eventStore";
 import type { Event } from "@/types/database";
 
 interface EventPreview extends Event {
@@ -35,8 +44,6 @@ export default function JoinByCodeScreen() {
 	const createUser = useAuthStore((state) => state.createUser);
 	const authLoading = useAuthStore((state) => state.isLoading);
 	const { fetchEventByCode, joinEvent, isLoading, error, clearError } = useEventStore();
-	const colorScheme = useColorScheme();
-	const isDark = colorScheme === "dark";
 
 	const [eventPreview, setEventPreview] = useState<EventPreview | null>(null);
 	const [displayName, setDisplayName] = useState("");
@@ -106,297 +113,143 @@ export default function JoinByCodeScreen() {
 	const isJoining = isLoading || authLoading;
 	const canJoin = user || displayName.trim().length >= 2;
 
-	// Loading state
 	if (isLoading && !lookupDone) {
 		return (
-			<>
-				<Stack.Screen options={{ title: "Join Event" }} />
-				<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-					<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-					<Text style={[styles.loadingText, isDark && styles.textMuted]}>Looking up event...</Text>
-				</View>
-			</>
+			<Screen style={styles.centered}>
+				<ActivityIndicator size="large" color={theme.accent} />
+				<Text style={styles.loadingText}>Looking up the album…</Text>
+			</Screen>
 		);
 	}
 
-	// Error state - event not found
 	if (lookupDone && !eventPreview) {
 		return (
-			<>
-				<Stack.Screen options={{ title: "Join Event" }} />
-				<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-					<Text style={[styles.errorTitle, isDark && styles.textDark]}>Event Not Found</Text>
-					<Text style={[styles.errorMessage, isDark && styles.textMuted]}>
-						{error || `No event found with code "${code}"`}
-					</Text>
-					<TouchableOpacity style={styles.button} onPress={handleEnterDifferentCode}>
-						<Text style={styles.buttonText}>Enter Different Code</Text>
-					</TouchableOpacity>
-				</View>
-			</>
+			<Screen edges="both">
+				<NavBar title="Join album" onBack={handleEnterDifferentCode} />
+				<EmptyState
+					icon="alert-circle"
+					title="No album with that code"
+					body={
+						error && error !== EVENT_NOT_FOUND_ERROR
+							? error
+							: `Nothing matches "${code}". It may have expired, or the code was mistyped.`
+					}
+					action={<Button label="Enter a different code" onPress={handleEnterDifferentCode} />}
+				/>
+			</Screen>
 		);
 	}
 
-	// Preview and join state
 	if (eventPreview) {
 		return (
-			<>
-				<Stack.Screen options={{ title: "Join Event" }} />
+			<Screen edges="both">
+				<NavBar title="Join album" onBack={handleEnterDifferentCode} />
 				<KeyboardAvoidingView
-					style={[styles.container, isDark && styles.containerDark]}
+					style={styles.flex}
 					behavior={Platform.OS === "ios" ? "padding" : "height"}
 				>
-					<View style={styles.content}>
-						<View style={[styles.previewCard, isDark && styles.previewCardDark]}>
-							<Text style={[styles.kicker, isDark && styles.textMuted]}>Join</Text>
-							<Text style={[styles.previewTitle, isDark && styles.textDark]}>
-								{eventPreview.title}
-							</Text>
-							<Text style={[styles.previewDate, isDark && styles.textMuted]}>
+					<ScreenScroll contentContainerStyle={styles.content}>
+						<Card>
+							<Eyebrow>You're invited to</Eyebrow>
+							<Text style={styles.previewTitle}>{eventPreview.title}</Text>
+							<Text style={styles.previewMeta}>
 								{formatLocalizedDate(eventPreview.starts_at, {
 									weekday: "long",
 									month: "long",
 									day: "numeric",
-									year: "numeric",
 								})}
-							</Text>
-							<Text style={[styles.previewTime, isDark && styles.textMuted]}>
+								{"\n"}
 								{formatLocalizedTimeRange(eventPreview.starts_at, eventPreview.ends_at)}
 							</Text>
-							<View style={styles.previewStats}>
-								<Text style={[styles.previewParticipants, isDark && styles.textMuted]}>
-									{eventPreview.participant_count || 0} participant
-									{eventPreview.participant_count !== 1 ? "s" : ""}
-								</Text>
-							</View>
-						</View>
-
-						{!user && (
-							<View style={[styles.nameSection, isDark && styles.previewCardDark]}>
-								<Text style={[styles.nameLabel, isDark && styles.textDark]}>
-									What should we call you?
-								</Text>
-								<TextInput
-									style={[
-										styles.nameInput,
-										isDark && styles.nameInputDark,
-										nameError ? styles.inputError : null,
-									]}
-									placeholder="Enter your name"
-									placeholderTextColor={isDark ? "#666" : "#999"}
-									value={displayName}
-									onChangeText={(text) => {
-										setDisplayName(text);
-										setNameError("");
-									}}
-									autoCapitalize="words"
-									autoCorrect={false}
-									maxLength={30}
+							<View style={styles.previewPills}>
+								<Pill
+									label={`${eventPreview.participant_count || 0} ${
+										eventPreview.participant_count === 1 ? "guest" : "guests"
+									}`}
+									icon="users"
 								/>
-								{nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
-								<Text style={[styles.nameHint, isDark && styles.textMuted]}>
-									This is how you'll appear to others
-								</Text>
 							</View>
-						)}
+						</Card>
 
-						<View style={styles.actions}>
-							<TouchableOpacity
-								style={[styles.button, (!canJoin || isJoining) && styles.buttonDisabled]}
-								onPress={handleJoin}
-								disabled={!canJoin || isJoining}
-							>
-								{isJoining ? (
-									<ActivityIndicator color="#fff" />
-								) : (
-									<Text style={styles.buttonText}>Join Event</Text>
-								)}
-							</TouchableOpacity>
+						{!user ? (
+							<Field
+								label="What should we call you?"
+								placeholder="Your first name"
+								value={displayName}
+								onChangeText={(text) => {
+									setDisplayName(text);
+									setNameError("");
+								}}
+								error={nameError || null}
+								hint="This is how you show up on the photos you add."
+								autoCapitalize="words"
+								autoCorrect={false}
+								maxLength={30}
+								returnKeyType="go"
+								onSubmitEditing={handleJoin}
+							/>
+						) : null}
 
-							<TouchableOpacity style={styles.backButton} onPress={handleEnterDifferentCode}>
-								<Text style={[styles.backButtonText, isDark && styles.textDark]}>
-									Enter Different Code
-								</Text>
-							</TouchableOpacity>
-						</View>
-					</View>
+						<Button
+							label="Join the album"
+							icon="log-in"
+							loading={isJoining}
+							disabled={!canJoin}
+							onPress={handleJoin}
+						/>
+						<Button
+							label="Use a different code"
+							variant="ghost"
+							size="md"
+							onPress={handleEnterDifferentCode}
+						/>
+					</ScreenScroll>
 				</KeyboardAvoidingView>
-			</>
+			</Screen>
 		);
 	}
 
-	// Fallback
 	return (
-		<>
-			<Stack.Screen options={{ title: "Join Event" }} />
-			<View style={[styles.container, styles.centered, isDark && styles.containerDark]}>
-				<ActivityIndicator size="large" color={isDark ? "#fff" : "#000"} />
-			</View>
-		</>
+		<Screen style={styles.centered}>
+			<ActivityIndicator size="large" color={theme.accent} />
+		</Screen>
 	);
 }
 
 const styles = StyleSheet.create({
-	container: {
+	flex: {
 		flex: 1,
-		backgroundColor: "#f3f4f6",
-	},
-	containerDark: {
-		backgroundColor: "#05070b",
 	},
 	centered: {
-		justifyContent: "center",
 		alignItems: "center",
-		padding: 24,
-	},
-	content: {
-		flex: 1,
-		padding: 16,
 		justifyContent: "center",
-		gap: 14,
+		gap: space.lg,
 	},
 	loadingText: {
-		fontSize: 16,
-		color: "#666",
-		marginTop: 16,
+		...type.body,
+		color: theme.textMuted,
 	},
-	errorTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#000",
-		marginBottom: 12,
-	},
-	errorMessage: {
-		fontSize: 16,
-		color: "#666",
-		textAlign: "center",
-		marginBottom: 32,
-	},
-	previewCard: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 20,
-		alignItems: "center",
-	},
-	previewCardDark: {
-		backgroundColor: "#0f1115",
-		borderColor: "#242833",
-	},
-	kicker: {
-		fontSize: 11,
-		fontWeight: "700",
-		letterSpacing: 1.2,
-		textTransform: "uppercase",
-		color: "#6b7280",
-		marginBottom: 8,
+	content: {
+		paddingHorizontal: space.lg,
+		paddingTop: space.sm,
+		paddingBottom: space.xxl,
+		gap: space.lg,
 	},
 	previewTitle: {
-		fontSize: 24,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 12,
-		textAlign: "center",
-		letterSpacing: -0.7,
+		...type.title,
+		color: theme.textPrimary,
+		marginTop: space.sm,
 	},
-	previewDate: {
-		fontSize: 16,
-		color: "#6b7280",
-		marginBottom: 4,
+	previewMeta: {
+		...type.body,
+		color: theme.textMuted,
+		marginTop: space.sm,
+		lineHeight: 22,
 	},
-	previewTime: {
-		fontSize: 16,
-		color: "#6b7280",
-		marginBottom: 16,
-	},
-	previewStats: {
-		paddingTop: 16,
-		borderTopWidth: 1,
-		borderTopColor: "#e5e7eb",
-		width: "100%",
-		alignItems: "center",
-	},
-	previewParticipants: {
-		fontSize: 14,
-		color: "#6b7280",
-	},
-	nameSection: {
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#e5e7eb",
-		padding: 16,
-	},
-	nameLabel: {
-		fontSize: 12,
-		fontWeight: "700",
-		color: "#111827",
-		marginBottom: 10,
-		textTransform: "uppercase",
-		letterSpacing: 1,
-	},
-	nameInput: {
-		backgroundColor: "#f9fafb",
-		borderRadius: 14,
-		paddingVertical: 16,
-		paddingHorizontal: 20,
-		fontSize: 18,
-		color: "#111827",
-		borderWidth: 2,
-		borderColor: "#e5e7eb",
-	},
-	nameInputDark: {
-		backgroundColor: "#151821",
-		borderColor: "#242833",
-		color: "#fff",
-	},
-	inputError: {
-		borderColor: "#ef4444",
-	},
-	nameHint: {
-		fontSize: 14,
-		color: "#6b7280",
-		marginTop: 8,
-	},
-	errorText: {
-		color: "#ef4444",
-		fontSize: 14,
-		textAlign: "center",
-		marginTop: 12,
-	},
-	actions: {
-		gap: 12,
-	},
-	button: {
-		backgroundColor: "#111827",
-		paddingVertical: 18,
-		borderRadius: 999,
-		alignItems: "center",
-	},
-	buttonDisabled: {
-		opacity: 0.5,
-	},
-	buttonText: {
-		color: "#fff",
-		fontSize: 16,
-		fontWeight: "600",
-	},
-	backButton: {
-		paddingVertical: 16,
-		alignItems: "center",
-		backgroundColor: "#fff",
-		borderWidth: 1,
-		borderColor: "#d1d5db",
-		borderRadius: 999,
-	},
-	backButtonText: {
-		color: "#111827",
-		fontSize: 15,
-		fontWeight: "600",
-	},
-	textDark: {
-		color: "#fff",
-	},
-	textMuted: {
-		color: "#888",
+	previewPills: {
+		flexDirection: "row",
+		flexWrap: "wrap",
+		gap: 6,
+		marginTop: space.lg,
 	},
 });
