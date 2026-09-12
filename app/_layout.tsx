@@ -80,7 +80,6 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 
 function RootLayout() {
 	const [loaded, error] = useFonts({
-		SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
 		...Feather.font,
 	});
 	const initializeAuth = useAuthStore((state) => state.initializeAuth);

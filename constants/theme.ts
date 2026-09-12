@@ -2,7 +2,6 @@ const palette = {
 	coral: "#FF5E62",
 	hotPink: "#FF2D8E",
 	violet: "#8B2FE0",
-	warm: "#FF7A45",
 	pinkSoft: "#FF7FB4",
 
 	white: "#FFFFFF",
@@ -20,17 +19,13 @@ const palette = {
 	danger: "#EF4444",
 	success: "#22C55E",
 	warning: "#F59E0B",
-	info: "#3BA9FF",
 };
 
 export const brandGradient = ["#FF5E62", "#FF2D8E", "#8B2FE0"] as const;
 
 export const gradients = {
 	brand: brandGradient,
-	brandSoft: ["rgba(255,94,98,0.18)", "rgba(139,47,224,0.18)"] as const,
 	danger: ["#F97066", "#EF4444"] as const,
-	scrimTop: ["rgba(7,7,12,0.78)", "rgba(7,7,12,0)"] as const,
-	scrimBottom: ["rgba(7,7,12,0)", "rgba(7,7,12,0.92)"] as const,
 };
 
 export const space = {
@@ -63,7 +58,6 @@ export const type = {
 	callout: { fontSize: 13.5, fontWeight: "500", letterSpacing: 0, lineHeight: 19 },
 	caption: { fontSize: 12, fontWeight: "600", letterSpacing: 0, lineHeight: 16 },
 	eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, lineHeight: 14 },
-	mono: { fontSize: 22, fontWeight: "800", letterSpacing: 2 },
 } as const;
 
 export const shadow = {
@@ -80,13 +74,6 @@ export const shadow = {
 		shadowRadius: 20,
 		shadowOffset: { width: 0, height: 10 },
 		elevation: 10,
-	},
-	sheet: {
-		shadowColor: "#000",
-		shadowOpacity: 0.5,
-		shadowRadius: 28,
-		shadowOffset: { width: 0, height: -6 },
-		elevation: 18,
 	},
 } as const;
 
@@ -109,8 +96,6 @@ export interface AppTheme {
 	textOnAccent: string;
 	accent: string;
 	accentSecondary: string;
-	accentWarm: string;
-	accentMuted: string;
 	accentSoft: string;
 	accentSurface: string;
 	accentSurfaceStrong: string;
@@ -122,7 +107,6 @@ export interface AppTheme {
 	successSurface: string;
 	warning: string;
 	warningSurface: string;
-	info: string;
 	pillSurface: string;
 	pillBorder: string;
 	overlay: string;
@@ -144,8 +128,6 @@ const dark: AppTheme = {
 	textOnAccent: palette.white,
 	accent: palette.hotPink,
 	accentSecondary: palette.violet,
-	accentWarm: palette.warm,
-	accentMuted: palette.coral,
 	accentSoft: palette.pinkSoft,
 	accentSurface: "rgba(255,45,142,0.14)",
 	accentSurfaceStrong: "rgba(255,45,142,0.24)",
@@ -157,7 +139,6 @@ const dark: AppTheme = {
 	successSurface: "rgba(34,197,94,0.16)",
 	warning: palette.warning,
 	warningSurface: "rgba(245,158,11,0.16)",
-	info: palette.info,
 	pillSurface: "rgba(255,255,255,0.08)",
 	pillBorder: "rgba(255,255,255,0.14)",
 	overlay: "rgba(7,7,12,0.82)",
@@ -167,4 +148,3 @@ const dark: AppTheme = {
 
 /** Recapd ships a single dark appearance. */
 export const theme = dark;
-export { palette };
