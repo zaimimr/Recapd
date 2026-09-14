@@ -406,7 +406,7 @@ describe("checking Pro entitlement from customer info", () => {
 				verification: "VERIFIED",
 			},
 			activeSubscriptions: ["monthly"],
-		} as CustomerInfo;
+		} as unknown as CustomerInfo;
 
 		expect(checkProEntitlement(info, "recapd_pro")).toBe(true);
 		logSpy.mockRestore();
@@ -614,7 +614,7 @@ describe("billing provider modularity", () => {
 				verification: "VERIFIED",
 			},
 			activeSubscriptions: ["monthly"],
-		} as CustomerInfo;
+		} as unknown as CustomerInfo;
 
 		const fakeProvider: BillingProvider = {
 			name: "fake",
