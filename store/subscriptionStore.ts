@@ -80,10 +80,28 @@ function getProPlanRevenueCatConfig(plans: SubscriptionPlanCatalog): {
 	};
 }
 
+function resolveUserId(userId: string | null): string | null {
+	if (userId) return userId;
+
+	try {
+		const authModule = require("@/store/authStore") as typeof import("@/store/authStore");
+		return authModule.useAuthStore.getState().user?.id ?? null;
+	} catch {
+		return null;
+	}
+}
+
 async function ensureRevenueCatConfigured(userId: string | null): Promise<boolean> {
 	if (isRevenueCatConfigured()) return true;
-	if (!userId) return false;
-	return await configureRevenueCat(userId);
+
+	const resolvedUserId = resolveUserId(userId);
+	if (!resolvedUserId) return false;
+
+	const configured = await configureRevenueCat(resolvedUserId);
+	if (configured) {
+		useSubscriptionStore.setState({ userId: resolvedUserId });
+	}
+	return configured;
 }
 
 function alertPaywallFailure(reason: PaywallFailureReason, onRetry?: () => void): void {

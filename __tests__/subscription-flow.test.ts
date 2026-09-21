@@ -842,6 +842,30 @@ describe("store/subscriptionStore", () => {
 			expect(mockPresentPaywall).toHaveBeenCalled();
 		});
 
+		it("configures from the auth store when the subscription store has no userId", async () => {
+			jest.resetModules();
+			jest.doMock("@/store/authStore", () => ({
+				useAuthStore: { getState: () => ({ user: { id: "auth-user-9" } }) },
+			}));
+
+			mockConfigure.mockResolvedValue(undefined);
+			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
+			mockPresentPaywall.mockResolvedValue("CANCELLED");
+
+			const store = getStore();
+			store.setState({ userId: null });
+
+			await store.getState().showPaywall();
+
+			expect(mockConfigure).toHaveBeenCalledWith(
+				expect.objectContaining({ appUserID: "auth-user-9" })
+			);
+			expect(store.getState().userId).toBe("auth-user-9");
+
+			jest.dontMock("@/store/authStore");
+		});
+
 		it("explains a store failure instead of the generic copy", async () => {
 			const { Alert } = require("react-native");
 			mockConfigure.mockResolvedValue(undefined);

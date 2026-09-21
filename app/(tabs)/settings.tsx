@@ -2,18 +2,9 @@ import { Camera } from "expo-camera";
 import Constants from "expo-constants";
 import * as MediaLibrary from "expo-media-library";
 import * as Notifications from "expo-notifications";
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
-import {
-	Alert,
-	Keyboard,
-	Linking,
-	Platform,
-	StyleSheet,
-	Text,
-	TextInput,
-	View,
-} from "react-native";
+import { type Href, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Keyboard, Linking, StyleSheet, Text, TextInput, View } from "react-native";
 import {
 	Avatar,
 	Button,
@@ -30,6 +21,12 @@ import {
 import Icon, { type IconName } from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
+import {
+	openSystemSettings,
+	requestCameraAccess,
+	requestNotificationAccess,
+	requestPhotoAccess,
+} from "@/lib/permissions";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import {
@@ -58,6 +55,8 @@ function permissionTone(status: PermissionStatus): PillTone {
 }
 
 export default function SettingsScreen() {
+	const router = useRouter();
+	const { upgrade } = useLocalSearchParams<{ upgrade?: string }>();
 	const user = useAuthStore((state) => state.user);
 	const updateDisplayName = useAuthStore((state) => state.updateDisplayName);
 	const logout = useAuthStore((state) => state.logout);
@@ -83,6 +82,22 @@ export default function SettingsScreen() {
 		isLoading: subscriptionLoading,
 	} = useSubscriptionStore();
 	const [isRestoring, setIsRestoring] = useState(false);
+	const hasResumedUpgrade = useRef(false);
+
+	const startUpgrade = useCallback(() => {
+		if (!user) {
+			router.push("/onboarding?returnTo=%2F(tabs)%2Fsettings%3Fupgrade%3D1" as Href);
+			return;
+		}
+
+		void showPaywall();
+	}, [router, showPaywall, user]);
+
+	useEffect(() => {
+		if (upgrade !== "1" || !user || hasResumedUpgrade.current) return;
+		hasResumedUpgrade.current = true;
+		void showPaywall();
+	}, [upgrade, user, showPaywall]);
 
 	const [isEditingName, setIsEditingName] = useState(false);
 	const [editedName, setEditedName] = useState(user?.display_name || "");
@@ -174,66 +189,47 @@ export default function SettingsScreen() {
 	);
 
 	async function requestPhotoPermission() {
-		const { status, accessPrivileges, canAskAgain } = await MediaLibrary.getPermissionsAsync();
+		const outcome = await requestPhotoAccess();
 
-		if (accessPrivileges === "all" || status === "granted") {
+		if (outcome === "needs_settings") {
+			openSystemSettings();
 			return;
 		}
 
-		if (canAskAgain) {
-			const result = await MediaLibrary.requestPermissionsAsync();
-			if (result.accessPrivileges === "limited") {
-				Alert.alert(
-					"Limited Access",
-					"For the best experience, please allow access to all photos. Go to Settings > Recapd > Photos and select 'All Photos'.",
-					[
-						{ text: "Maybe Later", style: "cancel" },
-						{ text: "Open Settings", onPress: openSettings },
-					]
-				);
-			}
-			checkPermissions();
-		} else {
-			openSettings();
+		if (outcome === "limited") {
+			Alert.alert(
+				"Limited Access",
+				"For the best experience, please allow access to all photos. Go to Settings > Recapd > Photos and select 'All Photos'.",
+				[
+					{ text: "Maybe Later", style: "cancel" },
+					{ text: "Open Settings", onPress: openSystemSettings },
+				]
+			);
 		}
+
+		checkPermissions();
 	}
 
 	async function requestNotificationPermission() {
-		const { granted, canAskAgain } = await Notifications.getPermissionsAsync();
+		const outcome = await requestNotificationAccess();
 
-		if (granted) {
+		if (outcome === "needs_settings") {
+			openSystemSettings();
 			return;
 		}
 
-		if (canAskAgain) {
-			await Notifications.requestPermissionsAsync();
-			checkPermissions();
-		} else {
-			openSettings();
-		}
+		checkPermissions();
 	}
 
 	async function requestCameraPermission() {
-		const { granted, canAskAgain } = await Camera.getCameraPermissionsAsync();
+		const outcome = await requestCameraAccess();
 
-		if (granted) {
+		if (outcome === "needs_settings") {
+			openSystemSettings();
 			return;
 		}
 
-		if (canAskAgain) {
-			await Camera.requestCameraPermissionsAsync();
-			checkPermissions();
-		} else {
-			openSettings();
-		}
-	}
-
-	function openSettings() {
-		if (Platform.OS === "ios") {
-			Linking.openURL("app-settings:");
-		} else {
-			Linking.openSettings();
-		}
+		checkPermissions();
 	}
 
 	async function handleSaveName() {
@@ -405,7 +401,7 @@ export default function SettingsScreen() {
 								<Button
 									label="Upgrade to Pro"
 									icon="zap"
-									onPress={showPaywall}
+									onPress={startUpgrade}
 									disabled={subscriptionLoading || !SUBSCRIPTIONS_ENABLED}
 									style={styles.planAction}
 								/>
