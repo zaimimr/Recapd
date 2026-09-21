@@ -1,6 +1,11 @@
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import { create } from "zustand";
+import {
+	classifyPaywallFailure,
+	describePaywallFailure,
+	type PaywallFailureReason,
+} from "@/lib/billing/paywallErrors";
 import { logger } from "@/lib/logger";
 import {
 	checkProEntitlement,
@@ -81,6 +86,20 @@ async function ensureRevenueCatConfigured(userId: string | null): Promise<boolea
 	return await configureRevenueCat(userId);
 }
 
+function alertPaywallFailure(reason: PaywallFailureReason, onRetry?: () => void): void {
+	const copy = describePaywallFailure(reason);
+
+	if (copy.retryable && onRetry) {
+		Alert.alert(copy.title, copy.message, [
+			{ text: "Not now", style: "cancel" },
+			{ text: "Try again", onPress: onRetry },
+		]);
+		return;
+	}
+
+	Alert.alert(copy.title, copy.message);
+}
+
 async function resolvePaywallOffering(
 	get: () => SubscriptionState,
 	set: (partial: Partial<SubscriptionState>) => void
@@ -117,6 +136,8 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 	error: null,
 
 	initialize: async (userId: string) => {
+		set({ userId });
+
 		if (get().isLoading) return;
 		if (get().isInitialized && get().userId === userId && !get().error) return;
 
@@ -139,8 +160,6 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 				});
 				return;
 			}
-
-			set({ userId });
 
 			const [customerInfo, offerings] = await Promise.all([getCustomerInfo(), getOfferings()]);
 			const bootstrapError = getLastRevenueCatError();
@@ -195,11 +214,12 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 				});
 			}
 		} catch (error: any) {
-			logger.error("Failed to initialize subscriptions", error);
+			logger.error("Failed to initialize subscriptions", error, { userId });
 			set({
 				error: getLastRevenueCatError() || error.message || "Failed to initialize subscriptions",
 				isLoading: false,
 				isInitialized: false,
+				userId,
 			});
 		}
 	},
@@ -332,10 +352,14 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		if (!(await ensureRevenueCatConfigured(userId))) {
 			const errorMessage = getLastRevenueCatError() || "RevenueCat not configured";
 			set({ error: errorMessage });
-			Alert.alert(
-				"Pro is unavailable",
-				"We can't load the upgrade screen right now. Try again in a moment."
-			);
+			logger.error("Paywall blocked before presenting", errorMessage, {
+				reason: "not_configured",
+				hasUserId: Boolean(userId),
+				platform: Platform.OS,
+			});
+			alertPaywallFailure("not_configured", () => {
+				void get().showPaywall();
+			});
 			return false;
 		}
 
@@ -346,11 +370,18 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		if (!result.presented) {
 			const errorMessage =
 				result.error || getLastRevenueCatError() || "Unable to load the upgrade screen";
+			const reason = classifyPaywallFailure(result.errorCode, errorMessage);
 			set({ error: errorMessage });
-			Alert.alert(
-				"Pro is unavailable",
-				"We can't load the upgrade screen right now. Try again in a moment."
-			);
+			logger.error("Paywall failed to present", errorMessage, {
+				reason,
+				errorCode: result.errorCode ?? null,
+				offeringIdentifier: result.offeringIdentifier ?? offering?.identifier ?? null,
+				packageCount: result.packageCount ?? offering?.availablePackages?.length ?? 0,
+				platform: Platform.OS,
+			});
+			alertPaywallFailure(reason, () => {
+				void get().showPaywall();
+			});
 			return false;
 		}
 
@@ -388,12 +419,27 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		if (!(await ensureRevenueCatConfigured(userId))) {
 			const errorMessage = getLastRevenueCatError() || "RevenueCat not configured";
 			set({ error: errorMessage });
+			logger.warn("Paywall check skipped, billing not configured", errorMessage, {
+				reason: "not_configured",
+				hasUserId: Boolean(userId),
+				platform: Platform.OS,
+			});
 			return false;
 		}
 
 		const offering = await resolvePaywallOffering(get, set);
 		const { entitlementId } = getProPlanRevenueCatConfig(get().plans);
 		const result = await presentPaywallIfNeeded(offering, entitlementId);
+
+		if (!result.presented && result.error) {
+			logger.error("Paywall failed to present when needed", result.error, {
+				reason: classifyPaywallFailure(result.errorCode, result.error),
+				errorCode: result.errorCode ?? null,
+				offeringIdentifier: result.offeringIdentifier ?? offering?.identifier ?? null,
+				packageCount: result.packageCount ?? offering?.availablePackages?.length ?? 0,
+				platform: Platform.OS,
+			});
+		}
 
 		if (result.customerInfo) {
 			const newIsPro = checkProEntitlement(result.customerInfo, entitlementId);

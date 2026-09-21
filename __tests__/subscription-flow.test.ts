@@ -822,6 +822,51 @@ describe("store/subscriptionStore", () => {
 			expect(result).toBe(true);
 		}, 10000);
 
+		it("keeps a usable userId when initialize bails out early", async () => {
+			mockConfigure.mockResolvedValue(undefined);
+			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
+			mockPresentPaywall.mockResolvedValue("CANCELLED");
+
+			const store = getStore();
+			store.setState({ isLoading: true });
+			await store.getState().initialize("user-1");
+
+			expect(store.getState().userId).toBe("user-1");
+
+			store.setState({ isLoading: false });
+			const result = await store.getState().showPaywall();
+
+			expect(result).toBe(false);
+			expect(mockConfigure).toHaveBeenCalled();
+			expect(mockPresentPaywall).toHaveBeenCalled();
+		});
+
+		it("explains a store failure instead of the generic copy", async () => {
+			const { Alert } = require("react-native");
+			mockConfigure.mockResolvedValue(undefined);
+			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);
+			mockGetOfferings.mockResolvedValue(null);
+			const storeError: Error & { code?: string } = new Error(
+				"There was a problem with the store."
+			);
+			storeError.code = "2";
+			mockPresentPaywall.mockRejectedValue(storeError);
+
+			const store = getStore();
+			await store.getState().initialize("user-1");
+			Alert.alert.mockClear();
+
+			const result = await store.getState().showPaywall();
+
+			expect(result).toBe(false);
+			expect(Alert.alert).toHaveBeenCalledWith(
+				"Store unavailable",
+				expect.stringContaining("the App Store"),
+				expect.arrayContaining([expect.objectContaining({ text: "Try again" })])
+			);
+		});
+
 		it("surfaces the real paywall load error", async () => {
 			mockConfigure.mockResolvedValue(undefined);
 			mockGetCustomerInfo.mockResolvedValue(freeCustomerInfo);

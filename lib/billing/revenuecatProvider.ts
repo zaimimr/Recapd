@@ -60,6 +60,30 @@ function formatErrorMessage(error: unknown, fallback: string): string {
 	return fallback;
 }
 
+function extractErrorCode(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") return undefined;
+	const candidate = error as {
+		code?: unknown;
+		userInfo?: { readableErrorCode?: unknown };
+		readableErrorCode?: unknown;
+	};
+	const readable = candidate.userInfo?.readableErrorCode ?? candidate.readableErrorCode;
+	if (typeof readable === "string" && readable.trim()) return readable;
+	if (typeof candidate.code === "string" && candidate.code.trim()) return candidate.code;
+	if (typeof candidate.code === "number") return String(candidate.code);
+	return undefined;
+}
+
+function describeOffering(offering?: PurchasesOffering | null): {
+	packageCount: number;
+	offeringIdentifier: string | null;
+} {
+	return {
+		packageCount: offering?.availablePackages?.length ?? 0,
+		offeringIdentifier: offering?.identifier ?? null,
+	};
+}
+
 function getEntitlement(
 	customerInfo: CustomerInfo,
 	entitlementId?: string | null
@@ -302,8 +326,16 @@ export const revenueCatProvider: BillingProvider = {
 		offering?: PurchasesOffering | null,
 		entitlementId?: string | null
 	): Promise<PaywallResult> {
+		const context = describeOffering(offering);
+
 		if (!isConfigured) {
-			return { presented: false, purchased: false, error: "RevenueCat not configured" };
+			return {
+				presented: false,
+				purchased: false,
+				error: "RevenueCat not configured",
+				errorCode: "NOT_CONFIGURED",
+				...context,
+			};
 		}
 
 		try {
@@ -325,16 +357,22 @@ export const revenueCatProvider: BillingProvider = {
 					presented: true,
 					purchased: true,
 					customerInfo: customerInfo || undefined,
+					...context,
 				};
 			}
 
 			lastRevenueCatError = null;
-			return { presented: true, purchased: false };
+			return { presented: true, purchased: false, ...context };
 		} catch (error: any) {
 			const errorMessage = formatErrorMessage(error, "Failed to present paywall");
+			const errorCode = extractErrorCode(error);
 			lastRevenueCatError = errorMessage;
-			logger.error("Failed to present paywall", error);
-			return { presented: false, purchased: false, error: errorMessage };
+			logger.error("Failed to present paywall", error, {
+				errorCode: errorCode ?? null,
+				platform: Platform.OS,
+				...context,
+			});
+			return { presented: false, purchased: false, error: errorMessage, errorCode, ...context };
 		}
 	},
 
@@ -342,8 +380,16 @@ export const revenueCatProvider: BillingProvider = {
 		offering?: PurchasesOffering | null,
 		entitlementId?: string | null
 	): Promise<PaywallResult> {
+		const context = describeOffering(offering);
+
 		if (!isConfigured) {
-			return { presented: false, purchased: false, error: "RevenueCat not configured" };
+			return {
+				presented: false,
+				purchased: false,
+				error: "RevenueCat not configured",
+				errorCode: "NOT_CONFIGURED",
+				...context,
+			};
 		}
 
 		try {
@@ -361,7 +407,7 @@ export const revenueCatProvider: BillingProvider = {
 			);
 
 			if (result === PAYWALL_RESULT.NOT_PRESENTED) {
-				return { presented: false, purchased: false };
+				return { presented: false, purchased: false, ...context };
 			}
 
 			if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
@@ -371,16 +417,22 @@ export const revenueCatProvider: BillingProvider = {
 					presented: true,
 					purchased: true,
 					customerInfo: customerInfo || undefined,
+					...context,
 				};
 			}
 
 			lastRevenueCatError = null;
-			return { presented: true, purchased: false };
+			return { presented: true, purchased: false, ...context };
 		} catch (error: any) {
 			const errorMessage = formatErrorMessage(error, "Failed to present paywall");
+			const errorCode = extractErrorCode(error);
 			lastRevenueCatError = errorMessage;
-			logger.error("Failed to present paywall if needed", error);
-			return { presented: false, purchased: false, error: errorMessage };
+			logger.error("Failed to present paywall if needed", error, {
+				errorCode: errorCode ?? null,
+				platform: Platform.OS,
+				...context,
+			});
+			return { presented: false, purchased: false, error: errorMessage, errorCode, ...context };
 		}
 	},
 

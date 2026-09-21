@@ -20,6 +20,9 @@ export interface PaywallResult {
 	purchased: boolean;
 	customerInfo?: CustomerInfo;
 	error?: string;
+	errorCode?: string;
+	packageCount?: number;
+	offeringIdentifier?: string | null;
 }
 
 export interface CustomerCenterResult {
