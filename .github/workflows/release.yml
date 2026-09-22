@@ -186,6 +186,14 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
           rm -f "$RUNNER_TEMP/dist.p12"
 
+          # The cert may be named "iPhone Distribution" (legacy) or "Apple Distribution".
+          # Pin whichever one we actually imported instead of guessing.
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | grep -oE '"(Apple|iPhone) Distribution: [^"]+"' | head -1 | tr -d '"')"
+          [ -n "$identity" ] || { echo "::error::no distribution identity in the keychain"; exit 1; }
+          echo "CODE_SIGN_IDENTITY_NAME=$identity" >> "$GITHUB_ENV"
+          echo "signing as: $identity"
+
       - name: Install the provisioning profile
         env:
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
@@ -211,7 +219,7 @@ jobs:
             -archivePath "$RUNNER_TEMP/Recapd.xcarchive" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            CODE_SIGN_IDENTITY="$CODE_SIGN_IDENTITY_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             -allowProvisioningUpdates NO
 
