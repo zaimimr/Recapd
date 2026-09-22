@@ -136,20 +136,34 @@ Add Play release notes after submitting; the upload does not carry them.
 
 ## Build time
 
-The first Android run took **~35 minutes**, almost all of it Gradle. With `newArchEnabled=true` the
-React Native C++ layer (Fabric, TurboModules, codegen) is compiled **once per ABI**, and Expo's
-default is four of them.
+Almost all of this job is Gradle. With `newArchEnabled=true` the React Native C++ layer (Fabric,
+TurboModules, codegen) is compiled **once per ABI**, and Expo's default is four of them.
 
-Three levers, all applied:
+Measure before changing anything here. On a **private** repo `ubuntu-latest` is **2 cores and 7 GB**,
+not the 4 and 16 a public repo gets, so a tuning knob that assumes a big machine makes things worse:
+
+| Run | ABIs | `Build the AAB` |
+| --- | --- | --- |
+| before any tuning | 4 | 45m18s |
+| `-Xmx6g` and `--build-cache` | 3 | over 53m, hit the 60-minute timeout |
+
+`-Xmx6g` was the mistake. The compiles that dominate are `clang` and `ninja`, native processes
+**outside** the JVM, so handing 6 of 7 GB to the Gradle heap starves the work it is waiting on. The
+heap is now 3 GB. `--build-cache` went with it: `expo prebuild --clean` deletes `android/` every run
+and external native builds are not cacheable, so it had nothing to hit.
+
+What is applied now:
 
 | Lever | Effect |
 | --- | --- |
-| `ANDROID_ABIS` drops 32-bit x86 | one less full C++ compile |
+| `ANDROID_ABIS` is `armeabi-v7a,arm64-v8a` | two full C++ compiles instead of four |
+| ccache in `~/.ccache`, restored by `actions/cache` | repeat runs skip the compiles themselves |
 | `cache: gradle` on setup-java | later runs reuse the dependency and transform cache |
-| `-Xmx6g` and `--build-cache` | Expo's 2 GB default is sized for laptops, not runners |
+| `-Xmx3g` | fits alongside the native compilers on a 7 GB runner |
 
-Drop `x86_64` from `ANDROID_ABIS` too if you do not care about Chromebooks and emulators; that is
-another third off. `armeabi-v7a,arm64-v8a` covers every phone and tablet.
+ccache is the one that matters, because it survives `prebuild --clean` (the project-local
+`android/app/.cxx` does not) and keys on file contents, not timestamps, which `npm ci` rewrites on
+every run. A cold cache costs a few percent; a warm one skips most of the C++.
 
 Play serves per-ABI splits from the bundle, so removing an architecture only means devices of that
 kind stop receiving updates. Nothing already installed breaks.

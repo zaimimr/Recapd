@@ -28,11 +28,16 @@ env:
   BUILD_NUMBER_OFFSET: 100
   # Read by sentry-cli during the native build to upload source maps.
   SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-  # With newArchEnabled the React Native C++ layer is compiled once per ABI, so
-  # each entry here costs real minutes. armeabi-v7a and arm64-v8a cover every
-  # phone and tablet; x86_64 is kept for Chromebooks and emulators. Drop it to
-  # save roughly another third.
-  ANDROID_ABIS: armeabi-v7a,arm64-v8a,x86_64
+  # With newArchEnabled the React Native C++ layer is compiled once per ABI, and
+  # this runner has two cores, so every entry here costs about three minutes per
+  # native module. These two cover every phone and tablet on the store. Emulators
+  # and Chromebooks want x86_64, which is what a local debug build is for.
+  ANDROID_ABIS: armeabi-v7a,arm64-v8a
+  CCACHE_DIR: /home/runner/.ccache
+  # npm ci rewrites every header's timestamp, so mtime-based lookups would miss
+  # on each run. Hash the contents instead.
+  CCACHE_COMPILERCHECK: content
+  CCACHE_SLOPPINESS: time_macros,include_file_mtime,include_file_ctime
   EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
   EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
   EXPO_PUBLIC_REVENUECAT_IOS_KEY: ${{ secrets.EXPO_PUBLIC_REVENUECAT_IOS_KEY }}
@@ -88,6 +93,24 @@ jobs:
       - name: Point the release build at the upload keystore
         run: node scripts/ci/android-release-signing.mjs
 
+      # The native build is most of this job and expo prebuild --clean throws away
+      # android/app/.cxx every run, so nothing incremental survives there. ccache
+      # lives outside the project and keys on file contents, so it does.
+      - name: Restore the C++ compiler cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-android-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-android-${{ hashFiles('package-lock.json') }}-
+            ccache-android-
+
+      - name: Set up ccache
+        run: |
+          command -v ccache >/dev/null || sudo apt-get install -y ccache
+          mkdir -p "$CCACHE_DIR"
+          ccache --max-size=2G
+
       - name: Write the keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -101,15 +124,21 @@ jobs:
             echo "RECAPD_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
             echo "RECAPD_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
             echo "RECAPD_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
-            # Later keys win in a properties file. The Expo default heap is
-            # sized for laptops; the runner has far more to give.
-            echo "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g"
-            echo "org.gradle.caching=true"
+            # Later keys win in a properties file. The runner holds 7 GB and the
+            # C++ compiles are native processes outside the JVM, so the heap has
+            # to leave room for them.
+            echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m"
           } >> android/gradle.properties
 
       - name: Build the AAB
         working-directory: android
-        run: ./gradlew :app:bundleRelease --no-daemon --build-cache -PreactNativeArchitectures="$ANDROID_ABIS"
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          ccache --zero-stats
+          ./gradlew :app:bundleRelease --no-daemon -PreactNativeArchitectures="$ANDROID_ABIS"
+          ccache --show-stats
 
       - name: Confirm source maps reached Sentry
         run: |
