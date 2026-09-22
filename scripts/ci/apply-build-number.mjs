@@ -3,8 +3,8 @@
  * Stamps the build number into the freshly prebuilt native projects.
  *
  * app.json is the single source of truth for the marketing version. The build
- * number comes from the CI run, offset so it always lands above what the stores
- * already have (Play vc34, App Store build 49 as of 2026-09-22).
+ * number comes from release.json by way of the prepare job, so both platforms
+ * stamp the same one.
  *
  *   node scripts/ci/apply-build-number.mjs <ios|android> <buildNumber>
  */

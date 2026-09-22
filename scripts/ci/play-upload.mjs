@@ -73,7 +73,7 @@ await androidpublisher.edits.tracks.update({
 		track,
 		releases: [
 			{
-				name: version,
+				name: `${version} (${bundle.versionCode})`,
 				versionCodes: [String(bundle.versionCode)],
 				status: draft ? "draft" : "completed",
 				releaseNotes: [{ language: "en-US", text: notes }],

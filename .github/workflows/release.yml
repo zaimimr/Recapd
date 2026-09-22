@@ -28,9 +28,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Build numbers come from the run number plus this offset, so they always land
-  # above what the stores already hold (Play vc34, App Store build 49).
-  BUILD_NUMBER_OFFSET: 100
   # Read by sentry-cli during the native build to upload source maps.
   SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
   # With newArchEnabled the React Native C++ layer is compiled once per ABI, and
@@ -50,16 +47,58 @@ env:
   EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED: "true"
 
 jobs:
+  # One number per release, decided once and written into the repo, so an
+  # Android build and an iOS build cut from the same commit carry the same build
+  # number even when they run hours apart.
+  prepare:
+    name: open the release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' &&
+       (vars.ENABLE_ANDROID_RELEASE == 'true' || vars.ENABLE_IOS_RELEASE == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      build: ${{ steps.open.outputs.build }}
+      version: ${{ steps.open.outputs.version }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump the version and the build number
+        id: open
+        run: node scripts/ci/start-release.mjs
+
+      - name: Commit and tag
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.json release.json store/release-notes
+          git commit -m "chore: release ${{ steps.open.outputs.version }} (${{ steps.open.outputs.build }})"
+          git tag "v${{ steps.open.outputs.version }}+${{ steps.open.outputs.build }}"
+          git push origin HEAD:${{ github.ref_name }} --follow-tags
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   android:
     name: android -> Play internal
     if: >-
       (github.event_name == 'push' && vars.ENABLE_ANDROID_RELEASE == 'true') ||
       (github.event_name == 'workflow_dispatch' &&
        contains(fromJSON('["android","both"]'), inputs.platform))
+    needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -93,7 +132,7 @@ jobs:
         run: npx expo prebuild --platform android --clean
 
       - name: Stamp version and build number
-        run: node scripts/ci/apply-build-number.mjs android "$((BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER))"
+        run: node scripts/ci/apply-build-number.mjs android "${{ needs.prepare.outputs.build }}"
 
       - name: Point the release build at the upload keystore
         run: node scripts/ci/android-release-signing.mjs
@@ -191,6 +230,7 @@ jobs:
       (github.event_name == 'push' && vars.ENABLE_IOS_RELEASE == 'true') ||
       (github.event_name == 'workflow_dispatch' &&
        contains(fromJSON('["ios","both"]'), inputs.platform))
+    needs: prepare
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -200,6 +240,8 @@ jobs:
       PROFILE_NAME: ${{ vars.IOS_PROVISIONING_PROFILE_NAME }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -268,7 +310,7 @@ jobs:
         run: npx expo prebuild --platform ios --clean
 
       - name: Stamp version and build number
-        run: node scripts/ci/apply-build-number.mjs ios "$((BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER))"
+        run: node scripts/ci/apply-build-number.mjs ios "${{ needs.prepare.outputs.build }}"
 
       - name: Archive
         run: |
@@ -344,7 +386,7 @@ jobs:
   # to a version, so this waits on Linux rather than burning macOS minutes at 10x.
   ios-submission:
     name: ios -> staged for review
-    needs: ios
+    needs: [prepare, ios]
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.submission == 'staged' &&
@@ -357,6 +399,8 @@ jobs:
       ASC_KEY_PATH: ${{ runner.temp }}/asc-key.p8
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -367,7 +411,7 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           printf '%s' "$ASC_KEY_P8" | base64 -d > "$ASC_KEY_PATH"
-          node scripts/ci/asc-prepare-submission.mjs "$((BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER))"
+          node scripts/ci/asc-prepare-submission.mjs "${{ needs.prepare.outputs.build }}"
 
       - name: Shred the credentials
         if: always()
