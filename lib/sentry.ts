@@ -10,7 +10,6 @@ const dsn = extra.sentryDsn ?? process.env.EXPO_PUBLIC_SENTRY_DSN ?? "";
 
 const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV === "development";
 const environment = isDev ? "development" : "production";
-const release = Constants.expoConfig?.version ?? undefined;
 
 let initialized = false;
 
@@ -49,10 +48,12 @@ export function initSentry(): void {
 		return;
 	}
 
+	// release and dist are deliberately not set: the SDK reads them from the
+	// native build, which is what the source map upload tags artifacts with.
+	// Overriding either one here means stack traces never symbolicate.
 	Sentry.init({
 		dsn,
 		environment,
-		release,
 		debug: false,
 		enableAutoSessionTracking: true,
 		tracesSampleRate: isDev ? 1.0 : 0.2,

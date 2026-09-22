@@ -47,7 +47,21 @@ three distribution certificates and you currently have one, so this revokes noth
 
 Either way the workflow needs the `.p12`, its password, and the `.mobileprovision`.
 
-### 3. Push everything to GitHub
+### 3. Create a Sentry auth token
+
+Source maps are uploaded during the native build, otherwise production stack traces stay minified
+(every frame reads `app:///main.jsbundle`). Create a token at
+<https://zaim-imran.sentry.io/settings/auth-tokens/> with **project:releases** and **org:read**, then:
+
+```bash
+SENTRY_AUTH_TOKEN=sntrys_... ./scripts/ci/setup-release-secrets.sh sentry
+```
+
+The `@sentry/react-native/expo` plugin writes `sentry.properties` into both native projects during
+prebuild with the org and project baked in; only the token comes from the environment. Both jobs
+fail fast if it is missing, so a build never silently ships without symbols.
+
+### 4. Push everything to GitHub
 
 ```bash
 ./scripts/ci/setup-release-secrets.sh
@@ -64,12 +78,13 @@ and sets `IOS_PROVISIONING_PROFILE_NAME` from the profile itself.
 | `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | step 1 |
 | `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64` | step 2 |
 | `ASC_KEY_P8` | `~/Downloads/AuthKey_734B75F2PY.p8` |
+| `SENTRY_AUTH_TOKEN` | step 3 |
 
 Variables: `IOS_PROVISIONING_PROFILE_NAME` (set by the script), plus the two switches below.
 
 Everything under `credentials/` is gitignored. Keep it that way.
 
-### 4. Turn it on
+### 5. Turn it on
 
 Both jobs are off until you say so, so merging the workflow ships nothing.
 

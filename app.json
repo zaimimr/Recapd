@@ -73,6 +73,14 @@
 				}
 			],
 			"@react-native-community/datetimepicker",
+			[
+				"@sentry/react-native/expo",
+				{
+					"url": "https://sentry.io/",
+					"organization": "zaim-imran",
+					"project": "recapd"
+				}
+			],
 			"expo-secure-store",
 			"expo-video",
 			"expo-background-task"

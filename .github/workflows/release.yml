@@ -26,6 +26,8 @@ env:
   # Build numbers come from the run number plus this offset, so they always land
   # above what the stores already hold (Play vc34, App Store build 49).
   BUILD_NUMBER_OFFSET: 100
+  # Read by sentry-cli during the native build to upload source maps.
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
   EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
   EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
   EXPO_PUBLIC_REVENUECAT_IOS_KEY: ${{ secrets.EXPO_PUBLIC_REVENUECAT_IOS_KEY }}
@@ -62,6 +64,7 @@ jobs:
           [ -n "${{ secrets.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY }}" ] || missing="$missing EXPO_PUBLIC_REVENUECAT_ANDROID_KEY"
           [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ] || missing="$missing ANDROID_KEYSTORE_BASE64"
           [ -n "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}" ] || missing="$missing PLAY_SERVICE_ACCOUNT_JSON"
+          [ -n "${{ secrets.SENTRY_AUTH_TOKEN }}" ] || missing="$missing SENTRY_AUTH_TOKEN"
           if [ -n "$missing" ]; then
             echo "::error::missing secrets:$missing"
             exit 1
@@ -97,6 +100,11 @@ jobs:
       - name: Build the AAB
         working-directory: android
         run: ./gradlew :app:bundleRelease --no-daemon
+
+      - name: Confirm source maps reached Sentry
+        run: |
+          npx sentry-cli releases --org zaim-imran --project recapd list 2>/dev/null | head -5 ||
+            echo "::warning::could not list Sentry releases"
 
       - name: Verify the artifact
         run: |
@@ -155,6 +163,7 @@ jobs:
           [ -n "${{ secrets.IOS_DIST_P12_BASE64 }}" ] || missing="$missing IOS_DIST_P12_BASE64"
           [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" ] || missing="$missing IOS_PROVISIONING_PROFILE_BASE64"
           [ -n "${{ secrets.ASC_KEY_P8 }}" ] || missing="$missing ASC_KEY_P8"
+          [ -n "${{ secrets.SENTRY_AUTH_TOKEN }}" ] || missing="$missing SENTRY_AUTH_TOKEN"
           [ -n "$PROFILE_NAME" ] || missing="$missing IOS_PROVISIONING_PROFILE_NAME(variable)"
           if [ -n "$missing" ]; then
             echo "::error::missing secrets:$missing"

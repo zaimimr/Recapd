@@ -4,6 +4,7 @@
 #   ./scripts/ci/setup-release-secrets.sh            # everything it can find
 #   ./scripts/ci/setup-release-secrets.sh ios        # just the Apple side
 #   ./scripts/ci/setup-release-secrets.sh android    # just the Google side
+#   SENTRY_AUTH_TOKEN=... ./scripts/ci/setup-release-secrets.sh sentry
 #
 # Reads the app config from .env and the signing material from credentials.json,
 # which is what `eas credentials -> Download credentials from EAS to
@@ -55,6 +56,16 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "app" ]; then
 		EXPO_PUBLIC_REVENUECAT_IOS_KEY EXPO_PUBLIC_REVENUECAT_ANDROID_KEY; do
 		set_secret "$var" "${!var:-}"
 	done
+fi
+
+if [ "$WHAT" = "all" ] || [ "$WHAT" = "sentry" ]; then
+	echo "Sentry"
+	if [ -n "${SENTRY_AUTH_TOKEN:-}" ]; then
+		set_secret SENTRY_AUTH_TOKEN "$SENTRY_AUTH_TOKEN"
+	else
+		echo "  skipped: export SENTRY_AUTH_TOKEN first (create one at"
+		echo "  https://zaim-imran.sentry.io/settings/auth-tokens/ with project:releases + org:read)"
+	fi
 fi
 
 if [ "$WHAT" = "all" ] || [ "$WHAT" = "ios" ]; then
