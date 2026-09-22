@@ -134,6 +134,26 @@ eas submit --platform android --profile production --path <the .aab from the run
 
 Add Play release notes after submitting; the upload does not carry them.
 
+## Build time
+
+The first Android run took **~35 minutes**, almost all of it Gradle. With `newArchEnabled=true` the
+React Native C++ layer (Fabric, TurboModules, codegen) is compiled **once per ABI**, and Expo's
+default is four of them.
+
+Three levers, all applied:
+
+| Lever | Effect |
+| --- | --- |
+| `ANDROID_ABIS` drops 32-bit x86 | one less full C++ compile |
+| `cache: gradle` on setup-java | later runs reuse the dependency and transform cache |
+| `-Xmx6g` and `--build-cache` | Expo's 2 GB default is sized for laptops, not runners |
+
+Drop `x86_64` from `ANDROID_ABIS` too if you do not care about Chromebooks and emulators; that is
+another third off. `armeabi-v7a,arm64-v8a` covers every phone and tablet.
+
+Play serves per-ABI splits from the bundle, so removing an architecture only means devices of that
+kind stop receiving updates. Nothing already installed breaks.
+
 ## Things that will bite
 
 - The Expo Android template signs release with the **debug** key. That is what the signing script
