@@ -100,12 +100,10 @@ gh variable set ENABLE_IOS_RELEASE --body true      # iOS too (10x minutes)
 clean, `ios/` and `android/` are gitignored, and `expo prebuild` regenerates both native projects
 from it.
 
-Build numbers are `BUILD_NUMBER_OFFSET + github.run_number` (offset 100), which is monotonic and
-always above what the stores hold: Play was at vc34 and the App Store at build 49 when this was
-written. `scripts/ci/apply-build-number.mjs` stamps `versionCode` / `versionName` into
-`android/app/build.gradle` and `CFBundleVersion` / `CFBundleShortVersionString` into `Info.plist`.
-
-Bump `app.json` for every release. Uploading a marketing version the store already has is rejected.
+The version and the build number are both bumped by the `prepare` job, not by hand. See
+[One number per release](#one-number-per-release). `scripts/ci/apply-build-number.mjs` then stamps
+`versionCode` / `versionName` into `android/app/build.gradle` and `CFBundleVersion` /
+`CFBundleShortVersionString` into `Info.plist`.
 
 ## What each job does
 
@@ -167,6 +165,50 @@ every run. A cold cache costs a few percent; a warm one skips most of the C++.
 
 Play serves per-ABI splits from the bundle, so removing an architecture only means devices of that
 kind stop receiving updates. Nothing already installed breaks.
+
+## One number per release
+
+`release.json` holds the last build number used. The `prepare` job bumps it, bumps the patch in
+`app.json`, commits both to `main` and tags `v<version>+<build>`. Every other job checks out that
+commit, so Android and iOS stamp the **same build number** even when they are built hours apart.
+
+```
+release.json { "build": 110 }   ->   android versionCode 110
+app.json     "version": "1.14.1"     ios      CFBundleVersion 110
+                                     tag      v1.14.1+110
+```
+
+Before this, the number was `100 + github.run_number`, and every dispatch burned one. That is why
+2026-09-22 produced Android **108** and iOS **109** from the same commit.
+
+Release notes live in `store/release-notes/`. You write the next ones in **`next.md`**; the prepare
+job renames it to `<new version>.md` and leaves a fresh empty `next.md` behind. An empty `next.md`
+fails the release on purpose, because the version bump is automatic and a release nobody can read is
+worse than a release that did not happen.
+
+The prepare job pushes to `main` with `GITHUB_TOKEN`, which by design does not retrigger workflows,
+so there is no loop. It does need `contents: write`, and it will fail if branch protection forbids
+the push.
+
+## Submitting for review
+
+Both jobs ship to testers by default. Run the workflow with **submission: staged** and each store
+also gets a submission that sits there until you approve it. Nothing goes public without a human.
+
+| Store | What CI creates | Where you finish it |
+| --- | --- | --- |
+| App Store | a review submission with the build attached, deliberately not submitted | App Store Connect → Review Submissions |
+| Play | a **draft** release on the production track | Play Console → the release, then Review release and roll out |
+
+Release notes come from `store/release-notes/<version>.md`, where `<version>` is `expo.version` in
+`app.json`. Both stores get the same text. The file has to exist before a staged run or the job
+fails, which is on purpose: a release without notes is a release nobody can read.
+
+The iOS half runs in its own Linux job, because Apple takes 10 to 20 minutes to process an upload
+before the build can be attached, and waiting on a macOS runner bills at 10x. It reuses an open
+review submission rather than creating a second one, and it never sets `submitted`.
+
+`play-upload.mjs` still refuses the production track outright unless `--draft` is passed.
 
 ## Things that will bite
 
