@@ -2,7 +2,7 @@
 	"expo": {
 		"name": "Recapd",
 		"slug": "recapd",
-		"version": "1.12.0",
+		"version": "1.14.0",
 		"orientation": "portrait",
 		"icon": "./assets/images/icon.png",
 		"scheme": "recapd",
@@ -73,6 +73,14 @@
 				}
 			],
 			"@react-native-community/datetimepicker",
+			[
+				"@sentry/react-native/expo",
+				{
+					"url": "https://sentry.io/",
+					"organization": "zaim-imran",
+					"project": "recapd"
+				}
+			],
 			"expo-secure-store",
 			"expo-video",
 			"expo-background-task"

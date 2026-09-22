@@ -34,6 +34,19 @@
 		}
 	},
 	"submit": {
+		"internal": {
+			"ios": {
+				"ascAppId": "6758083751",
+				"appleId": "me@zaim.no",
+				"ascApiKeyPath": "./credentials/ios/asc-api-key.p8",
+				"ascApiKeyId": "734B75F2PY",
+				"ascApiKeyIssuerId": "a2d1bd8d-dc23-4161-904a-9f088eef8144"
+			},
+			"android": {
+				"serviceAccountKeyPath": "credentials/android/serviceAccountKey.json",
+				"track": "internal"
+			}
+		},
 		"production": {
 			"ios": {
 				"ascAppId": "6758083751",
