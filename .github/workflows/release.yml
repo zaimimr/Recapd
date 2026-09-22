@@ -28,6 +28,11 @@ env:
   BUILD_NUMBER_OFFSET: 100
   # Read by sentry-cli during the native build to upload source maps.
   SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+  # With newArchEnabled the React Native C++ layer is compiled once per ABI, so
+  # each entry here costs real minutes. armeabi-v7a and arm64-v8a cover every
+  # phone and tablet; x86_64 is kept for Chromebooks and emulators. Drop it to
+  # save roughly another third.
+  ANDROID_ABIS: armeabi-v7a,arm64-v8a,x86_64
   EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
   EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
   EXPO_PUBLIC_REVENUECAT_IOS_KEY: ${{ secrets.EXPO_PUBLIC_REVENUECAT_IOS_KEY }}
@@ -55,6 +60,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
 
       - name: Fail fast on missing secrets
         run: |
@@ -95,11 +101,15 @@ jobs:
             echo "RECAPD_UPLOAD_STORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
             echo "RECAPD_UPLOAD_KEY_ALIAS=$ANDROID_KEY_ALIAS"
             echo "RECAPD_UPLOAD_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+            # Later keys win in a properties file. The Expo default heap is
+            # sized for laptops; the runner has far more to give.
+            echo "org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g"
+            echo "org.gradle.caching=true"
           } >> android/gradle.properties
 
       - name: Build the AAB
         working-directory: android
-        run: ./gradlew :app:bundleRelease --no-daemon
+        run: ./gradlew :app:bundleRelease --no-daemon --build-cache -PreactNativeArchitectures="$ANDROID_ABIS"
 
       - name: Confirm source maps reached Sentry
         run: |
