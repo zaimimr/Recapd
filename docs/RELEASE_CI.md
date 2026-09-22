@@ -1,101 +1,134 @@
 # Release CI
 
-`.github/workflows/release.yml` builds Recapd and ships it **to testers**: Play internal track and
-TestFlight. It never releases to the public stores. Promotion to production stays manual, on purpose.
+`.github/workflows/release.yml` builds Recapd with the **native toolchains** — Gradle and Xcode, no
+Expo account, no EAS credits — and ships it **to testers**: Play internal track and TestFlight.
+It never releases to the public stores.
 
 ## Why not straight to production
 
-- App Review takes days, and a version can only be submitted once. A merge-triggered production
+- App Review takes days and a version can only be submitted once. A merge-triggered production
   submit would queue behind the previous one and fail with `already submitted this version`.
 - Play production rollouts are staged and want release notes written by a human.
-- macOS runners bill at **10x** on a private repo. A 30 minute iOS build costs ~300 billable
-  minutes, so iOS is opt-in rather than on by default.
+- macOS runners bill at **10x** on a private repo, so iOS is opt-in.
 
-## Turning it on
+`scripts/ci/play-upload.mjs` refuses `production` outright.
 
-Both jobs are disabled until you say otherwise. Nothing ships by merging the workflow itself.
+## One-time setup
 
-```bash
-gh variable set ENABLE_ANDROID_RELEASE --body true   # Android on every push to main
-gh variable set ENABLE_IOS_RELEASE --body true       # iOS too (10x minutes, read above)
-```
+### 1. Export the Android upload keystore from EAS
 
-`workflow_dispatch` ignores the variables, so you can always run it by hand from the Actions tab and
-pick android / ios / both.
-
-## Secrets
-
-| Secret | What it is | How to produce it |
-| --- | --- | --- |
-| `EXPO_TOKEN` | EAS access token; lets `--local` builds fetch the signing credentials EAS already holds | expo.dev -> Account -> Access tokens |
-| `PLAY_SERVICE_ACCOUNT_JSON` | base64 of `credentials/android/serviceAccountKey.json` | `base64 -i credentials/android/serviceAccountKey.json \| pbcopy` |
-| `ASC_KEY_P8` | base64 of the App Store Connect key `AuthKey_734B75F2PY.p8` | `base64 -i ~/Downloads/AuthKey_734B75F2PY.p8 \| pbcopy` |
+EAS holds the keystore Play expects. `eas credentials` is interactive, so this part is manual:
 
 ```bash
-gh secret set EXPO_TOKEN
-gh secret set PLAY_SERVICE_ACCOUNT_JSON < <(base64 -i credentials/android/serviceAccountKey.json)
-gh secret set ASC_KEY_P8 < <(base64 -i ~/Downloads/AuthKey_734B75F2PY.p8)
+npx eas-cli@24 credentials --platform android
+#   -> production -> Keystore: Manage everything -> Download
+mkdir -p credentials/android && mv <downloaded>.jks credentials/android/upload.jks
 ```
 
-Both key files are written to disk only for the length of the job and deleted in an `always()` step.
-`credentials/android/*.json` and `credentials/ios/*.p8` are gitignored; keep it that way.
+Note the keystore password, key alias and key password it prints. Do **not** generate a fresh
+keystore: with Play App Signing the upload key is registered, and swapping it needs a reset request.
 
-## Before the first automated submit: fix the version drift
+### 2. Get an iOS distribution certificate and profile
 
-Three places currently disagree:
+Two routes.
 
-| Source | Value |
+**a. Export from EAS** (keeps using the cert that shipped 1.13.0):
+
+```bash
+npx eas-cli@24 credentials --platform ios
+#   -> production -> Distribution Certificate -> Download (.p12 + password)
+#   -> Provisioning Profile -> Download
+mkdir -p credentials/ios
+# save as credentials/ios/distribution.p12 and credentials/ios/recapd-appstore.mobileprovision
+```
+
+**b. Create a fresh one owned by this repo**, via the App Store Connect API. Apple allows up to
+three distribution certificates and you currently have one, so this revokes nothing.
+
+Either way the workflow needs the `.p12`, its password, and the `.mobileprovision`.
+
+### 3. Push everything to GitHub
+
+```bash
+./scripts/ci/setup-release-secrets.sh
+```
+
+It reads the app config from `.env`, base64s the credential files, prompts for the three passwords,
+and sets `IOS_PROVISIONING_PROFILE_NAME` from the profile itself.
+
+| Secret | Source |
 | --- | --- |
-| `app.json` `expo.version` | 1.12.0 |
-| `ios/Recapd/Info.plist` | 1.11.0 |
-| Both stores | 1.13.0 |
+| `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` | `.env` |
+| `EXPO_PUBLIC_REVENUECAT_IOS_KEY`, `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | `.env` |
+| `PLAY_SERVICE_ACCOUNT_JSON` | `credentials/android/serviceAccountKey.json` |
+| `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | step 1 |
+| `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64` | step 2 |
+| `ASC_KEY_P8` | `~/Downloads/AuthKey_734B75F2PY.p8` |
 
-CI checks out clean and `ios/` is gitignored, so EAS regenerates `Info.plist` from `app.json` during
-prebuild. **In CI, `app.json` is the single source of truth.** The stale `Info.plist` only affects
-local builds. Bump `app.json` to match reality (1.13.0, or 1.14.0 for the next release) before
-enabling the jobs, or the first upload will collide with a version the store already has.
+Variables: `IOS_PROVISIONING_PROFILE_NAME` (set by the script), plus the two switches below.
 
-Build numbers are handled by EAS: `eas.json` sets `appVersionSource: remote` with `autoIncrement` on
-the production profile, so each build gets the next number server side.
+Everything under `credentials/` is gitignored. Keep it that way.
 
-## Environment variables
+### 4. Turn it on
 
-Verified with `eas-cli@24`: even though the `production` build profile has no `environment` key, the
-CLI resolves the **production** EAS environment and loads `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY`,
-`EXPO_PUBLIC_REVENUECAT_IOS_KEY`, `EXPO_PUBLIC_SUBSCRIPTIONS_ENABLED`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-and `EXPO_PUBLIC_SUPABASE_URL` from the server. CI therefore needs no `.env` file, and the RevenueCat
-keys land in the bundle the same way they do in your local builds.
+Both jobs are off until you say so, so merging the workflow ships nothing.
+
+```bash
+gh workflow run release.yml -f platform=android     # try one by hand first
+gh variable set ENABLE_ANDROID_RELEASE --body true  # then every push to main
+gh variable set ENABLE_IOS_RELEASE --body true      # iOS too (10x minutes)
+```
+
+## Versions
+
+`app.json` `expo.version` is the **single source of truth** for the marketing version. CI checks out
+clean, `ios/` and `android/` are gitignored, and `expo prebuild` regenerates both native projects
+from it.
+
+Build numbers are `BUILD_NUMBER_OFFSET + github.run_number` (offset 100), which is monotonic and
+always above what the stores hold: Play was at vc34 and the App Store at build 49 when this was
+written. `scripts/ci/apply-build-number.mjs` stamps `versionCode` / `versionName` into
+`android/app/build.gradle` and `CFBundleVersion` / `CFBundleShortVersionString` into `Info.plist`.
+
+Bump `app.json` for every release. Uploading a marketing version the store already has is rejected.
 
 ## What each job does
 
-1. Checkout, Node 22, `npm ci` (plus JDK 17 on Android).
-2. Write the store credential from its secret.
-3. `eas build --local --profile production` — builds on the runner, so it consumes **no EAS build
-   credits**.
-4. Verify the artifact is non-empty. `eas build` can exit 0 having produced nothing, so the check is
-   deliberate.
-5. `eas submit --profile internal` — Play internal track, or TestFlight.
-6. Upload the artifact to the workflow run, kept 14 days.
-7. Delete the credential file.
+**Android** (`ubuntu-latest`): prebuild, stamp version, inject the release signing config
+(`scripts/ci/android-release-signing.mjs` — the Expo template signs release with the debug key,
+which Play rejects), write the keystore, `./gradlew :app:bundleRelease`, verify the AAB is
+non-empty, upload to the internal track with `scripts/ci/play-upload.mjs`, shred credentials.
+
+**iOS** (`macos-26`, Xcode 26.6): import the `.p12` into a throwaway keychain, install the profile,
+prebuild, stamp version, `xcodebuild archive` with manual signing, `-exportArchive` to an IPA,
+upload with `xcrun altool --upload-app` using the ASC API key, delete the keychain.
+
+Team ID `9L246T935B` and ASC key `734B75F2PY` are baked into the workflow; they are identifiers, not
+credentials.
 
 ## Promoting to production
 
-Still manual, and still the safer path:
-
 ```bash
-# Android: move the reviewed internal build to production
+# Android: promote the reviewed internal build
 eas submit --platform android --profile production --path <the .aab from the run>
+#   or the same androidpublisher flow with track: production
 
-# iOS: eas submit only uploads. Submitting for review needs the reviewSubmissions API
-# (the legacy appStoreVersionSubmissions endpoint 403s).
+# iOS: TestFlight builds are already uploaded. Submitting for review needs the
+# reviewSubmissions API (the legacy appStoreVersionSubmissions endpoint 403s).
 ```
 
-Add Play release notes after submitting; `eas submit` does not carry them.
+Add Play release notes after submitting; the upload does not carry them.
 
 ## Things that will bite
 
-- `eas build --local` exits 0 on some failures. That is why step 4 exists.
-- The Android build needs `ANDROID_HOME`; the job exports it from `ANDROID_SDK_ROOT`.
-- `macos-26` runners default to Xcode 26.6, which satisfies Apple's Xcode 26 SDK requirement. Pinning
-  an older runner image will get uploads rejected.
+- The Expo Android template signs release with the **debug** key. That is what the signing script
+  fixes; if a future Expo upgrade reshapes `build.gradle`, the script fails loudly rather than
+  silently shipping a debug-signed AAB.
+- Certificates expire: the distribution cert and profile both run out **2027-05-22**. Re-export and
+  re-run the setup script before then.
+- `macos-26` defaults to Xcode 26.6, which satisfies Apple's Xcode 26 SDK requirement. Pinning an
+  older image gets uploads rejected.
+- `PROVISIONING_PROFILE_SPECIFIER` matches the profile **name**, not its UUID. EAS-generated names
+  look like `*[expo] com.zaimimran.recapd AppStore 2026-01-20T14:48:50.439Z`; the setup script reads
+  it out of the profile so you never type it.
 - Concurrency is `cancel-in-progress: false`: a release in flight is never killed by a newer push.
