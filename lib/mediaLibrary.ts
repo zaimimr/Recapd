@@ -1,7 +1,7 @@
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
-
 import { logger } from "@/lib/logger";
+import { VISUAL_MEDIA } from "@/lib/permissions";
 
 export interface LocalPhoto {
 	id: string;
@@ -18,7 +18,7 @@ export interface LocalPhoto {
 }
 
 export async function requestMediaPermissions(): Promise<boolean> {
-	const { status } = await MediaLibrary.requestPermissionsAsync();
+	const { status } = await MediaLibrary.requestPermissionsAsync(false, VISUAL_MEDIA);
 	return status === "granted";
 }
 

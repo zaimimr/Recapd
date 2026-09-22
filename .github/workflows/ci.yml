@@ -34,3 +34,28 @@ jobs:
 
       - name: Test
         run: npm test -- --ci
+
+  payment:
+    name: payment flow (iOS + Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Payment flow suite
+        run: >-
+          npm test -- --ci --runInBand
+          __tests__/payment-flow.test.ts
+          __tests__/paywall-errors.test.ts
+          __tests__/subscription-flow.test.ts
+          __tests__/subscription-advanced.test.ts
+          __tests__/subscription-utils.test.ts
+          __tests__/subscription-components.test.tsx

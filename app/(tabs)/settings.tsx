@@ -26,6 +26,7 @@ import {
 	requestCameraAccess,
 	requestNotificationAccess,
 	requestPhotoAccess,
+	VISUAL_MEDIA,
 } from "@/lib/permissions";
 import { formatLocalizedDate } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -129,7 +130,7 @@ export default function SettingsScreen() {
 
 	const checkPermissions = useCallback(async () => {
 		const [mediaStatus, cameraStatus, notificationStatus] = await Promise.all([
-			MediaLibrary.getPermissionsAsync(),
+			MediaLibrary.getPermissionsAsync(false, VISUAL_MEDIA),
 			Camera.getCameraPermissionsAsync(),
 			Notifications.getPermissionsAsync(),
 		]);

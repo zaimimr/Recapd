@@ -5,6 +5,8 @@ import { Linking, Platform } from "react-native";
 
 export type PermissionOutcome = "granted" | "limited" | "denied" | "needs_settings";
 
+export const VISUAL_MEDIA: MediaLibrary.GranularPermission[] = ["photo", "video"];
+
 export function openSystemSettings(): void {
 	if (Platform.OS === "ios") {
 		Linking.openURL("app-settings:");
@@ -14,7 +16,10 @@ export function openSystemSettings(): void {
 }
 
 export async function requestPhotoAccess(): Promise<PermissionOutcome> {
-	const { status, accessPrivileges, canAskAgain } = await MediaLibrary.getPermissionsAsync();
+	const { status, accessPrivileges, canAskAgain } = await MediaLibrary.getPermissionsAsync(
+		false,
+		VISUAL_MEDIA
+	);
 
 	if (accessPrivileges === "all" || status === "granted") {
 		return "granted";
@@ -24,7 +29,7 @@ export async function requestPhotoAccess(): Promise<PermissionOutcome> {
 		return "needs_settings";
 	}
 
-	const result = await MediaLibrary.requestPermissionsAsync();
+	const result = await MediaLibrary.requestPermissionsAsync(false, VISUAL_MEDIA);
 
 	if (result.accessPrivileges === "limited") {
 		return "limited";
