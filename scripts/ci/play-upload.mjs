@@ -2,17 +2,24 @@
 /**
  * Uploads an AAB to a Google Play track.
  *
- *   node scripts/ci/play-upload.mjs <path-to-aab> [track]
+ *   node scripts/ci/play-upload.mjs <path-to-aab> [track] [--draft]
  *
  * Needs PLAY_SERVICE_ACCOUNT_KEY_PATH pointing at the service account JSON.
- * Defaults to the internal track, which is the only thing CI should touch.
+ * Defaults to the internal track, which goes straight to testers.
+ *
+ * --draft stages the release instead of rolling it out. That is the only way
+ * CI is allowed near production: the console then shows a draft release that a
+ * human reviews and rolls out by hand.
  */
 import { existsSync } from "node:fs";
 import { google } from "googleapis";
+import { appVersion, releaseNotes } from "./release-notes.mjs";
 
 const PACKAGE_NAME = "com.zaimimran.recapd";
 
-const [, , aabPath, track = "internal"] = process.argv;
+const args = process.argv.slice(2).filter((arg) => arg !== "--draft");
+const draft = process.argv.includes("--draft");
+const [aabPath, track = "internal"] = args;
 const keyFile = process.env.PLAY_SERVICE_ACCOUNT_KEY_PATH;
 
 if (!aabPath || !existsSync(aabPath)) {
@@ -25,10 +32,15 @@ if (!keyFile || !existsSync(keyFile)) {
 	process.exit(1);
 }
 
-if (track === "production") {
-	console.error("refusing to publish to production from CI, promote it by hand");
+if (track === "production" && !draft) {
+	console.error(
+		"refusing to roll out to production from CI. Pass --draft and roll it out by hand."
+	);
 	process.exit(1);
 }
+
+const version = appVersion();
+const notes = releaseNotes(version);
 
 // GOTCHA: new google.auth.JWT(...) fails with "Request is missing required
 // authentication credential". GoogleAuth + getClient() works.
@@ -45,7 +57,10 @@ console.log(`opened edit ${edit.id}`);
 const { data: bundle } = await androidpublisher.edits.bundles.upload({
 	packageName: PACKAGE_NAME,
 	editId: edit.id,
-	media: { mimeType: "application/octet-stream", body: (await import("node:fs")).createReadStream(aabPath) },
+	media: {
+		mimeType: "application/octet-stream",
+		body: (await import("node:fs")).createReadStream(aabPath),
+	},
 });
 
 console.log(`uploaded versionCode ${bundle.versionCode}`);
@@ -58,12 +73,21 @@ await androidpublisher.edits.tracks.update({
 		track,
 		releases: [
 			{
+				name: version,
 				versionCodes: [String(bundle.versionCode)],
-				status: "completed",
+				status: draft ? "draft" : "completed",
+				releaseNotes: [{ language: "en-US", text: notes }],
 			},
 		],
 	},
 });
 
 await androidpublisher.edits.commit({ packageName: PACKAGE_NAME, editId: edit.id });
-console.log(`versionCode ${bundle.versionCode} is live on the ${track} track`);
+
+if (draft) {
+	console.log(
+		`versionCode ${bundle.versionCode} is a draft release on ${track}, waiting for a human to roll it out`
+	);
+} else {
+	console.log(`versionCode ${bundle.versionCode} is live on the ${track} track`);
+}

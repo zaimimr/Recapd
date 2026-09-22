@@ -168,6 +168,26 @@ every run. A cold cache costs a few percent; a warm one skips most of the C++.
 Play serves per-ABI splits from the bundle, so removing an architecture only means devices of that
 kind stop receiving updates. Nothing already installed breaks.
 
+## Submitting for review
+
+Both jobs ship to testers by default. Run the workflow with **submission: staged** and each store
+also gets a submission that sits there until you approve it. Nothing goes public without a human.
+
+| Store | What CI creates | Where you finish it |
+| --- | --- | --- |
+| App Store | a review submission with the build attached, deliberately not submitted | App Store Connect → Review Submissions |
+| Play | a **draft** release on the production track | Play Console → the release, then Review release and roll out |
+
+Release notes come from `store/release-notes/<version>.md`, where `<version>` is `expo.version` in
+`app.json`. Both stores get the same text. The file has to exist before a staged run or the job
+fails, which is on purpose: a release without notes is a release nobody can read.
+
+The iOS half runs in its own Linux job, because Apple takes 10 to 20 minutes to process an upload
+before the build can be attached, and waiting on a macOS runner bills at 10x. It reuses an open
+review submission rather than creating a second one, and it never sets `submitted`.
+
+`play-upload.mjs` still refuses the production track outright unless `--draft` is passed.
+
 ## Things that will bite
 
 - The Expo Android template signs release with the **debug** key. That is what the signing script
