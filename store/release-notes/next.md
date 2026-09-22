@@ -1,3 +1,1 @@
-- Upgrade to Pro is reachable again
-- The free tier says 12 people, which is what it is
-- A fresh look across the app
+# What goes out next. Bullets only, under 500 characters.
