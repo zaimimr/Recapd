@@ -1,7 +1,7 @@
 jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
 
 import { getAvatarColor } from "@/lib/colors";
-import { safeDate } from "@/lib/dateUtils";
+import { computeEventExpiry, EVENT_RETENTION_DAYS, safeDate } from "@/lib/dateUtils";
 import { FREE_MAX_VIDEO_DURATION_MS, PRO_MAX_VIDEO_DURATION_MS } from "@/lib/mediaLibrary";
 import { generateUploadId } from "@/lib/uploadId";
 import { formatDuration } from "@/lib/utils";
@@ -62,6 +62,38 @@ describe("safeDate", () => {
 
 	it("accepts timestamp at the max boundary", () => {
 		expect(safeDate(8640000000000000).getTime()).toBe(8640000000000000);
+	});
+});
+
+describe("computeEventExpiry", () => {
+	const retentionMs = EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+	function isRecentExpiry(date: Date, before: number) {
+		const t = date.getTime();
+		return t >= before + retentionMs && t <= Date.now() + retentionMs;
+	}
+
+	it("adds EVENT_RETENTION_DAYS to endsAt when it is later than createdAt", () => {
+		const endsAt = new Date("2024-06-15T12:00:00Z");
+		const createdAt = new Date("2024-06-01T00:00:00Z");
+		expect(computeEventExpiry(endsAt, createdAt).getTime()).toBe(endsAt.getTime() + retentionMs);
+	});
+
+	it("adds EVENT_RETENTION_DAYS to createdAt when it is later than endsAt", () => {
+		const endsAt = new Date("2024-06-01T00:00:00Z");
+		const createdAt = new Date("2024-06-15T12:00:00Z");
+		expect(computeEventExpiry(endsAt, createdAt).getTime()).toBe(createdAt.getTime() + retentionMs);
+	});
+
+	it("anchors on the current time when createdAt is omitted and endsAt is in the past", () => {
+		const before = Date.now();
+		const endsAt = new Date("2020-01-01T00:00:00Z");
+		expect(isRecentExpiry(computeEventExpiry(endsAt), before)).toBe(true);
+	});
+
+	it("anchors on endsAt when createdAt is omitted and endsAt is in the future", () => {
+		const endsAt = new Date(Date.now() + retentionMs);
+		expect(computeEventExpiry(endsAt).getTime()).toBe(endsAt.getTime() + retentionMs);
 	});
 });
 
