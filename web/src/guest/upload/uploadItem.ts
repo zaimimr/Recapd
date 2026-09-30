@@ -19,9 +19,13 @@ export class UploadError extends Error {
 	}
 }
 
+export type UploadStage = "idle" | "prepare" | "thumbnail" | "transfer" | "verify" | "record";
+
 export type UploadTask = {
 	run(onProgress: (fraction: number) => void): Promise<void>;
 	abort(): void;
+	discard(): Promise<void>;
+	stage(): UploadStage;
 };
 
 export type UploadInput = {
@@ -85,8 +89,12 @@ export function createUploadTask(input: UploadInput): UploadTask {
 	let tusDone = false;
 	let verified = false;
 	let insertAttempted = false;
+	let recorded = false;
 	let generation = 0;
+	let stage: UploadStage = "idle";
+	let current: Promise<void> | null = null;
 	let cancelRun: ((error: UploadError) => void) | null = null;
+	let cancelTransfer: ((error: UploadError) => void) | null = null;
 
 	async function prepare(): Promise<Prepared> {
 		if (prepared) return prepared;
@@ -138,6 +146,7 @@ export function createUploadTask(input: UploadInput): UploadTask {
 
 	function uploadOriginal(job: Prepared, onProgress: (fraction: number) => void): Promise<void> {
 		return new Promise((resolve, reject) => {
+			cancelTransfer = reject;
 			if (!tus) {
 				tus = new Upload(file, {
 					endpoint: TUS_ENDPOINT,
@@ -165,19 +174,30 @@ export function createUploadTask(input: UploadInput): UploadTask {
 		});
 	}
 
+	async function replaceBadOriginal(job: Prepared): Promise<void> {
+		await guestSupabase.storage
+			.from("event-photos")
+			.remove([job.storagePath])
+			.catch(() => undefined);
+		if (thumbnailPath) {
+			await guestSupabase.storage
+				.from("thumbnails")
+				.remove([thumbnailPath])
+				.catch(() => undefined);
+		}
+		const storagePath = buildStoragePath(eventId, profileId, job.media.ext);
+		prepared = { ...job, storagePath, thumbnailPath: thumbPath(storagePath) };
+		tus = null;
+		tusDone = false;
+		thumbnailPath = null;
+		thumbnailSettled = false;
+	}
+
 	async function verifyOriginal(job: Prepared): Promise<void> {
 		const { data, error } = await guestSupabase.storage.from("event-photos").info(job.storagePath);
-		if (error) {
-			if (isClientError(error)) {
-				tus = null;
-				tusDone = false;
-				throw new UploadError("verify_failed", "Upload could not be confirmed. Tap Retry.");
-			}
-			throw new UploadError("network", NETWORK_MESSAGE);
-		}
-		if (Number(data?.size) !== file.size) {
-			tus = null;
-			tusDone = false;
+		if (error && !isClientError(error)) throw new UploadError("network", NETWORK_MESSAGE);
+		if (error || Number(data?.size) !== file.size) {
+			await replaceBadOriginal(job);
 			throw new UploadError("verify_failed", "Upload could not be confirmed. Tap Retry.");
 		}
 	}
@@ -203,7 +223,11 @@ export function createUploadTask(input: UploadInput): UploadTask {
 	}
 
 	async function record(job: Prepared): Promise<void> {
-		if (insertAttempted && (await alreadyRecorded(job))) return;
+		if (recorded) return;
+		if (insertAttempted && (await alreadyRecorded(job))) {
+			recorded = true;
+			return;
+		}
 		insertAttempted = true;
 		const isVideo = job.media.mediaType === "video";
 		const { error } = await guestSupabase.from("media_items").insert({
@@ -219,7 +243,10 @@ export function createUploadTask(input: UploadInput): UploadTask {
 			thumbnail_path: thumbnailPath,
 			visibility: "shared",
 		});
-		if (!error) return;
+		if (!error) {
+			recorded = true;
+			return;
+		}
 		if (!error.code) throw new UploadError("network", NETWORK_MESSAGE);
 		await discardObjects(job).catch(() => undefined);
 		insertAttempted = false;
@@ -235,46 +262,86 @@ export function createUploadTask(input: UploadInput): UploadTask {
 	}
 
 	async function pipeline(runId: number, onProgress: (fraction: number) => void): Promise<void> {
-		const live = () => {
+		const live = (next: UploadStage) => {
 			if (runId !== generation) throw new UploadError("network", PAUSED_MESSAGE);
+			stage = next;
 		};
+		live("prepare");
 		const job = await prepare();
-		live();
 		await freshAccessToken();
-		live();
+		live("thumbnail");
 		await uploadThumbnail(job).catch(() => undefined);
-		live();
+		live("transfer");
 		if (!tusDone) {
 			await uploadOriginal(job, onProgress);
 			tusDone = true;
 		}
-		live();
+		live("verify");
 		if (!verified) {
 			await verifyOriginal(job);
 			verified = true;
 		}
-		live();
+		live("record");
 		await record(job);
 		onProgress(1);
+	}
+
+	function stop() {
+		generation += 1;
+		const upload = tus;
+		if (upload) void upload.abort().catch(() => undefined);
+		const paused = new UploadError("network", PAUSED_MESSAGE);
+		cancelTransfer?.(paused);
+		cancelTransfer = null;
+		cancelRun?.(paused);
+		cancelRun = null;
 	}
 
 	return {
 		run(onProgress) {
 			generation += 1;
 			const runId = generation;
+			const previous = current ?? Promise.resolve();
+			const next = previous.then(() => pipeline(runId, onProgress));
+			current = next.then(
+				() => {
+					stage = "idle";
+				},
+				() => {
+					stage = "idle";
+				}
+			);
 			return new Promise<void>((resolve, reject) => {
 				cancelRun = reject;
-				pipeline(runId, onProgress).then(resolve, (error: unknown) =>
+				next.then(resolve, (error: unknown) =>
 					reject(error instanceof UploadError ? error : new UploadError("network", NETWORK_MESSAGE))
 				);
 			});
 		},
-		abort() {
-			generation += 1;
+		abort: stop,
+		async discard() {
+			stop();
+			await current;
+			if (recorded || !prepared) return;
+			const job = prepared;
+			const uploadedOriginal = tusDone;
 			const upload = tus;
-			if (upload) void upload.abort();
-			cancelRun?.(new UploadError("network", PAUSED_MESSAGE));
-			cancelRun = null;
+			tus = null;
+			if (uploadedOriginal) {
+				await guestSupabase.storage
+					.from("event-photos")
+					.remove([job.storagePath])
+					.catch(() => undefined);
+			} else if (upload?.url) {
+				await Upload.terminate(upload.url, upload.options).catch(() => undefined);
+			}
+			if (thumbnailPath) {
+				await guestSupabase.storage
+					.from("thumbnails")
+					.remove([thumbnailPath])
+					.catch(() => undefined);
+			}
 		},
+		stage: () => stage,
 	};
 }

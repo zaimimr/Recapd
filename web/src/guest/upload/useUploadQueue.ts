@@ -38,6 +38,7 @@ export function createUploadQueue(options: QueueOptions) {
 	let hidden = false;
 	let visibleAt = 0;
 	let counter = 0;
+	let disposed = false;
 
 	function emit() {
 		snapshot = entries.map((entry) => entry.item);
@@ -88,6 +89,7 @@ export function createUploadQueue(options: QueueOptions) {
 	}
 
 	function pump() {
+		if (disposed) return;
 		let active = entries.filter((entry) => entry.item.status === "uploading").length;
 		for (const entry of entries) {
 			if (active >= concurrency) break;
@@ -103,6 +105,7 @@ export function createUploadQueue(options: QueueOptions) {
 
 	return {
 		add(files: File[]) {
+			disposed = false;
 			for (const file of files) {
 				counter += 1;
 				entries.push({
@@ -128,6 +131,7 @@ export function createUploadQueue(options: QueueOptions) {
 			if (!entry || !entry.item.canRetry) return;
 			if (entry.item.status !== "failed" && entry.item.status !== "paused") return;
 			update(entry, { status: "queued", error: null, canRetry: false });
+			disposed = false;
 			pump();
 			emit();
 		},
@@ -135,9 +139,9 @@ export function createUploadQueue(options: QueueOptions) {
 			const index = entries.findIndex((entry) => entry.item.id === id);
 			if (index === -1) return;
 			const [entry] = entries.splice(index, 1);
-			if (entry.item.status === "uploading") {
+			if (entry.item.status !== "done") {
 				update(entry, { status: "failed" });
-				entry.task.abort();
+				void entry.task.discard().catch(() => undefined);
 			}
 			pump();
 			emit();
@@ -163,6 +167,7 @@ export function createUploadQueue(options: QueueOptions) {
 			let changed = false;
 			for (const entry of entries) {
 				if (entry.item.status !== "uploading" || !entry.interrupted) continue;
+				if (entry.task.stage() !== "transfer") continue;
 				if (entry.lastProgressAt > visibleAt) continue;
 				update(entry, { status: "paused", error: "Paused, tap to resume", canRetry: true });
 				entry.task.abort();
@@ -172,6 +177,15 @@ export function createUploadQueue(options: QueueOptions) {
 				pump();
 				emit();
 			}
+		},
+		dispose() {
+			disposed = true;
+			for (const entry of entries) {
+				if (entry.item.status !== "uploading") continue;
+				update(entry, { status: "paused", error: "Paused, tap to resume", canRetry: true });
+				entry.task.abort();
+			}
+			emit();
 		},
 		isActive() {
 			return entries.some(
@@ -263,6 +277,8 @@ export function useUploadQueue(eventId: string, profileId: string) {
 	useEffect(() => {
 		getLimits().catch(() => undefined);
 	}, [getLimits]);
+
+	useEffect(() => () => queue.dispose(), [queue]);
 
 	useEffect(() => {
 		let timer: ReturnType<typeof setTimeout> | undefined;

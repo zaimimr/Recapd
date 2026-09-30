@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UploadError, type UploadTask } from "../uploadItem";
+import { UploadError, type UploadStage, type UploadTask } from "../uploadItem";
 import { createUploadQueue } from "../useUploadQueue";
 
 vi.mock("../uploadItem", async () => {
@@ -21,6 +21,8 @@ type Controlled = UploadTask & {
 	reject: (error: unknown) => void;
 	progress: (fraction: number) => void;
 	aborted: number;
+	discarded: number;
+	currentStage: UploadStage;
 };
 
 function controlledTask(): Controlled {
@@ -30,6 +32,8 @@ function controlledTask(): Controlled {
 	const task: Controlled = {
 		runs: 0,
 		aborted: 0,
+		discarded: 0,
+		currentStage: "transfer",
 		run(onProgress) {
 			task.runs += 1;
 			report = onProgress;
@@ -42,6 +46,11 @@ function controlledTask(): Controlled {
 			task.aborted += 1;
 			rejectRun(new UploadError("network", "Aborted"));
 		},
+		async discard() {
+			task.discarded += 1;
+			task.abort();
+		},
+		stage: () => task.currentStage,
 		resolve: () => resolveRun(),
 		reject: (error) => rejectRun(error),
 		progress: (fraction) => report(fraction),
@@ -164,6 +173,19 @@ describe("createUploadQueue", () => {
 		expect(statuses()).toEqual(["paused", "uploading"]);
 	});
 
+	it("does not pause items that are past the transfer stage", async () => {
+		queue.add([file("a.jpg")]);
+		tasks[0].currentStage = "record";
+		queue.markHidden();
+		clock = 5000;
+		queue.markVisible();
+		clock = 10000;
+		queue.checkStalled();
+		await flush();
+		expect(tasks[0].aborted).toBe(0);
+		expect(statuses()).toEqual(["uploading"]);
+	});
+
 	it("keeps uploads that finished while hidden", async () => {
 		queue.add([file("a.jpg")]);
 		queue.markHidden();
@@ -172,12 +194,38 @@ describe("createUploadQueue", () => {
 		expect(statuses()).toEqual(["done"]);
 	});
 
-	it("removes items and aborts in-flight work", async () => {
+	it("removes items and discards in-flight work", async () => {
 		queue.add([file("a.jpg"), file("b.jpg"), file("c.jpg")]);
 		queue.remove(queue.getItems()[0].id);
 		await flush();
-		expect(tasks[0].aborted).toBe(1);
+		expect(tasks[0].discarded).toBe(1);
 		expect(statuses()).toEqual(["uploading", "uploading"]);
+	});
+
+	it("discards uploaded objects when a failed item is removed", async () => {
+		queue.add([file("a.jpg")]);
+		tasks[0].reject(new UploadError("network", "Connection lost"));
+		await flush();
+		queue.remove(queue.getItems()[0].id);
+		expect(tasks[0].discarded).toBe(1);
+		expect(statuses()).toEqual([]);
+	});
+
+	it("does not discard finished uploads when removed", async () => {
+		queue.add([file("a.jpg")]);
+		tasks[0].resolve();
+		await flush();
+		queue.remove(queue.getItems()[0].id);
+		expect(tasks[0].discarded).toBe(0);
+	});
+
+	it("aborts in-flight uploads on dispose", async () => {
+		queue.add([file("a.jpg"), file("b.jpg"), file("c.jpg")]);
+		queue.dispose();
+		await flush();
+		expect(tasks.map((task) => task.aborted)).toEqual([1, 1, 0]);
+		expect(tasks[2].runs).toBe(0);
+		expect(statuses()).toEqual(["paused", "paused", "queued"]);
 	});
 
 	it("clears finished items only", async () => {

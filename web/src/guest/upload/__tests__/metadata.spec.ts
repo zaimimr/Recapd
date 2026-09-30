@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readContainerDurationMs, resolveCapturedAt } from "../metadata";
+import { pickDurationMs, readContainerDurationMs, resolveCapturedAt } from "../metadata";
 
 const lastModified = Date.parse("2026-09-29T18:00:00Z");
 const now = new Date("2026-09-30T12:00:00Z");
@@ -76,5 +76,17 @@ describe("readContainerDurationMs", () => {
 	it("returns null for files without a movie header", async () => {
 		expect(await readContainerDurationMs(new Blob([new Uint8Array(64)]))).toBeNull();
 		expect(await readContainerDurationMs(new Blob([box("ftyp", new Uint8Array(12))]))).toBeNull();
+	});
+});
+
+describe("pickDurationMs", () => {
+	it("uses the longer duration when both are known", () => {
+		expect(pickDurationMs(30000, 31200)).toBe(31200);
+		expect(pickDurationMs(45000, 30000)).toBe(45000);
+	});
+	it("uses whichever is known", () => {
+		expect(pickDurationMs(null, 3000)).toBe(3000);
+		expect(pickDurationMs(3000, null)).toBe(3000);
+		expect(pickDurationMs(null, null)).toBeNull();
 	});
 });

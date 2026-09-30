@@ -175,6 +175,12 @@ export function readVideoInfo(file: File, timeoutMs = 15000): Promise<VideoInfo>
 	});
 }
 
+export function pickDurationMs(container: number | null, element: number | null): number | null {
+	if (container === null) return element;
+	if (element === null) return container;
+	return Math.max(container, element);
+}
+
 export async function readMetadata(file: File, mediaType: MediaKind): Promise<MediaMetadata> {
 	if (mediaType === "video") {
 		const [info, containerDurationMs] = await Promise.all([
@@ -183,7 +189,7 @@ export async function readMetadata(file: File, mediaType: MediaKind): Promise<Me
 		]);
 		return {
 			...info,
-			durationMs: containerDurationMs ?? info.durationMs,
+			durationMs: pickDurationMs(containerDurationMs, info.durationMs),
 			capturedAt: resolveCapturedAt(undefined, file.lastModified),
 		};
 	}
