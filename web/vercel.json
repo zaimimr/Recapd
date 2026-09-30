@@ -9,7 +9,7 @@
 			"destination": "/api/kit/print?code=:code"
 		},
 		{
-			"source": "/((?!api|assets|icon\\.png|app-store-badge\\.svg|google-play-badge\\.png|screenshots|robots\\.txt|sitemap\\.xml).*)",
+			"source": "/((?!api|assets|kit|\\.well-known|icon\\.png|app-store-badge\\.svg|google-play-badge\\.png|screenshots|robots\\.txt|sitemap\\.xml).*)",
 			"destination": "/index.html"
 		}
 	],
@@ -28,6 +28,12 @@
 			"source": "/index.html",
 			"destination": "/",
 			"permanent": true
+		}
+	],
+	"headers": [
+		{
+			"source": "/.well-known/apple-app-site-association",
+			"headers": [{ "key": "Content-Type", "value": "application/json" }]
 		}
 	],
 	"functions": {

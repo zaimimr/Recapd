@@ -1,0 +1,12 @@
+[
+	{
+		"relation": ["delegate_permission/common.handle_all_urls"],
+		"target": {
+			"namespace": "android_app",
+			"package_name": "com.zaimimran.recapd",
+			"sha256_cert_fingerprints": [
+				"05:AC:A9:AA:E6:86:7C:DE:FF:C5:34:76:8B:35:88:47:18:F9:5C:BD:AD:24:EF:52:A2:6A:1A:9E:54:13:1D:0A"
+			]
+		}
+	}
+]

@@ -1,0 +1,10 @@
+{
+	"applinks": {
+		"details": [
+			{
+				"appIDs": ["9L246T935B.com.zaimimran.recapd"],
+				"components": [{ "/": "/join/*" }]
+			}
+		]
+	}
+}
