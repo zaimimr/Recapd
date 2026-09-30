@@ -1,12 +1,24 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { normalizeCode } from "../../kit/format";
+import DownloadSheet from "./download/DownloadSheet";
 import Full from "./Full";
 import Gallery from "./gallery/Gallery";
 import NotFound from "./NotFound";
+import type { GalleryProps } from "./types";
 import { useGuestSession } from "./useGuestSession";
 import Welcome from "./Welcome";
 import "./guest.css";
+
+function GalleryScreen(props: GalleryProps) {
+	return (
+		<DownloadSheet event={props.event}>
+			{({ saveOne, downloadAll }) => (
+				<Gallery {...props} onSave={saveOne} onDownloadAll={downloadAll} />
+			)}
+		</DownloadSheet>
+	);
+}
 
 function GuestScreens({ code, onRetry }: { code: string; onRetry: () => void }) {
 	const { state, join } = useGuestSession(code);
@@ -47,7 +59,9 @@ function GuestScreens({ code, onRetry }: { code: string; onRetry: () => void }) 
 				/>
 			);
 		case "gallery":
-			return <Gallery event={state.event} profileId={state.profileId} session={state.session} />;
+			return (
+				<GalleryScreen event={state.event} profileId={state.profileId} session={state.session} />
+			);
 	}
 }
 
