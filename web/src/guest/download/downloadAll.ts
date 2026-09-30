@@ -6,6 +6,8 @@ const MB = 1024 * 1024;
 export const BATCH_SIZE = 20;
 export const BATCH_MAX_BYTES = 300 * MB;
 export const DISK_STREAM_BYTES = 500 * MB;
+export const ZIP_PART_MAX_BYTES = 400 * MB;
+export const UNKNOWN_SIZE_BYTES = 50 * MB;
 const BATCH_CONCURRENCY = 3;
 const OBJECT_URL_LIFETIME_MS = 60_000;
 
@@ -61,6 +63,18 @@ export function progressPercent({ done, total, bytes, totalBytes }: Progress): n
 
 export function zipName(code: string): string {
 	return `recapd-${code}.zip`;
+}
+
+export function planZipParts(items: Sized[], maxBytes: number = ZIP_PART_MAX_BYTES): Batch[] {
+	return planBatches(
+		items.map((item) => ({ file_size_bytes: item.file_size_bytes ?? UNKNOWN_SIZE_BYTES })),
+		Number.POSITIVE_INFINITY,
+		maxBytes
+	);
+}
+
+export function zipPartName(code: string, part: number, parts: number): string {
+	return parts > 1 ? `recapd-${code}-part${part + 1}.zip` : zipName(code);
 }
 
 export function shouldStreamToDisk(items: Sized[]): boolean {
@@ -157,21 +171,41 @@ export function pickZipDestination(name: string): Promise<FileSystemFileHandle> 
 	});
 }
 
-export async function saveZip(
-	response: Response,
-	name: string,
-	signal: AbortSignal,
-	handle?: FileSystemFileHandle
-) {
-	if (!response.body) throw new Error("ZIP stream is empty");
-	if (handle) {
-		const writable = await handle.createWritable();
-		await response.body.pipeTo(writable, { signal });
-		return;
-	}
-	const blob = await response.blob();
-	if (signal.aborted) return;
+function deliverBlob(blob: Blob, name: string) {
 	const url = URL.createObjectURL(blob);
 	triggerDownload(url, name);
 	setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_LIFETIME_MS);
+}
+
+export async function saveZipPart(
+	items: DownloadItem[],
+	names: string[],
+	name: string,
+	deps: TransferDeps,
+	tracker: Tracker,
+	{
+		handle,
+		deliver = deliverBlob,
+	}: { handle?: FileSystemFileHandle; deliver?: (blob: Blob, name: string) => void } = {}
+): Promise<number> {
+	let entries = 0;
+	const response = zipStream(items, names, deps, {
+		...tracker,
+		onItemDone: () => {
+			entries += 1;
+			tracker.onItemDone();
+		},
+	});
+	if (!response.body) throw new Error("ZIP stream is empty");
+	if (handle) {
+		const writable = await handle.createWritable();
+		await response.body.pipeTo(writable, { signal: deps.signal, preventClose: true });
+		if (entries > 0) await writable.close();
+		else await writable.abort();
+		return entries;
+	}
+	const blob = await response.blob();
+	if (deps.signal.aborted || entries === 0) return entries;
+	deliver(blob, name);
+	return entries;
 }

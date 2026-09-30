@@ -11,15 +11,17 @@ import {
 	knownTotalBytes,
 	pickZipDestination,
 	planBatches,
+	planZipParts,
 	prepareBatch,
 	progressPercent,
-	saveZip,
+	saveZipPart,
 	shouldStreamToDisk,
 	type Tracker,
 	zipName,
-	zipStream,
+	zipPartName,
 } from "./downloadAll";
 import {
+	createShareGate,
 	downloadOriginal,
 	fileNameFor,
 	prefersShare,
@@ -41,7 +43,14 @@ type Stats = {
 };
 
 type SheetState =
-	| { kind: "zip"; phase: "running" | "done" | "error"; name: string }
+	| {
+			kind: "zip";
+			phase: "running" | "next" | "done" | "error";
+			parts: Batch[];
+			part: number;
+			name: string;
+			retryPart: boolean;
+	  }
 	| {
 			kind: "share";
 			phase: "preparing" | "ready" | "sharing" | "done";
@@ -165,6 +174,7 @@ function useDownloads(event: DownloadEvent) {
 		() => createSignedUrlResolver(guestSupabase.storage as unknown as StorageSigner),
 		[]
 	);
+	const shareSingle = useMemo(() => createShareGate(), []);
 	const timeZone = resolveTimeZone(event.timezone);
 	const [state, setState] = useState<SheetState | null>(null);
 	const [stats, setStats] = useState<Stats>(EMPTY_STATS);
@@ -173,6 +183,7 @@ function useDownloads(event: DownloadEvent) {
 	const filesRef = useRef<File[]>([]);
 	const jobRef = useRef<Job | null>(null);
 	const lastItems = useRef<DownloadItem[]>([]);
+	const partStartStats = useRef<Stats>(EMPTY_STATS);
 	const active = state !== null;
 
 	useEffect(() => () => abortRef.current?.abort(), []);
@@ -277,13 +288,58 @@ function useDownloads(event: DownloadEvent) {
 		void prepare(state.batches, state.index + 1, abortRef.current);
 	};
 
-	const runZip = (items: DownloadItem[]) => {
-		const name = zipName(event.join_code);
-		const destination = shouldStreamToDisk(items) ? pickZipDestination(name) : null;
-		const controller = begin(items);
+	const runPart = async (
+		parts: Batch[],
+		part: number,
+		controller: AbortController,
+		handle?: FileSystemFileHandle
+	) => {
 		const job = jobRef.current;
-		if (!job) return;
-		setState({ kind: "zip", phase: "running", name });
+		if (!job || controller.signal.aborted) return;
+		const { start, end } = parts[part];
+		const name = zipPartName(event.join_code, part, parts.length);
+		const zip = { kind: "zip" as const, parts, part, name, retryPart: false };
+		partStartStats.current = { ...statsRef.current };
+		setState({ ...zip, phase: "running" });
+		try {
+			const entries = await saveZipPart(
+				job.items.slice(start, end),
+				job.names.slice(start, end),
+				name,
+				deps(controller),
+				tracker(controller),
+				{ handle }
+			);
+			if (controller.signal.aborted) return;
+			statsRef.current.saved = statsRef.current.done;
+			flush();
+			if (part + 1 < parts.length) {
+				if (entries === 0) void runPart(parts, part + 1, controller);
+				else setState({ ...zip, phase: "next" });
+				return;
+			}
+			setState({ ...zip, phase: statsRef.current.saved > 0 ? "done" : "error" });
+		} catch {
+			if (controller.signal.aborted) return;
+			flush();
+			setState({ ...zip, phase: "error", retryPart: parts.length > 1 });
+		}
+	};
+
+	const runZip = (items: DownloadItem[]) => {
+		const destination = shouldStreamToDisk(items)
+			? pickZipDestination(zipName(event.join_code))
+			: null;
+		const controller = begin(items);
+		if (!jobRef.current) return;
+		setState({
+			kind: "zip",
+			phase: "running",
+			parts: [],
+			part: 0,
+			name: zipName(event.join_code),
+			retryPart: false,
+		});
 		void (async () => {
 			let handle: FileSystemFileHandle | undefined;
 			if (destination) {
@@ -296,23 +352,27 @@ function useDownloads(event: DownloadEvent) {
 					}
 				}
 			}
-			try {
-				await saveZip(
-					zipStream(job.items, job.names, deps(controller), tracker(controller)),
-					name,
-					controller.signal,
-					handle
-				);
-				if (controller.signal.aborted) return;
-				statsRef.current.saved = statsRef.current.done;
-				flush();
-				setState({ kind: "zip", phase: statsRef.current.done > 0 ? "done" : "error", name });
-			} catch {
-				if (controller.signal.aborted) return;
-				flush();
-				setState({ kind: "zip", phase: "error", name });
-			}
+			const parts = handle ? [{ start: 0, end: items.length }] : planZipParts(items);
+			await runPart(parts, 0, controller, handle);
 		})();
+	};
+
+	const nextPart = () => {
+		const controller = abortRef.current;
+		if (state?.kind !== "zip" || state.phase !== "next" || !controller) return;
+		void runPart(state.parts, state.part + 1, controller);
+	};
+
+	const retryZip = () => {
+		const controller = abortRef.current;
+		if (state?.kind !== "zip") return;
+		if (state.retryPart && controller) {
+			statsRef.current = { ...partStartStats.current };
+			flush();
+			void runPart(state.parts, state.part, controller);
+			return;
+		}
+		runZip(lastItems.current);
 	};
 
 	const downloadAll = (items: DownloadItem[]) => {
@@ -362,8 +422,8 @@ function useDownloads(event: DownloadEvent) {
 	const saveSingle = () => {
 		if (state?.kind !== "single" || filesRef.current.length === 0) return;
 		const noun = state.noun;
-		void shareFiles(filesRef.current).then((outcome) => {
-			if (outcome === "needs_tap") return;
+		void shareSingle(filesRef.current).then((outcome) => {
+			if (outcome === "busy" || outcome === "needs_tap") return;
 			if (outcome === "failed") setState({ kind: "single", phase: "error", noun });
 			else close();
 		});
@@ -372,22 +432,34 @@ function useDownloads(event: DownloadEvent) {
 	let sheet: ReactNode = null;
 	if (state?.kind === "zip") {
 		const running = state.phase === "running";
+		const total = state.parts.length;
+		const split = total > 1;
+		const partText = `part ${state.part + 1} of ${total}`;
 		sheet = (
 			<Sheet
 				title={
 					running
-						? "Downloading everything"
-						: state.phase === "done"
-							? "Download complete"
-							: "Download stopped"
+						? split
+							? `Downloading ${partText}`
+							: "Downloading everything"
+						: state.phase === "next"
+							? `Part ${state.part + 1} of ${total} saved`
+							: state.phase === "done"
+								? "Download complete"
+								: "Download stopped"
 				}
 				onClose={close}
 			>
 				{running && (
 					<>
 						<p className="download-body">
-							Building {state.name} with {countLabel(stats.total, "item", "items")}. Keep this tab
-							open until it is saved.
+							Building {state.name} with{" "}
+							{countLabel(
+								split ? state.parts[state.part].end - state.parts[state.part].start : stats.total,
+								"item",
+								"items"
+							)}
+							. Keep this tab open until it is saved.
 						</p>
 						<ProgressBar stats={stats} label="Download progress" />
 						<p className="download-status" aria-live="polite">
@@ -396,19 +468,37 @@ function useDownloads(event: DownloadEvent) {
 						</p>
 					</>
 				)}
-				{state.phase === "done" && <Summary stats={stats} verb={`saved to ${state.name}`} />}
+				{state.phase === "next" && (
+					<>
+						<p className="download-body">
+							This gallery is big, so it comes in {total} ZIP files. Tap to download the next one.
+						</p>
+						<ProgressBar stats={stats} label="Download progress" />
+						<p className="download-status" aria-live="polite">
+							{countLabel(stats.saved, "item", "items")} saved of {stats.total}
+							{stats.failed > 0 ? ` · ${stats.failed} failed` : ""}
+						</p>
+					</>
+				)}
+				{state.phase === "done" && (
+					<Summary
+						stats={stats}
+						verb={split ? `saved in ${total} ZIP files` : `saved to ${state.name}`}
+					/>
+				)}
 				{state.phase === "error" && (
 					<p className="download-problem" role="alert">
 						We could not build the ZIP. Check your connection and try again.
 					</p>
 				)}
 				<div className="download-actions">
+					{state.phase === "next" && (
+						<button type="button" className="download-primary" onClick={nextPart}>
+							Download part {state.part + 2} of {total}
+						</button>
+					)}
 					{state.phase === "error" && (
-						<button
-							type="button"
-							className="download-primary"
-							onClick={() => runZip(lastItems.current)}
-						>
+						<button type="button" className="download-primary" onClick={retryZip}>
 							Try again
 						</button>
 					)}
@@ -417,7 +507,13 @@ function useDownloads(event: DownloadEvent) {
 						className={state.phase === "done" ? "download-primary" : "download-secondary"}
 						onClick={close}
 					>
-						{running ? "Cancel" : state.phase === "done" ? "Done" : "Close"}
+						{running
+							? "Cancel"
+							: state.phase === "done"
+								? "Done"
+								: state.phase === "next"
+									? "Stop"
+									: "Close"}
 					</button>
 				</div>
 			</Sheet>

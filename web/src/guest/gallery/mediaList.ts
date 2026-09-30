@@ -8,6 +8,7 @@ export type GalleryItem = {
 	width: number | null;
 	height: number | null;
 	duration_milliseconds: number | null;
+	file_size_bytes: number | null;
 	storage_path: string;
 	thumbnail_path: string | null;
 	visibility: string;

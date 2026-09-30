@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { extensionOf, fileNameFor, mimeFor, uniqueNames, withDownloadParam } from "../saveItem";
+import { describe, expect, it, vi } from "vitest";
+import {
+	createShareGate,
+	extensionOf,
+	fileNameFor,
+	mimeFor,
+	type ShareOutcome,
+	uniqueNames,
+	withDownloadParam,
+} from "../saveItem";
 
 describe("extensionOf", () => {
 	it("reads the lowercase extension from a storage path", () => {
@@ -82,5 +90,43 @@ describe("withDownloadParam", () => {
 		expect(
 			withDownloadParam("https://x.supabase.co/object/sign/a.jpg?token=t", "recapd 1.jpg")
 		).toBe("https://x.supabase.co/object/sign/a.jpg?token=t&download=recapd+1.jpg");
+	});
+});
+
+describe("createShareGate", () => {
+	it("ignores a second tap while the share sheet is still open", async () => {
+		let finish: (outcome: ShareOutcome) => void = () => {};
+		const share = vi.fn(
+			() =>
+				new Promise<ShareOutcome>((resolve) => {
+					finish = resolve;
+				})
+		);
+		const gate = createShareGate(share);
+		const file = new File(["x"], "a.jpg");
+		const first = gate([file]);
+		const second = gate([file]);
+		expect(await second).toBe("busy");
+		finish("shared");
+		expect(await first).toBe("shared");
+		expect(share).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens again once the previous share has finished", async () => {
+		const share = vi.fn(async (): Promise<ShareOutcome> => "cancelled");
+		const gate = createShareGate(share);
+		expect(await gate([])).toBe("cancelled");
+		expect(await gate([])).toBe("cancelled");
+		expect(share).toHaveBeenCalledTimes(2);
+	});
+
+	it("opens again after the share throws", async () => {
+		const share = vi
+			.fn<() => Promise<ShareOutcome>>()
+			.mockRejectedValueOnce(new Error("boom"))
+			.mockResolvedValueOnce("shared");
+		const gate = createShareGate(share);
+		await expect(gate([])).rejects.toThrow("boom");
+		expect(await gate([])).toBe("shared");
 	});
 });

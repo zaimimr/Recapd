@@ -143,6 +143,19 @@ export async function shareFiles(files: File[]): Promise<ShareOutcome> {
 	}
 }
 
+export function createShareGate(share: (files: File[]) => Promise<ShareOutcome> = shareFiles) {
+	let busy = false;
+	return async (files: File[]): Promise<ShareOutcome | "busy"> => {
+		if (busy) return "busy";
+		busy = true;
+		try {
+			return await share(files);
+		} finally {
+			busy = false;
+		}
+	};
+}
+
 export async function downloadOriginal(
 	item: SaveTarget,
 	name: string,

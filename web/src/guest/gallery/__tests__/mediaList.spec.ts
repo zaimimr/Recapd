@@ -20,6 +20,7 @@ function item(overrides: Partial<GalleryItem> = {}): GalleryItem {
 		width: 100,
 		height: 100,
 		duration_milliseconds: null,
+		file_size_bytes: null,
 		storage_path: `e/u1/1_${id}.jpg`,
 		thumbnail_path: `e/u1/1_${id}_thumb.jpg`,
 		visibility: "shared",
