@@ -292,16 +292,6 @@ body:has(.guest) {
 	gap: 16px;
 }
 
-.guest-gallery-header {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.guest-gallery-header .guest-title {
-	font-size: 28px;
-}
-
 @media (prefers-reduced-motion: reduce) {
 	.guest-spinner {
 		animation-duration: 2.4s;

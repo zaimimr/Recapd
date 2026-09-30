@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { normalizeCode } from "../../kit/format";
 import Full from "./Full";
-import Gallery from "./Gallery";
+import Gallery from "./gallery/Gallery";
 import NotFound from "./NotFound";
 import { useGuestSession } from "./useGuestSession";
 import Welcome from "./Welcome";
