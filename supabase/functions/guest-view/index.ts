@@ -238,11 +238,14 @@ Deno.serve(async (req) => {
 	if (!isImage && req.method !== "POST") {
 		return json({ error: "method_not_allowed" }, 405, origin);
 	}
+	const secret = Deno.env.get("GUEST_VIEW_IMAGE_SECRET");
+	if (!secret) return json({ error: "server_error" }, 500, origin);
 	const supabase = serviceClient();
 	const retryAfter = await checkRateLimit(
 		(fn, args) => supabase.rpc(fn, args),
 		isImage ? "image" : "list",
-		clientIp(req.headers)
+		clientIp(req.headers),
+		secret
 	);
 	if (retryAfter > 0) {
 		return json({ error: "rate_limited" }, 429, origin, { "Retry-After": String(retryAfter) });

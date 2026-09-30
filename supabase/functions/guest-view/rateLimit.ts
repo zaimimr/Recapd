@@ -1,3 +1,5 @@
+import { hmacKey } from "./token.ts";
+
 export type RateScope = "list" | "image";
 
 export const RATE_LIMITS: Record<RateScope, number> = { list: 30, image: 600 };
@@ -9,14 +11,22 @@ type RateLimitRpc = (
 ) => PromiseLike<{ data: unknown; error: unknown }>;
 
 export function clientIp(headers: Headers): string | null {
-	const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+	const forwarded = headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
 	return (
-		forwarded || headers.get("cf-connecting-ip")?.trim() || headers.get("x-real-ip")?.trim() || null
+		headers.get("cf-connecting-ip")?.trim() || headers.get("x-real-ip")?.trim() || forwarded || null
 	);
 }
 
-export async function rateLimitBucket(scope: RateScope, ip: string): Promise<string> {
-	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+export async function rateLimitBucket(
+	scope: RateScope,
+	ip: string,
+	secret: string
+): Promise<string> {
+	const digest = await crypto.subtle.sign(
+		"HMAC",
+		await hmacKey(secret),
+		new TextEncoder().encode(ip)
+	);
 	const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"));
 	return `${scope}:${hex.join("")}`;
 }
@@ -24,12 +34,13 @@ export async function rateLimitBucket(scope: RateScope, ip: string): Promise<str
 export async function checkRateLimit(
 	rpc: RateLimitRpc,
 	scope: RateScope,
-	ip: string | null
+	ip: string | null,
+	secret: string
 ): Promise<number> {
 	if (!ip) return 0;
 	try {
 		const { data, error } = await rpc("guest_view_rate_limit_hit", {
-			p_bucket: await rateLimitBucket(scope, ip),
+			p_bucket: await rateLimitBucket(scope, ip, secret),
 			p_limit: RATE_LIMITS[scope],
 			p_window_seconds: RATE_WINDOW_SECONDS,
 		});

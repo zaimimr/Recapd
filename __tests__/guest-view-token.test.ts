@@ -100,6 +100,17 @@ describe("guest-view image token", () => {
 		);
 	});
 
+	it("retries the key import after a failed import", async () => {
+		const secret = "fresh-secret-for-retry-test";
+		const spy = jest
+			.spyOn(globalThis.crypto.subtle, "importKey")
+			.mockRejectedValueOnce(new Error("import failed"));
+		await expect(signImageToken(claims, secret)).rejects.toThrow("import failed");
+		spy.mockRestore();
+		const token = await signImageToken(claims, secret);
+		await expect(verifyImageToken(token, secret, NOW)).resolves.toEqual(claims);
+	});
+
 	it("rejects claims with an unknown kind", async () => {
 		const token = await signImageToken({ ...claims, k: "x" as "d" }, SECRET);
 		await expect(verifyImageToken(token, SECRET, NOW)).resolves.toBeNull();

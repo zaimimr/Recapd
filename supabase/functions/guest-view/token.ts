@@ -26,7 +26,7 @@ function fromBase64Url(value: string): Uint8Array | null {
 
 const keys = new Map<string, Promise<CryptoKey>>();
 
-function hmacKey(secret: string): Promise<CryptoKey> {
+export function hmacKey(secret: string): Promise<CryptoKey> {
 	let key = keys.get(secret);
 	if (!key) {
 		key = crypto.subtle.importKey(
@@ -37,6 +37,9 @@ function hmacKey(secret: string): Promise<CryptoKey> {
 			["sign", "verify"]
 		);
 		keys.set(secret, key);
+		key.catch(() => {
+			if (keys.get(secret) === key) keys.delete(secret);
+		});
 	}
 	return key;
 }
