@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import InviteKit from "@/components/InviteKit";
 import {
 	Button,
 	Card,
@@ -14,6 +15,7 @@ import {
 	ScreenScroll,
 } from "@/components/ui";
 import { radius, space, theme, type } from "@/constants/theme";
+import { buildJoinUrl } from "@/lib/inviteKit";
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useEventStore } from "@/store/eventStore";
 
@@ -50,7 +52,7 @@ export default function ShareEventScreen() {
 			weekday: "short",
 			month: "short",
 			day: "numeric",
-		})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at, " – ")}\n\nJoin code: ${currentEvent.join_code}\nJoin the event here: https://recapd.app/join/${currentEvent.join_code}`;
+		})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at, " – ")}\n\nJoin code: ${currentEvent.join_code}\nJoin the event here: ${buildJoinUrl(currentEvent.join_code)}`;
 
 		try {
 			await Share.share({
@@ -74,7 +76,7 @@ export default function ShareEventScreen() {
 		);
 	}
 
-	const deepLink = `recapd://join/${currentEvent.join_code}`;
+	const joinUrl = buildJoinUrl(currentEvent.join_code);
 	const recentGuests = [...(currentEvent.participants ?? [])]
 		.sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime())
 		.slice(0, 4);
@@ -88,7 +90,7 @@ export default function ShareEventScreen() {
 					<Eyebrow style={styles.centerText}>Scan to join</Eyebrow>
 
 					<View style={styles.qrPlate}>
-						<QRCode value={deepLink} size={188} backgroundColor="#FFFFFF" color={theme.pageDeep} />
+						<QRCode value={joinUrl} size={188} backgroundColor="#FFFFFF" color={theme.pageDeep} />
 					</View>
 
 					<Text style={styles.codeLabel}>Or enter the code</Text>
@@ -111,6 +113,8 @@ export default function ShareEventScreen() {
 				</Card>
 
 				<Button label="Share the link" icon="share" onPress={handleShare} />
+
+				<InviteKit code={currentEvent.join_code} />
 
 				<Card padded={false}>
 					<View style={styles.guestHeader}>
