@@ -41,6 +41,7 @@ const TUS_ENDPOINT = `${SUPABASE_URL}/storage/v1/upload/resumable`;
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const TOKEN_MARGIN_MS = 60 * 1000;
 const TUS_SHARE = 0.95;
+export const REQUEST_TIMEOUT_MS = 30000;
 
 const NETWORK_MESSAGE = "Connection lost. Check your network and tap Retry.";
 const PAUSED_MESSAGE = "Paused";
@@ -52,11 +53,22 @@ type Prepared = {
 	thumbnailPath: string;
 };
 
+function withTimeout<T>(request: PromiseLike<T>): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new UploadError("network", NETWORK_MESSAGE)),
+			REQUEST_TIMEOUT_MS
+		);
+	});
+	return Promise.race([Promise.resolve(request), timeout]).finally(() => clearTimeout(timer));
+}
+
 async function freshAccessToken(): Promise<string> {
-	const { data } = await guestSupabase.auth.getSession();
+	const { data } = await withTimeout(guestSupabase.auth.getSession());
 	let session = data.session;
 	if (session?.expires_at && session.expires_at * 1000 - Date.now() < TOKEN_MARGIN_MS) {
-		const refreshed = await guestSupabase.auth.refreshSession();
+		const refreshed = await withTimeout(guestSupabase.auth.refreshSession());
 		session = refreshed.data.session ?? session;
 	}
 	if (!session) throw new UploadError("rejected", "Your guest session ended. Reload the page.");
@@ -130,13 +142,13 @@ export function createUploadTask(input: UploadInput): UploadTask {
 			thumbnailSettled = true;
 			return;
 		}
-		const { error } = await guestSupabase.storage
-			.from("thumbnails")
-			.upload(job.thumbnailPath, blob, {
+		const { error } = await withTimeout(
+			guestSupabase.storage.from("thumbnails").upload(job.thumbnailPath, blob, {
 				contentType: "image/jpeg",
 				cacheControl: "3600",
 				upsert: false,
-			});
+			})
+		);
 		const exists = error && /exists|duplicate/i.test(error.message);
 		if (!error || exists) {
 			thumbnailPath = job.thumbnailPath;
@@ -174,17 +186,13 @@ export function createUploadTask(input: UploadInput): UploadTask {
 		});
 	}
 
+	function removeObject(bucket: string, path: string): Promise<unknown> {
+		return withTimeout(guestSupabase.storage.from(bucket).remove([path])).catch(() => undefined);
+	}
+
 	async function replaceBadOriginal(job: Prepared): Promise<void> {
-		await guestSupabase.storage
-			.from("event-photos")
-			.remove([job.storagePath])
-			.catch(() => undefined);
-		if (thumbnailPath) {
-			await guestSupabase.storage
-				.from("thumbnails")
-				.remove([thumbnailPath])
-				.catch(() => undefined);
-		}
+		await removeObject("event-photos", job.storagePath);
+		if (thumbnailPath) await removeObject("thumbnails", thumbnailPath);
 		const storagePath = buildStoragePath(eventId, profileId, job.media.ext);
 		prepared = { ...job, storagePath, thumbnailPath: thumbPath(storagePath) };
 		tus = null;
@@ -194,7 +202,9 @@ export function createUploadTask(input: UploadInput): UploadTask {
 	}
 
 	async function verifyOriginal(job: Prepared): Promise<void> {
-		const { data, error } = await guestSupabase.storage.from("event-photos").info(job.storagePath);
+		const { data, error } = await withTimeout(
+			guestSupabase.storage.from("event-photos").info(job.storagePath)
+		);
 		if (error && !isClientError(error)) throw new UploadError("network", NETWORK_MESSAGE);
 		if (error || Number(data?.size) !== file.size) {
 			await replaceBadOriginal(job);
@@ -203,18 +213,20 @@ export function createUploadTask(input: UploadInput): UploadTask {
 	}
 
 	async function alreadyRecorded(job: Prepared): Promise<boolean> {
-		const { data, error } = await guestSupabase
-			.from("media_items")
-			.select("id")
-			.eq("storage_path", job.storagePath)
-			.maybeSingle();
+		const { data, error } = await withTimeout(
+			guestSupabase
+				.from("media_items")
+				.select("id")
+				.eq("storage_path", job.storagePath)
+				.maybeSingle()
+		);
 		if (error) throw new UploadError("network", NETWORK_MESSAGE);
 		return Boolean(data);
 	}
 
 	async function discardObjects(job: Prepared): Promise<void> {
-		await guestSupabase.storage.from("event-photos").remove([job.storagePath]);
-		if (thumbnailPath) await guestSupabase.storage.from("thumbnails").remove([thumbnailPath]);
+		await removeObject("event-photos", job.storagePath);
+		if (thumbnailPath) await removeObject("thumbnails", thumbnailPath);
 		tus = null;
 		tusDone = false;
 		verified = false;
@@ -230,25 +242,27 @@ export function createUploadTask(input: UploadInput): UploadTask {
 		}
 		insertAttempted = true;
 		const isVideo = job.media.mediaType === "video";
-		const { error } = await guestSupabase.from("media_items").insert({
-			event_id: eventId,
-			uploaded_by_user_id: profileId,
-			captured_at: job.meta.capturedAt.toISOString(),
-			media_type: job.media.mediaType,
-			width: job.meta.width,
-			height: job.meta.height,
-			duration_milliseconds: isVideo ? job.meta.durationMs : null,
-			file_size_bytes: file.size,
-			storage_path: job.storagePath,
-			thumbnail_path: thumbnailPath,
-			visibility: "shared",
-		});
+		const { error } = await withTimeout(
+			guestSupabase.from("media_items").insert({
+				event_id: eventId,
+				uploaded_by_user_id: profileId,
+				captured_at: job.meta.capturedAt.toISOString(),
+				media_type: job.media.mediaType,
+				width: job.meta.width,
+				height: job.meta.height,
+				duration_milliseconds: isVideo ? job.meta.durationMs : null,
+				file_size_bytes: file.size,
+				storage_path: job.storagePath,
+				thumbnail_path: thumbnailPath,
+				visibility: "shared",
+			})
+		);
 		if (!error) {
 			recorded = true;
 			return;
 		}
 		if (!error.code) throw new UploadError("network", NETWORK_MESSAGE);
-		await discardObjects(job).catch(() => undefined);
+		await discardObjects(job);
 		insertAttempted = false;
 		const policy = error.code === "42501" || /row-level security/i.test(error.message);
 		throw new UploadError(
@@ -286,15 +300,16 @@ export function createUploadTask(input: UploadInput): UploadTask {
 		onProgress(1);
 	}
 
-	function stop() {
+	function stop(): Promise<void> {
 		generation += 1;
 		const upload = tus;
-		if (upload) void upload.abort().catch(() => undefined);
+		const aborted = upload ? upload.abort().catch(() => undefined) : Promise.resolve();
 		const paused = new UploadError("network", PAUSED_MESSAGE);
 		cancelTransfer?.(paused);
 		cancelTransfer = null;
 		cancelRun?.(paused);
 		cancelRun = null;
+		return aborted;
 	}
 
 	return {
@@ -318,29 +333,28 @@ export function createUploadTask(input: UploadInput): UploadTask {
 				);
 			});
 		},
-		abort: stop,
+		abort() {
+			void stop();
+		},
 		async discard() {
-			stop();
+			const aborted = stop();
 			await current;
+			await aborted;
 			if (recorded || !prepared) return;
 			const job = prepared;
+			if (insertAttempted) {
+				const committed = await alreadyRecorded(job).catch(() => true);
+				if (committed) return;
+			}
 			const uploadedOriginal = tusDone;
 			const upload = tus;
 			tus = null;
 			if (uploadedOriginal) {
-				await guestSupabase.storage
-					.from("event-photos")
-					.remove([job.storagePath])
-					.catch(() => undefined);
+				await removeObject("event-photos", job.storagePath);
 			} else if (upload?.url) {
-				await Upload.terminate(upload.url, upload.options).catch(() => undefined);
+				await withTimeout(Upload.terminate(upload.url, upload.options)).catch(() => undefined);
 			}
-			if (thumbnailPath) {
-				await guestSupabase.storage
-					.from("thumbnails")
-					.remove([thumbnailPath])
-					.catch(() => undefined);
-			}
+			if (thumbnailPath) await removeObject("thumbnails", thumbnailPath);
 		},
 		stage: () => stage,
 	};

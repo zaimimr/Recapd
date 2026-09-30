@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThumbnail } from "../thumbnail";
-import { createUploadTask, UploadError } from "../uploadItem";
+import { createUploadTask, REQUEST_TIMEOUT_MS, UploadError } from "../uploadItem";
 
 type TusOptions = {
 	metadata: { objectName: string };
@@ -16,9 +16,14 @@ const mocks = vi.hoisted(() => ({
 	thumbnailUploads: [] as string[],
 	infoResults: [] as { data: { size: number } | null; error: { status: number } | null }[],
 	inserts: [] as Record<string, unknown>[],
+	committed: new Set<string>(),
+	lookupFails: false,
+	infoHangs: false,
 	insertResult: null as
 		| null
-		| (() => Promise<{ error: { code?: string; message: string } | null }>),
+		| ((
+				row: Record<string, unknown>
+		  ) => Promise<{ error: { code?: string; message: string } | null }>),
 }));
 
 vi.mock("tus-js-client", () => {
@@ -53,7 +58,10 @@ vi.mock("../../supabase", () => {
 			mocks.thumbnailUploads.push(path);
 			return { data: { path }, error: null };
 		},
-		info: async () => mocks.infoResults.shift() ?? { data: { size: 4 }, error: null },
+		info: () =>
+			mocks.infoHangs
+				? new Promise(() => {})
+				: Promise.resolve(mocks.infoResults.shift() ?? { data: { size: 4 }, error: null }),
 		remove: async (paths: string[]) => {
 			mocks.storageRemoves.push({ bucket, paths });
 			return { data: [], error: null };
@@ -71,14 +79,16 @@ vi.mock("../../supabase", () => {
 			from: () => ({
 				insert: (row: Record<string, unknown>) => {
 					mocks.inserts.push(row);
-					return mocks.insertResult ? mocks.insertResult() : Promise.resolve({ error: null });
+					if (mocks.insertResult) return mocks.insertResult(row);
+					mocks.committed.add(String(row.storage_path));
+					return Promise.resolve({ error: null });
 				},
 				select: () => ({
 					eq: (_column: string, value: string) => ({
-						maybeSingle: async () => ({
-							data: mocks.inserts.some((row) => row.storage_path === value) ? { id: "x" } : null,
-							error: null,
-						}),
+						maybeSingle: async () =>
+							mocks.lookupFails
+								? { data: null, error: { message: "Failed to fetch" } }
+								: { data: mocks.committed.has(value) ? { id: "x" } : null, error: null },
 					}),
 				}),
 			}),
@@ -112,6 +122,9 @@ beforeEach(() => {
 	mocks.thumbnailUploads.length = 0;
 	mocks.infoResults.length = 0;
 	mocks.inserts.length = 0;
+	mocks.committed.clear();
+	mocks.lookupFails = false;
+	mocks.infoHangs = false;
 	mocks.insertResult = null;
 	vi.mocked(makeThumbnail).mockResolvedValue(null);
 });
@@ -133,10 +146,13 @@ describe("createUploadTask", () => {
 	});
 
 	it("inserts exactly once when retried while the previous run is still inserting", async () => {
-		let finishInsert: (value: { error: null }) => void = () => {};
-		mocks.insertResult = () =>
+		let finishInsert: () => void = () => {};
+		mocks.insertResult = (row) =>
 			new Promise((resolve) => {
-				finishInsert = resolve;
+				finishInsert = () => {
+					mocks.committed.add(String(row.storage_path));
+					resolve({ error: null });
+				};
 			});
 		const task = newTask();
 		const first = task.run(() => {});
@@ -146,8 +162,9 @@ describe("createUploadTask", () => {
 		await expect(first).rejects.toBeInstanceOf(UploadError);
 		mocks.insertResult = null;
 		const second = task.run(() => {});
-		await flush();
-		finishInsert({ error: null });
+		for (let index = 0; index < 5; index += 1) await flush();
+		expect(mocks.inserts).toHaveLength(1);
+		finishInsert();
 		await second;
 		expect(mocks.inserts).toHaveLength(1);
 	});
@@ -189,6 +206,50 @@ describe("createUploadTask", () => {
 			{ bucket: "event-photos", paths: [original] },
 			{ bucket: "thumbnails", paths: [original.replace(/\.jpg$/, "_thumb.jpg")] },
 		]);
+	});
+
+	it("keeps objects when an insert committed but its response was lost", async () => {
+		vi.mocked(makeThumbnail).mockResolvedValue(new Blob(["x"], { type: "image/jpeg" }));
+		mocks.insertResult = async (row) => {
+			mocks.committed.add(String(row.storage_path));
+			return { error: { message: "TypeError: Failed to fetch" } };
+		};
+		const task = newTask();
+		await expect(task.run(() => {})).rejects.toMatchObject({ code: "network" });
+		await task.discard();
+		expect(mocks.storageRemoves).toEqual([]);
+	});
+
+	it("keeps objects when the recorded check fails during discard", async () => {
+		mocks.insertResult = async () => ({ error: { message: "TypeError: Failed to fetch" } });
+		const task = newTask();
+		await expect(task.run(() => {})).rejects.toMatchObject({ code: "network" });
+		mocks.lookupFails = true;
+		await task.discard();
+		expect(mocks.storageRemoves).toEqual([]);
+	});
+
+	it("still discards when the insert never reached the server", async () => {
+		mocks.insertResult = async () => ({ error: { message: "TypeError: Failed to fetch" } });
+		const task = newTask();
+		await expect(task.run(() => {})).rejects.toMatchObject({ code: "network" });
+		await task.discard();
+		expect(mocks.storageRemoves.map((entry) => entry.bucket)).toEqual(["event-photos"]);
+	});
+
+	it("maps a hung request to a network error after the timeout", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			mocks.infoHangs = true;
+			const task = newTask();
+			const run = task.run(() => {});
+			const outcome = expect(run).rejects.toMatchObject({ code: "network" });
+			await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+			await outcome;
+			expect(mocks.inserts).toHaveLength(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("keeps objects when a recorded upload is discarded", async () => {
