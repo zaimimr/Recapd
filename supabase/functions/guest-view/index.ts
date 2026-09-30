@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { IMAGE_TOKEN_TTL_MS, type ImageKind, signImageToken, verifyImageToken } from "./token.ts";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const MAX_ITEMS = 2000;
@@ -21,8 +22,6 @@ type MediaRow = {
 	thumbnail_path: string | null;
 	uploader: { display_name: string } | null;
 };
-
-type Transform = typeof THUMB_TRANSFORM | typeof DISPLAY_TRANSFORM;
 
 function corsHeaders(origin: string | null): Record<string, string> {
 	const allowed =
@@ -47,10 +46,62 @@ function json(body: unknown, status: number, origin: string | null) {
 	});
 }
 
+function serviceClient(): SupabaseClient {
+	return createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+		auth: { autoRefreshToken: false, persistSession: false },
+	});
+}
+
+async function serveImage(token: string | null, origin: string | null): Promise<Response> {
+	const secret = Deno.env.get("GUEST_VIEW_IMAGE_SECRET");
+	if (!secret) return json({ error: "server_error" }, 500, origin);
+	const claims = await verifyImageToken(token, secret, Date.now());
+	if (!claims) return json({ error: "unauthorized" }, 401, origin);
+	const supabase = serviceClient();
+	const { data: item } = await supabase
+		.from("media_items")
+		.select(
+			"storage_path, thumbnail_path, media_type, visibility, deleted_at, event:events(expires_at)"
+		)
+		.eq("id", claims.i)
+		.maybeSingle();
+	if (
+		!item ||
+		item.media_type !== "photo" ||
+		item.visibility !== "shared" ||
+		item.deleted_at ||
+		isHeic(item.storage_path) ||
+		isExpired((item.event as { expires_at: string | null } | null)?.expires_at ?? null)
+	) {
+		return json({ error: "not_found" }, 404, origin);
+	}
+	const transform = claims.k === "d" ? DISPLAY_TRANSFORM : THUMB_TRANSFORM;
+	let { data } = await supabase.storage
+		.from("event-photos")
+		.download(item.storage_path, { transform });
+	if (!data && item.thumbnail_path) {
+		({ data } = await supabase.storage.from("thumbnails").download(item.thumbnail_path));
+	}
+	if (!data) return json({ error: "not_found" }, 404, origin);
+	return new Response(data, {
+		status: 200,
+		headers: {
+			...corsHeaders(origin),
+			"Content-Type": data.type || "image/jpeg",
+			"Cache-Control": "private, max-age=600",
+			"X-Content-Type-Options": "nosniff",
+		},
+	});
+}
+
 function normalizeCode(raw: unknown): string | null {
 	if (typeof raw !== "string" || !/^[A-Za-z0-9\s-]*$/.test(raw)) return null;
 	const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
 	return code.length === 6 ? code : null;
+}
+
+function isExpired(expiresAt: string | null): boolean {
+	return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
 }
 
 function isHeic(path: string | null): boolean {
@@ -77,6 +128,10 @@ async function mapWithConcurrency<T, R>(
 Deno.serve(async (req) => {
 	const origin = req.headers.get("Origin");
 	if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
+	const requestUrl = new URL(req.url);
+	if (req.method === "GET" && requestUrl.pathname.endsWith("/image")) {
+		return serveImage(requestUrl.searchParams.get("t"), origin);
+	}
 	if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
 
 	let body: { code?: unknown };
@@ -88,11 +143,9 @@ Deno.serve(async (req) => {
 	const code = normalizeCode(body?.code);
 	if (!code) return json({ error: "not_found" }, 404, origin);
 
-	const supabase = createClient(
-		Deno.env.get("SUPABASE_URL")!,
-		Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-		{ auth: { autoRefreshToken: false, persistSession: false } }
-	);
+	const secret = Deno.env.get("GUEST_VIEW_IMAGE_SECRET");
+	if (!secret) return json({ error: "server_error" }, 500, origin);
+	const supabase = serviceClient();
 
 	const { data: event, error: eventError } = await supabase
 		.from("events")
@@ -100,7 +153,7 @@ Deno.serve(async (req) => {
 		.eq("join_code", code)
 		.maybeSingle();
 	if (eventError) return json({ error: "server_error" }, 500, origin);
-	if (!event || (event.expires_at && new Date(event.expires_at).getTime() < Date.now())) {
+	if (!event || isExpired(event.expires_at)) {
 		return json({ error: "not_found" }, 404, origin);
 	}
 
@@ -137,26 +190,19 @@ Deno.serve(async (req) => {
 		}
 	}
 
-	const signTransform = async (path: string, transform: Transform): Promise<string | null> => {
-		const { data } = await supabase.storage
-			.from("event-photos")
-			.createSignedUrl(path, SIGNED_URL_TTL_SECONDS, { transform });
-		return data?.signedUrl ?? null;
+	const imageBase = `${Deno.env.get("SUPABASE_URL")}/functions/v1/guest-view/image?t=`;
+	const expiresAt = Date.now() + IMAGE_TOKEN_TTL_MS;
+	const proxyUrl = async (row: MediaRow, kind: ImageKind): Promise<string> => {
+		const token = await signImageToken({ i: row.id, k: kind, e: expiresAt }, secret);
+		return imageBase + token;
 	};
 
 	const items = await mapWithConcurrency(media, SIGN_CONCURRENCY, async (row) => {
 		const photo = row.media_type === "photo";
 		const transformable = photo && !isHeic(row.storage_path);
-		const thumb = row.thumbnail_path
-			? (thumbnailUrls.get(row.thumbnail_path) ?? null)
-			: transformable
-				? await signTransform(row.storage_path, THUMB_TRANSFORM)
-				: null;
-		let display: string | null = null;
-		if (photo) {
-			display = transformable ? await signTransform(row.storage_path, DISPLAY_TRANSFORM) : null;
-			display = display ?? thumb;
-		}
+		const storedThumb = row.thumbnail_path ? (thumbnailUrls.get(row.thumbnail_path) ?? null) : null;
+		const thumb = storedThumb ?? (transformable ? await proxyUrl(row, "t") : null);
+		const display = !photo ? null : transformable ? await proxyUrl(row, "d") : thumb;
 		return {
 			id: row.id,
 			media_type: row.media_type,
