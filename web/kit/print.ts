@@ -38,12 +38,18 @@ body { background: #E9E4E1; font-family: Inter, sans-serif; }
 .toolbar button { font: 800 16px Inter, sans-serif; color: #fff; background: ${kitTheme.gradient}; border: 0; border-radius: 999px; padding: 14px 28px; cursor: pointer; }
 .sheet { width: 794px; height: 1122px; overflow: hidden; margin: 0 auto 32px; background: #fff; display: flex; flex-wrap: wrap; align-content: flex-start; }
 .sheet-table .slot { outline: 1px dashed #BDB5B0; }
+@media screen and (max-width: 820px) { .sheet { zoom: var(--fit, 1); margin-bottom: 16px; } }
 @media print { body { background: #fff; } .toolbar { display: none; } .sheet { margin: 0; } }
 </style>
 </head>
 <body>
 <div class="toolbar"><button type="button" onclick="window.print()">Print / Save PDF</button></div>
 ${sheet}
+<script>
+function fit() { document.documentElement.style.setProperty('--fit', String(document.documentElement.clientWidth / 794)); }
+fit();
+window.addEventListener('resize', fit);
+</script>
 </body>
 </html>`;
 }

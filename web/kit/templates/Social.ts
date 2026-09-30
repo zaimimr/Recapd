@@ -58,6 +58,11 @@ export function Social({ title, dateLabel, code, qrSrc }: KitData) {
 				"div",
 				{ style: { display: "flex", fontSize: 32, fontWeight: 500, marginTop: 12 } },
 				`${kitTheme.copy.codeLabel}: ${code}`
+			),
+			h(
+				"div",
+				{ style: { display: "flex", fontSize: 32, fontWeight: 500, marginTop: 8, opacity: 0.85 } },
+				`${kitTheme.copy.openLink}/${code}`
 			)
 		),
 		h(

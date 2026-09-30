@@ -69,7 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta property="og:description" content="${description}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://recapd.app/join/${code}">
-  <meta property="og:image" content="https://recapd.app/api/kit/image?code=${code}&format=social">
+  <meta property="og:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social&amp;tz=Europe/Oslo">
   <meta property="og:image:width" content="1920">
   <meta property="og:image:height" content="1005">
   <meta property="og:site_name" content="Recapd">
@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="https://recapd.app/api/kit/image?code=${code}&format=social">
+  <meta name="twitter:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social&amp;tz=Europe/Oslo">
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -160,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <p class="code-label">Join Code</p>
     <p class="code">${code}</p>
     <button class="copy" id="copyCode" type="button">Copy code</button>
-    <p class="howto">Get Recapd, then tap <strong>Join with code</strong> and enter <strong>${code}</strong>.</p>
+    <p class="howto">Get Recapd, then tap <strong>Join an album</strong> and enter <strong>${code}</strong>.</p>
 
     <div id="loading">
       <div class="spinner"></div>
@@ -182,10 +182,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       var isAndroid = /Android/.test(navigator.userAgent);
 
-      document.getElementById('copyCode').addEventListener('click', function() {
+      var copyButton = document.getElementById('copyCode');
+      copyButton.addEventListener('click', function() {
+        function fallback() {
+          var node = document.querySelector('.code');
+          var range = document.createRange();
+          range.selectNodeContents(node);
+          var selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          copyButton.textContent = 'Long-press the code to copy';
+        }
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+          fallback();
+          return;
+        }
         navigator.clipboard.writeText('${code}').then(function() {
-          document.getElementById('copyCode').textContent = 'Copied';
-        });
+          copyButton.textContent = 'Copied';
+        }).catch(fallback);
       });
 
       // Try to open the app
