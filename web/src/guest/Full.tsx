@@ -1,6 +1,12 @@
 import type { GuestEvent } from "./types";
 
-export default function Full({ event }: { event: GuestEvent }) {
+export default function Full({
+	event,
+	onViewPhotos,
+}: {
+	event: GuestEvent;
+	onViewPhotos: () => void;
+}) {
 	return (
 		<div className="guest-center">
 			<div className="guest-panel">
@@ -10,6 +16,9 @@ export default function Full({ event }: { event: GuestEvent }) {
 				<p className="guest-body">
 					It has reached its guest limit. Ask the host to upgrade the event so more people can join.
 				</p>
+				<button type="button" className="guest-button" onClick={onViewPhotos}>
+					View photos
+				</button>
 			</div>
 		</div>
 	);

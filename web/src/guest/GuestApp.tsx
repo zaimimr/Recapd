@@ -7,6 +7,7 @@ import Gallery from "./gallery/Gallery";
 import NotFound from "./NotFound";
 import type { GalleryProps } from "./types";
 import { useGuestSession } from "./useGuestSession";
+import ViewOnlyGallery from "./view/ViewOnlyGallery";
 import Welcome from "./Welcome";
 import "./guest.css";
 
@@ -22,6 +23,7 @@ function GalleryScreen(props: GalleryProps) {
 
 function GuestScreens({ code, onRetry }: { code: string; onRetry: () => void }) {
 	const { state, join } = useGuestSession(code);
+	const [viewingPhotos, setViewingPhotos] = useState(false);
 
 	useEffect(() => {
 		if ("event" in state) document.title = `${state.event.title} | Recapd`;
@@ -49,7 +51,11 @@ function GuestScreens({ code, onRetry }: { code: string; onRetry: () => void }) 
 		case "notFound":
 			return <NotFound />;
 		case "full":
-			return <Full event={state.event} />;
+			return viewingPhotos ? (
+				<ViewOnlyGallery event={state.event} />
+			) : (
+				<Full event={state.event} onViewPhotos={() => setViewingPhotos(true)} />
+			);
 		case "welcome":
 			return (
 				<Welcome

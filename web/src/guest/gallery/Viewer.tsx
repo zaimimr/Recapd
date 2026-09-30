@@ -1,64 +1,82 @@
 import { type PointerEvent, useEffect, useRef, useState } from "react";
-import type { GalleryItem } from "./mediaList";
-import type { SignedUrlResolver } from "./signedUrls";
+import type { GridItem } from "./MediaGrid";
 
-type ViewerProps = {
-	items: GalleryItem[];
+export type ViewerItem = GridItem & { uploaded_by_user_id?: string | null };
+
+type ViewerProps<T extends ViewerItem> = {
+	items: T[];
 	index: number;
 	thumbUrls: Record<string, string>;
-	resolver: SignedUrlResolver;
-	profileId: string;
+	loadFull: (item: T) => Promise<string>;
+	profileId?: string;
+	videoNotice?: string;
 	onIndexChange: (index: number) => void;
 	onClose: () => void;
-	onSave: (item: GalleryItem) => void;
-	onDelete: (item: GalleryItem) => Promise<boolean>;
+	onSave?: (item: T) => void;
+	onDelete?: (item: T) => Promise<boolean>;
 };
 
 const SWIPE_PX = 50;
 const FOCUSABLE =
 	"button:not([disabled]), video[controls], a[href], [tabindex]:not([tabindex='-1'])";
 
-function useOriginalUrl(item: GalleryItem, resolver: SignedUrlResolver) {
-	const [state, setState] = useState<{ path: string; url: string | null; failed: boolean }>({
-		path: item.storage_path,
+function useFullUrl<T extends ViewerItem>(item: T, loadFull: (item: T) => Promise<string>) {
+	const [state, setState] = useState<{ source: T; url: string | null; failed: boolean }>({
+		source: item,
 		url: null,
 		failed: false,
 	});
 	useEffect(() => {
 		let cancelled = false;
-		resolver
-			.original(item.storage_path)
+		loadFull(item)
 			.then((url) => {
-				if (!cancelled) setState({ path: item.storage_path, url, failed: false });
+				if (!cancelled) setState({ source: item, url, failed: false });
 			})
 			.catch(() => {
-				if (!cancelled) setState({ path: item.storage_path, url: null, failed: true });
+				if (!cancelled) setState({ source: item, url: null, failed: true });
 			});
 		return () => {
 			cancelled = true;
 		};
-	}, [item.storage_path, resolver]);
-	return state.path === item.storage_path ? state : { url: null, failed: false };
+	}, [item, loadFull]);
+	return state.source.id === item.id ? state : { url: null, failed: false };
 }
 
-function MediaStage({
+function PosterStage({ thumbUrl, notice }: { thumbUrl: string | undefined; notice: string }) {
+	return thumbUrl ? (
+		<>
+			<img className="viewer-media" src={thumbUrl} alt="" draggable={false} />
+			<p className="viewer-note">{notice}</p>
+		</>
+	) : (
+		<p className="viewer-message">{notice}</p>
+	);
+}
+
+function MediaStage<T extends ViewerItem>({
 	item,
 	thumbUrl,
-	resolver,
+	loadFull,
+	canSave,
+	protect,
 }: {
-	item: GalleryItem;
+	item: T;
 	thumbUrl: string | undefined;
-	resolver: SignedUrlResolver;
+	loadFull: (item: T) => Promise<string>;
+	canSave: boolean;
+	protect: boolean;
 }) {
-	const original = useOriginalUrl(item, resolver);
+	const original = useFullUrl(item, loadFull);
 	const [broken, setBroken] = useState(false);
+	const draggable = protect ? false : undefined;
 
 	if (item.media_type === "video") {
 		if (original.failed) return <p className="viewer-message">This video could not be loaded.</p>;
 		if (broken) {
 			return (
 				<p className="viewer-message">
-					This video cannot play in this browser. Save it to watch it on your device.
+					This video cannot play in this browser.
+					{canSave && " Save it to watch it on your device."}
 				</p>
 			);
 		}
@@ -84,6 +102,7 @@ function MediaStage({
 				className="viewer-media"
 				src={original.url}
 				alt=""
+				draggable={draggable}
 				onError={() => setBroken(true)}
 				style={thumbUrl ? { backgroundImage: `url("${thumbUrl}")` } : undefined}
 			/>
@@ -92,7 +111,7 @@ function MediaStage({
 	if (thumbUrl) {
 		return (
 			<>
-				<img className="viewer-media" src={thumbUrl} alt="" />
+				<img className="viewer-media" src={thumbUrl} alt="" draggable={draggable} />
 				{(broken || original.failed) && (
 					<p className="viewer-note">Full size preview is not available in this browser.</p>
 				)}
@@ -102,24 +121,26 @@ function MediaStage({
 	if (broken || original.failed) {
 		return (
 			<p className="viewer-message">
-				This photo cannot be shown in this browser. Save it to view it on your device.
+				This photo cannot be shown in this browser.
+				{canSave && " Save it to view it on your device."}
 			</p>
 		);
 	}
 	return <output className="guest-spinner" aria-label="Loading photo" />;
 }
 
-export default function Viewer({
+export default function Viewer<T extends ViewerItem>({
 	items,
 	index,
 	thumbUrls,
-	resolver,
+	loadFull,
 	profileId,
+	videoNotice,
 	onIndexChange,
 	onClose,
 	onSave,
 	onDelete,
-}: ViewerProps) {
+}: ViewerProps<T>) {
 	const item = items[index];
 	const closeRef = useRef<HTMLButtonElement>(null);
 	const dialogRef = useRef<HTMLDivElement>(null);
@@ -129,7 +150,8 @@ export default function Viewer({
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const hasPrev = index > 0;
 	const hasNext = index < items.length - 1;
-	const own = item.uploaded_by_user_id === profileId;
+	const own = Boolean(profileId) && item.uploaded_by_user_id === profileId;
+	const canDelete = own && Boolean(onDelete);
 	const video = item.media_type === "video";
 	const noun = video ? "video" : "photo";
 
@@ -195,14 +217,13 @@ export default function Viewer({
 	useEffect(() => {
 		for (const neighbor of [items[index - 1], items[index + 1]]) {
 			if (!neighbor || neighbor.media_type !== "photo") continue;
-			resolver
-				.original(neighbor.storage_path)
+			loadFull(neighbor)
 				.then((url) => {
 					new Image().src = url;
 				})
 				.catch(() => undefined);
 		}
-	}, [items, index, resolver]);
+	}, [items, index, loadFull]);
 
 	function onPointerDown(event: PointerEvent<HTMLDivElement>) {
 		if (event.pointerType === "mouse") return;
@@ -224,6 +245,7 @@ export default function Viewer({
 	}
 
 	async function confirmDelete() {
+		if (!onDelete) return;
 		setDeleting(true);
 		setDeleteError(null);
 		const ok = await onDelete(item);
@@ -266,7 +288,18 @@ export default function Viewer({
 					swipe.current = null;
 				}}
 			>
-				<MediaStage key={item.id} item={item} thumbUrl={thumbUrls[item.id]} resolver={resolver} />
+				{video && videoNotice ? (
+					<PosterStage key={item.id} thumbUrl={thumbUrls[item.id]} notice={videoNotice} />
+				) : (
+					<MediaStage
+						key={item.id}
+						item={item}
+						thumbUrl={thumbUrls[item.id]}
+						loadFull={loadFull}
+						canSave={Boolean(onSave)}
+						protect={!onSave}
+					/>
+				)}
 				{hasPrev && (
 					<button
 						type="button"
@@ -321,7 +354,7 @@ export default function Viewer({
 							<span className="viewer-uploader-label">Added by</span> {who}
 						</p>
 						<div className="viewer-actions">
-							{own && (
+							{canDelete && (
 								<button
 									type="button"
 									className="viewer-action"
@@ -333,13 +366,15 @@ export default function Viewer({
 									Delete
 								</button>
 							)}
-							<button
-								type="button"
-								className="viewer-action viewer-action-primary"
-								onClick={() => onSave(item)}
-							>
-								Save
-							</button>
+							{onSave && (
+								<button
+									type="button"
+									className="viewer-action viewer-action-primary"
+									onClick={() => onSave(item)}
+								>
+									Save
+								</button>
+							)}
 						</div>
 					</>
 				)}
