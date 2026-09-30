@@ -20,6 +20,15 @@ const GRANT_TYPES = new Set([
 	"REFUND_REVERSED",
 ]);
 
+const RELEVANT_TYPES = new Set([
+	...GRANT_TYPES,
+	"EXPIRATION",
+	"CANCELLATION",
+	"BILLING_ISSUE",
+	"SUBSCRIPTION_PAUSED",
+	"TRANSFER",
+]);
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type RawEvent = Record<string, unknown>;
@@ -42,11 +51,18 @@ function toIso(ms: number | null): string | null {
 	return ms === null ? null : new Date(ms).toISOString();
 }
 
+const PLATFORM_BY_STORE: Record<string, string> = {
+	APP_STORE: "ios",
+	MAC_APP_STORE: "ios",
+	PLAY_STORE: "android",
+	STRIPE: "web",
+	RC_BILLING: "web",
+	PADDLE: "web",
+};
+
 function platformFromStore(store: unknown): string | null {
-	if (typeof store !== "string" || store.length === 0) return null;
-	if (store === "APP_STORE" || store === "MAC_APP_STORE") return "ios";
-	if (store === "PLAY_STORE") return "android";
-	return store.toLowerCase();
+	if (typeof store !== "string") return null;
+	return PLATFORM_BY_STORE[store.toUpperCase()] ?? null;
 }
 
 function includesPro(event: RawEvent): boolean {
@@ -115,6 +131,73 @@ export function planTierUpdates(input: unknown, nowMs: number): TierUpdate[] {
 	}
 
 	return [];
+}
+
+function asRecord(value: unknown): RawEvent {
+	return value && typeof value === "object" ? (value as RawEvent) : {};
+}
+
+function dateMsOrNull(value: unknown): number | null {
+	if (typeof value !== "string") return null;
+	const ms = Date.parse(value);
+	return Number.isNaN(ms) ? null : ms;
+}
+
+export function affectedUserIds(input: unknown): string[] {
+	const event = asRecord(input);
+	const type = typeof event.type === "string" ? event.type : "";
+	if (!RELEVANT_TYPES.has(type)) return [];
+	if (type === "TRANSFER") {
+		const ids = [...stringList(event.transferred_from), ...stringList(event.transferred_to)];
+		return [...new Set(ids.filter(isUserId))];
+	}
+	const userId = resolveUserId(event);
+	return userId ? [userId] : [];
+}
+
+function storeForProduct(subscriber: RawEvent, productId: unknown): unknown {
+	if (typeof productId !== "string") return null;
+	const subscriptions = asRecord(subscriber.subscriptions);
+	const key = Object.keys(subscriptions).find(
+		(candidate) => candidate === productId || candidate.startsWith(`${productId}:`)
+	);
+	if (key) return asRecord(subscriptions[key]).store;
+	const purchases = asRecord(subscriber.non_subscriptions)[productId];
+	return Array.isArray(purchases) && purchases.length > 0
+		? asRecord(purchases[purchases.length - 1]).store
+		: null;
+}
+
+export function subscriberUpdate(userId: string, body: unknown, nowMs: number): TierUpdate {
+	const subscriber = asRecord(asRecord(body).subscriber);
+	const entitlements = asRecord(subscriber.entitlements);
+	if (!(PRO_ENTITLEMENT in entitlements)) {
+		return freeUpdate(userId, null);
+	}
+	const entitlement = asRecord(entitlements[PRO_ENTITLEMENT]);
+	const expiresMs = dateMsOrNull(entitlement.expires_date);
+	const graceMs = dateMsOrNull(entitlement.grace_period_expires_date);
+	const isActive =
+		entitlement.expires_date == null ||
+		(expiresMs !== null && expiresMs > nowMs) ||
+		(graceMs !== null && graceMs > nowMs);
+	if (!isActive) {
+		return freeUpdate(userId, expiresMs);
+	}
+	return {
+		userId,
+		tier: "pro",
+		expiresAt: toIso(expiresMs),
+		platform: platformFromStore(storeForProduct(subscriber, entitlement.product_identifier)),
+	};
+}
+
+export function eventSyncedAt(input: unknown, nowMs: number): string {
+	return new Date(numberOrNull(asRecord(input).event_timestamp_ms) ?? nowMs).toISOString();
+}
+
+export function staleGuardFilter(syncedAt: string): string {
+	return `subscription_synced_at.is.null,subscription_synced_at.lte."${syncedAt}"`;
 }
 
 export function isAuthorized(header: string | null, secret: string | undefined): boolean {

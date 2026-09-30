@@ -9,4 +9,5 @@ module.exports = {
 	},
 	moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
 	testMatch: ["**/__tests__/**/*.test.{ts,tsx}", "**/*.test.{ts,tsx}"],
+	testPathIgnorePatterns: ["/node_modules/", "/.claude/"],
 };

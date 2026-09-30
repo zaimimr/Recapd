@@ -1,7 +1,11 @@
 import {
+	affectedUserIds,
+	eventSyncedAt,
 	isAuthorized,
 	PRO_ENTITLEMENT,
 	planTierUpdates,
+	staleGuardFilter,
+	subscriberUpdate,
 } from "@/supabase/functions/revenuecat-webhook/mapping";
 
 const USER = "7d1f2c3a-4b5e-4f60-8a71-92b3c4d5e6f7";
@@ -198,5 +202,164 @@ describe("isAuthorized", () => {
 		expect(isAuthorized(null, "s3cret-value")).toBe(false);
 		expect(isAuthorized("Bearer ", "")).toBe(false);
 		expect(isAuthorized("Bearer x", undefined)).toBe(false);
+	});
+});
+
+describe("subscriberUpdate", () => {
+	function subscriber(entitlements: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+		return { request_date_ms: NOW, subscriber: { entitlements, ...extra } };
+	}
+
+	it("is pro when the Pro entitlement expires in the future", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber(
+					{
+						[PRO_ENTITLEMENT]: {
+							expires_date: new Date(FUTURE).toISOString(),
+							product_identifier: "recapd_pro_yearly",
+						},
+					},
+					{ subscriptions: { recapd_pro_yearly: { store: "app_store" } } }
+				),
+				NOW
+			)
+		).toEqual({
+			userId: USER,
+			tier: "pro",
+			expiresAt: new Date(FUTURE).toISOString(),
+			platform: "ios",
+		});
+	});
+
+	it("is pro for a lifetime entitlement without expiry", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber(
+					{ [PRO_ENTITLEMENT]: { expires_date: null, product_identifier: "lifetime" } },
+					{ non_subscriptions: { lifetime: [{ store: "play_store" }] } }
+				),
+				NOW
+			)
+		).toEqual({ userId: USER, tier: "pro", expiresAt: null, platform: "android" });
+	});
+
+	it("matches a Play base plan subscription key", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber(
+					{
+						[PRO_ENTITLEMENT]: {
+							expires_date: new Date(FUTURE).toISOString(),
+							product_identifier: "recapd_pro_monthly",
+						},
+					},
+					{ subscriptions: { "recapd_pro_monthly:monthly": { store: "play_store" } } }
+				),
+				NOW
+			).platform
+		).toBe("android");
+	});
+
+	it("is pro during a grace period", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber({
+					[PRO_ENTITLEMENT]: {
+						expires_date: new Date(PAST).toISOString(),
+						grace_period_expires_date: new Date(FUTURE).toISOString(),
+					},
+				}),
+				NOW
+			).tier
+		).toBe("pro");
+	});
+
+	it("is free when the Pro entitlement expired", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber({ [PRO_ENTITLEMENT]: { expires_date: new Date(PAST).toISOString() } }),
+				NOW
+			)
+		).toEqual({
+			userId: USER,
+			tier: "free",
+			expiresAt: new Date(PAST).toISOString(),
+			platform: null,
+		});
+	});
+
+	it("is free without the Pro entitlement or with a malformed body", () => {
+		const free = { userId: USER, tier: "free", expiresAt: null, platform: null };
+		expect(subscriberUpdate(USER, subscriber({ Other: { expires_date: null } }), NOW)).toEqual(
+			free
+		);
+		expect(subscriberUpdate(USER, {}, NOW)).toEqual(free);
+		expect(subscriberUpdate(USER, null, NOW)).toEqual(free);
+	});
+
+	it("gives a null platform for stores the column does not accept", () => {
+		expect(
+			subscriberUpdate(
+				USER,
+				subscriber(
+					{ [PRO_ENTITLEMENT]: { expires_date: null, product_identifier: "promo" } },
+					{ subscriptions: { promo: { store: "promotional" } } }
+				),
+				NOW
+			).platform
+		).toBeNull();
+	});
+});
+
+describe("affectedUserIds", () => {
+	it("returns every user id on both sides of a TRANSFER", () => {
+		expect(
+			affectedUserIds({
+				type: "TRANSFER",
+				transferred_from: [OTHER, "$RCAnonymousID:abc"],
+				transferred_to: [USER],
+			})
+		).toEqual([OTHER, USER]);
+	});
+
+	it("returns the resolved user for relevant events regardless of entitlement", () => {
+		expect(affectedUserIds(event({ type: "EXPIRATION", entitlement_ids: [] }))).toEqual([USER]);
+		expect(affectedUserIds(event({ type: "SUBSCRIPTION_PAUSED" }))).toEqual([USER]);
+	});
+
+	it("returns nothing for irrelevant or anonymous events", () => {
+		expect(affectedUserIds(event({ type: "TEST" }))).toEqual([]);
+		expect(affectedUserIds(event({ app_user_id: "$RCAnonymousID:x" }))).toEqual([]);
+		expect(affectedUserIds(null)).toEqual([]);
+	});
+});
+
+describe("platform mapping", () => {
+	it("gives a null platform for payload stores the column does not accept", () => {
+		expect(planTierUpdates(event({ store: "PROMOTIONAL" }), NOW)[0].platform).toBeNull();
+		expect(planTierUpdates(event({ store: "AMAZON" }), NOW)[0].platform).toBeNull();
+		expect(planTierUpdates(event({ store: "STRIPE" }), NOW)[0].platform).toBe("web");
+	});
+});
+
+describe("stale event guard", () => {
+	it("uses the event timestamp when present", () => {
+		expect(eventSyncedAt({ event_timestamp_ms: PAST }, NOW)).toBe(new Date(PAST).toISOString());
+	});
+
+	it("falls back to now without an event timestamp", () => {
+		expect(eventSyncedAt({}, NOW)).toBe(new Date(NOW).toISOString());
+	});
+
+	it("only lets a write through when the stored sync is missing or not newer", () => {
+		expect(staleGuardFilter("2026-10-01T12:00:00.000Z")).toBe(
+			'subscription_synced_at.is.null,subscription_synced_at.lte."2026-10-01T12:00:00.000Z"'
+		);
 	});
 });

@@ -1,7 +1,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isAuthorized, planTierUpdates, type TierUpdate } from "./mapping.ts";
+import {
+	affectedUserIds,
+	eventSyncedAt,
+	isAuthorized,
+	planTierUpdates,
+	staleGuardFilter,
+	subscriberUpdate,
+	type TierUpdate,
+} from "./mapping.ts";
 
 const jsonHeaders = { "Content-Type": "application/json" };
+
+type SyncedUpdate = TierUpdate & { syncedAt: string };
 
 function json(body: Record<string, unknown>, status: number) {
 	return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
@@ -13,14 +23,42 @@ function getServiceSupabase() {
 	});
 }
 
+async function fetchSubscriber(userId: string, apiKey: string): Promise<unknown> {
+	const response = await fetch(
+		`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
+		{ headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" } }
+	);
+	if (!response.ok) {
+		throw new Error(`RevenueCat subscriber fetch failed with ${response.status}`);
+	}
+	return await response.json();
+}
+
+async function planUpdates(event: unknown): Promise<SyncedUpdate[]> {
+	const apiKey = Deno.env.get("REVENUECAT_SECRET_API_KEY");
+	if (!apiKey) {
+		const syncedAt = eventSyncedAt(event, Date.now());
+		return planTierUpdates(event, Date.now()).map((update) => ({ ...update, syncedAt }));
+	}
+
+	const syncedAt = new Date().toISOString();
+	const updates: SyncedUpdate[] = [];
+	for (const userId of affectedUserIds(event)) {
+		const body = await fetchSubscriber(userId, apiKey);
+		updates.push({ ...subscriberUpdate(userId, body, Date.now()), syncedAt });
+	}
+	return updates;
+}
+
 async function applyUpdate(
 	supabase: ReturnType<typeof getServiceSupabase>,
-	update: TierUpdate
+	update: SyncedUpdate
 ): Promise<boolean> {
 	const { data, error } = await supabase
 		.from("users")
-		.update({ subscription_tier: update.tier })
+		.update({ subscription_tier: update.tier, subscription_synced_at: update.syncedAt })
 		.eq("id", update.userId)
+		.or(staleGuardFilter(update.syncedAt))
 		.select("id");
 	if (error) throw error;
 	if (!data || data.length === 0) return false;
@@ -60,23 +98,23 @@ Deno.serve(async (req: Request) => {
 	}
 
 	const eventType = String((event as Record<string, unknown>).type ?? "");
-	const updates = planTierUpdates(event, Date.now());
-	if (updates.length === 0) {
-		console.log(JSON.stringify({ eventType, applied: 0 }));
-		return json({ ok: true, applied: 0 }, 200);
-	}
-
-	const supabase = getServiceSupabase();
 	try {
+		const updates = await planUpdates(event);
+		if (updates.length === 0) {
+			console.log(JSON.stringify({ eventType, applied: 0 }));
+			return json({ ok: true, applied: 0 }, 200);
+		}
+
+		const supabase = getServiceSupabase();
 		const results = [];
 		for (const update of updates) {
-			const found = await applyUpdate(supabase, update);
-			results.push({ userId: update.userId, tier: update.tier, found });
+			const applied = await applyUpdate(supabase, update);
+			results.push({ userId: update.userId, tier: update.tier, applied });
 		}
 		console.log(JSON.stringify({ eventType, results }));
-		return json({ ok: true, applied: results.filter((r) => r.found).length }, 200);
+		return json({ ok: true, applied: results.filter((r) => r.applied).length }, 200);
 	} catch (error) {
 		console.error(JSON.stringify({ eventType, error: String((error as Error)?.message ?? error) }));
-		return json({ error: "Update failed" }, 500);
+		return json({ error: "Sync failed" }, 500);
 	}
 });
