@@ -13,8 +13,10 @@ begin
 
 	if tg_op = 'INSERT' then
 		new.subscription_tier := 'free';
+		new.subscription_synced_at := null;
 	else
 		new.subscription_tier := old.subscription_tier;
+		new.subscription_synced_at := old.subscription_synced_at;
 	end if;
 
 	return new;
