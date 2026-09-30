@@ -1,11 +1,13 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { IMAGE_TOKEN_TTL_MS, type ImageKind, signImageToken, verifyImageToken } from "./token.ts";
+import { checkRateLimit, clientIp } from "./rateLimit.ts";
+import { type ImageKind, imageTokenExpiry, signImageToken, verifyImageToken } from "./token.ts";
 
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const MAX_ITEMS = 2000;
-const SIGN_CONCURRENCY = 12;
+const PAGE_SIZE = 1000;
 const THUMB_TRANSFORM = { width: 400, height: 400, resize: "cover" as const, quality: 60 };
 const DISPLAY_TRANSFORM = { width: 1600, height: 1600, resize: "contain" as const, quality: 80 };
+const MEDIA_COLUMNS =
+	"id, media_type, width, height, duration_milliseconds, captured_at, storage_path, thumbnail_path, uploader:users!uploaded_by_user_id(display_name)";
 
 const ALLOWED_ORIGINS = new Set(["https://recapd.app", "https://www.recapd.app"]);
 const PREVIEW_ORIGIN = /^https:\/\/recapd(-[a-z0-9-]+)?\.vercel\.app$/;
@@ -29,19 +31,26 @@ function corsHeaders(origin: string | null): Record<string, string> {
 		(ALLOWED_ORIGINS.has(origin) || PREVIEW_ORIGIN.test(origin) || LOCAL_ORIGIN.test(origin));
 	return {
 		"Access-Control-Allow-Origin": allowed ? origin : "https://recapd.app",
-		"Access-Control-Allow-Methods": "POST, OPTIONS",
+		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 		"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+		"Access-Control-Expose-Headers": "Retry-After",
 		Vary: "Origin",
 	};
 }
 
-function json(body: unknown, status: number, origin: string | null) {
+function json(
+	body: unknown,
+	status: number,
+	origin: string | null,
+	extraHeaders: Record<string, string> = {}
+) {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: {
 			...corsHeaders(origin),
 			"Content-Type": "application/json",
 			"Cache-Control": "no-store",
+			...extraHeaders,
 		},
 	});
 }
@@ -52,12 +61,29 @@ function serviceClient(): SupabaseClient {
 	});
 }
 
-async function serveImage(token: string | null, origin: string | null): Promise<Response> {
+function isExpired(expiresAt: string | null): boolean {
+	return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+}
+
+function isHeic(path: string | null): boolean {
+	return Boolean(path && /\.(heic|heif)$/i.test(path));
+}
+
+function normalizeCode(raw: unknown): string | null {
+	if (typeof raw !== "string" || !/^[A-Za-z0-9\s-]*$/.test(raw)) return null;
+	const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+	return code.length === 6 ? code : null;
+}
+
+async function serveImage(
+	supabase: SupabaseClient,
+	token: string | null,
+	origin: string | null
+): Promise<Response> {
 	const secret = Deno.env.get("GUEST_VIEW_IMAGE_SECRET");
 	if (!secret) return json({ error: "server_error" }, 500, origin);
 	const claims = await verifyImageToken(token, secret, Date.now());
 	if (!claims) return json({ error: "unauthorized" }, 401, origin);
-	const supabase = serviceClient();
 	const { data: item } = await supabase
 		.from("media_items")
 		.select(
@@ -65,20 +91,21 @@ async function serveImage(token: string | null, origin: string | null): Promise<
 		)
 		.eq("id", claims.i)
 		.maybeSingle();
-	if (
-		!item ||
-		item.media_type !== "photo" ||
-		item.visibility !== "shared" ||
-		item.deleted_at ||
-		isHeic(item.storage_path) ||
-		isExpired((item.event as { expires_at: string | null } | null)?.expires_at ?? null)
-	) {
+	const eventExpiry = (item?.event as { expires_at: string | null } | null)?.expires_at ?? null;
+	if (!item || item.visibility !== "shared" || item.deleted_at || isExpired(eventExpiry)) {
 		return json({ error: "not_found" }, 404, origin);
 	}
-	const transform = claims.k === "d" ? DISPLAY_TRANSFORM : THUMB_TRANSFORM;
-	let { data } = await supabase.storage
-		.from("event-photos")
-		.download(item.storage_path, { transform });
+	const transformable = item.media_type === "photo" && !isHeic(item.storage_path);
+	if (claims.k === "s" ? !item.thumbnail_path : !transformable) {
+		return json({ error: "not_found" }, 404, origin);
+	}
+	let data: Blob | null = null;
+	if (claims.k !== "s") {
+		const transform = claims.k === "d" ? DISPLAY_TRANSFORM : THUMB_TRANSFORM;
+		({ data } = await supabase.storage
+			.from("event-photos")
+			.download(item.storage_path, { transform }));
+	}
 	if (!data && item.thumbnail_path) {
 		({ data } = await supabase.storage.from("thumbnails").download(item.thumbnail_path));
 	}
@@ -94,46 +121,34 @@ async function serveImage(token: string | null, origin: string | null): Promise<
 	});
 }
 
-function normalizeCode(raw: unknown): string | null {
-	if (typeof raw !== "string" || !/^[A-Za-z0-9\s-]*$/.test(raw)) return null;
-	const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-	return code.length === 6 ? code : null;
-}
-
-function isExpired(expiresAt: string | null): boolean {
-	return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
-}
-
-function isHeic(path: string | null): boolean {
-	return Boolean(path && /\.(heic|heif)$/i.test(path));
-}
-
-async function mapWithConcurrency<T, R>(
-	items: T[],
-	limit: number,
-	fn: (item: T) => Promise<R>
-): Promise<R[]> {
-	const results = new Array<R>(items.length);
-	let next = 0;
-	const worker = async () => {
-		while (next < items.length) {
-			const index = next++;
-			results[index] = await fn(items[index]);
-		}
-	};
-	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-	return results;
-}
-
-Deno.serve(async (req) => {
-	const origin = req.headers.get("Origin");
-	if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
-	const requestUrl = new URL(req.url);
-	if (req.method === "GET" && requestUrl.pathname.endsWith("/image")) {
-		return serveImage(requestUrl.searchParams.get("t"), origin);
+async function fetchMedia(supabase: SupabaseClient, eventId: string) {
+	const page = (from: number, withCount: boolean) =>
+		supabase
+			.from("media_items")
+			.select(MEDIA_COLUMNS, withCount ? { count: "exact" } : undefined)
+			.eq("event_id", eventId)
+			.eq("visibility", "shared")
+			.is("deleted_at", null)
+			.order("captured_at", { ascending: false })
+			.order("id", { ascending: true })
+			.range(from, Math.min(from + PAGE_SIZE, MAX_ITEMS) - 1);
+	const first = await page(0, true);
+	if (first.error) throw first.error;
+	const rows = [...((first.data ?? []) as unknown as MediaRow[])];
+	for (let from = PAGE_SIZE; from < MAX_ITEMS && rows.length === from; from += PAGE_SIZE) {
+		const next = await page(from, false);
+		if (next.error) throw next.error;
+		rows.push(...((next.data ?? []) as unknown as MediaRow[]));
 	}
-	if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405, origin);
+	const total = first.count ?? rows.length;
+	return { rows, truncated: total > rows.length };
+}
 
+async function serveList(
+	supabase: SupabaseClient,
+	req: Request,
+	origin: string | null
+): Promise<Response> {
 	let body: { code?: unknown };
 	try {
 		body = await req.json();
@@ -145,7 +160,6 @@ Deno.serve(async (req) => {
 
 	const secret = Deno.env.get("GUEST_VIEW_IMAGE_SECRET");
 	if (!secret) return json({ error: "server_error" }, 500, origin);
-	const supabase = serviceClient();
 
 	const { data: event, error: eventError } = await supabase
 		.from("events")
@@ -153,68 +167,52 @@ Deno.serve(async (req) => {
 		.eq("join_code", code)
 		.maybeSingle();
 	if (eventError) return json({ error: "server_error" }, 500, origin);
-	if (!event || isExpired(event.expires_at)) {
-		return json({ error: "not_found" }, 404, origin);
-	}
+	if (!event || isExpired(event.expires_at)) return json({ error: "not_found" }, 404, origin);
 
-	const [{ data: rows, error: mediaError }, { count: participantCount }] = await Promise.all([
-		supabase
-			.from("media_items")
-			.select(
-				"id, media_type, width, height, duration_milliseconds, captured_at, storage_path, thumbnail_path, uploader:users!uploaded_by_user_id(display_name)"
-			)
-			.eq("event_id", event.id)
-			.eq("visibility", "shared")
-			.is("deleted_at", null)
-			.order("captured_at", { ascending: false })
-			.order("id", { ascending: true })
-			.limit(MAX_ITEMS),
-		supabase
-			.from("event_participants")
-			.select("id", { count: "exact", head: true })
-			.eq("event_id", event.id),
-	]);
-	if (mediaError) return json({ error: "server_error" }, 500, origin);
-	const media = (rows ?? []) as unknown as MediaRow[];
-
-	const thumbPaths = [
-		...new Set(media.flatMap((row) => (row.thumbnail_path ? [row.thumbnail_path] : []))),
-	];
-	const thumbnailUrls = new Map<string, string>();
-	if (thumbPaths.length > 0) {
-		const { data } = await supabase.storage
-			.from("thumbnails")
-			.createSignedUrls(thumbPaths, SIGNED_URL_TTL_SECONDS);
-		for (const entry of data ?? []) {
-			if (entry.path && entry.signedUrl) thumbnailUrls.set(entry.path, entry.signedUrl);
-		}
+	let media: Awaited<ReturnType<typeof fetchMedia>>;
+	let participantCount: number | null;
+	try {
+		const [fetched, participants] = await Promise.all([
+			fetchMedia(supabase, event.id),
+			supabase
+				.from("event_participants")
+				.select("id", { count: "exact", head: true })
+				.eq("event_id", event.id),
+		]);
+		media = fetched;
+		participantCount = participants.count;
+	} catch {
+		return json({ error: "server_error" }, 500, origin);
 	}
 
 	const imageBase = `${Deno.env.get("SUPABASE_URL")}/functions/v1/guest-view/image?t=`;
-	const expiresAt = Date.now() + IMAGE_TOKEN_TTL_MS;
-	const proxyUrl = async (row: MediaRow, kind: ImageKind): Promise<string> => {
-		const token = await signImageToken({ i: row.id, k: kind, e: expiresAt }, secret);
-		return imageBase + token;
-	};
+	const expiresAt = imageTokenExpiry(Date.now());
+	const proxyUrl = async (row: MediaRow, kind: ImageKind) =>
+		imageBase + (await signImageToken({ i: row.id, k: kind, e: expiresAt }, secret));
 
-	const items = await mapWithConcurrency(media, SIGN_CONCURRENCY, async (row) => {
-		const photo = row.media_type === "photo";
-		const transformable = photo && !isHeic(row.storage_path);
-		const storedThumb = row.thumbnail_path ? (thumbnailUrls.get(row.thumbnail_path) ?? null) : null;
-		const thumb = storedThumb ?? (transformable ? await proxyUrl(row, "t") : null);
-		const display = !photo ? null : transformable ? await proxyUrl(row, "d") : thumb;
-		return {
-			id: row.id,
-			media_type: row.media_type,
-			width: row.width,
-			height: row.height,
-			duration_milliseconds: row.duration_milliseconds,
-			captured_at: row.captured_at,
-			uploader: row.uploader ? { display_name: row.uploader.display_name } : null,
-			thumb,
-			display,
-		};
-	});
+	const items = await Promise.all(
+		media.rows.map(async (row) => {
+			const photo = row.media_type === "photo";
+			const transformable = photo && !isHeic(row.storage_path);
+			const thumb = row.thumbnail_path
+				? await proxyUrl(row, "s")
+				: transformable
+					? await proxyUrl(row, "t")
+					: null;
+			const display = !photo ? null : transformable ? await proxyUrl(row, "d") : thumb;
+			return {
+				id: row.id,
+				media_type: row.media_type,
+				width: row.width,
+				height: row.height,
+				duration_milliseconds: row.duration_milliseconds,
+				captured_at: row.captured_at,
+				uploader: row.uploader ? { display_name: row.uploader.display_name } : null,
+				thumb,
+				display,
+			};
+		})
+	);
 
 	return json(
 		{
@@ -226,9 +224,29 @@ Deno.serve(async (req) => {
 				participant_count: participantCount ?? 0,
 			},
 			items,
-			truncated: media.length >= MAX_ITEMS,
+			truncated: media.truncated,
 		},
 		200,
 		origin
 	);
+}
+
+Deno.serve(async (req) => {
+	const origin = req.headers.get("Origin");
+	if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
+	const isImage = req.method === "GET" && new URL(req.url).pathname.endsWith("/image");
+	if (!isImage && req.method !== "POST") {
+		return json({ error: "method_not_allowed" }, 405, origin);
+	}
+	const supabase = serviceClient();
+	const retryAfter = await checkRateLimit(
+		(fn, args) => supabase.rpc(fn, args),
+		isImage ? "image" : "list",
+		clientIp(req.headers)
+	);
+	if (retryAfter > 0) {
+		return json({ error: "rate_limited" }, 429, origin, { "Retry-After": String(retryAfter) });
+	}
+	if (isImage) return serveImage(supabase, new URL(req.url).searchParams.get("t"), origin);
+	return serveList(supabase, req, origin);
 });

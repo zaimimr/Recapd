@@ -3,6 +3,7 @@ import { TextDecoder, TextEncoder } from "node:util";
 import {
 	IMAGE_TOKEN_TTL_MS,
 	type ImageClaims,
+	imageTokenExpiry,
 	signImageToken,
 	verifyImageToken,
 } from "../supabase/functions/guest-view/token";
@@ -65,6 +66,38 @@ describe("guest-view image token", () => {
 		for (const bad of ["", "abc", "a.b.c", "!!!.???", null, undefined]) {
 			await expect(verifyImageToken(bad, SECRET, NOW)).resolves.toBeNull();
 		}
+	});
+
+	it("accepts the stored thumbnail kind", async () => {
+		const token = await signImageToken({ ...claims, k: "s" }, SECRET);
+		await expect(verifyImageToken(token, SECRET, NOW)).resolves.toEqual({ ...claims, k: "s" });
+	});
+
+	it("mints identical tokens for list fetches in the same window", async () => {
+		const windowStart = Math.floor(NOW / IMAGE_TOKEN_TTL_MS) * IMAGE_TOKEN_TTL_MS;
+		const early = imageTokenExpiry(windowStart + 1000);
+		const late = imageTokenExpiry(windowStart + IMAGE_TOKEN_TTL_MS - 1000);
+		expect(early).toBe(late);
+		const a = await signImageToken({ ...claims, e: early }, SECRET);
+		const b = await signImageToken({ ...claims, e: late }, SECRET);
+		expect(a).toBe(b);
+	});
+
+	it("keeps every token valid for 15 to 30 minutes", () => {
+		for (const offset of [0, 1, 60_000, IMAGE_TOKEN_TTL_MS - 1]) {
+			const now = NOW + offset;
+			const lifetime = imageTokenExpiry(now) - now;
+			expect(lifetime).toBeGreaterThan(IMAGE_TOKEN_TTL_MS);
+			expect(lifetime).toBeLessThanOrEqual(2 * IMAGE_TOKEN_TTL_MS);
+			expect(imageTokenExpiry(now) % IMAGE_TOKEN_TTL_MS).toBe(0);
+		}
+	});
+
+	it("moves to a new expiry in the next window", () => {
+		const windowStart = Math.floor(NOW / IMAGE_TOKEN_TTL_MS) * IMAGE_TOKEN_TTL_MS;
+		expect(imageTokenExpiry(windowStart + IMAGE_TOKEN_TTL_MS)).toBe(
+			imageTokenExpiry(windowStart) + IMAGE_TOKEN_TTL_MS
+		);
 	});
 
 	it("rejects claims with an unknown kind", async () => {

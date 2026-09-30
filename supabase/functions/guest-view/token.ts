@@ -1,6 +1,6 @@
 export const IMAGE_TOKEN_TTL_MS = 15 * 60 * 1000;
 
-export type ImageKind = "d" | "t";
+export type ImageKind = "d" | "t" | "s";
 
 export type ImageClaims = {
 	i: string;
@@ -24,14 +24,25 @@ function fromBase64Url(value: string): Uint8Array | null {
 	}
 }
 
-function hmacKey(secret: string, usage: "sign" | "verify") {
-	return crypto.subtle.importKey(
-		"raw",
-		new TextEncoder().encode(secret),
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		[usage]
-	);
+const keys = new Map<string, Promise<CryptoKey>>();
+
+function hmacKey(secret: string): Promise<CryptoKey> {
+	let key = keys.get(secret);
+	if (!key) {
+		key = crypto.subtle.importKey(
+			"raw",
+			new TextEncoder().encode(secret),
+			{ name: "HMAC", hash: "SHA-256" },
+			false,
+			["sign", "verify"]
+		);
+		keys.set(secret, key);
+	}
+	return key;
+}
+
+export function imageTokenExpiry(now: number): number {
+	return (Math.floor(now / IMAGE_TOKEN_TTL_MS) + 2) * IMAGE_TOKEN_TTL_MS;
 }
 
 function isClaims(value: unknown): value is ImageClaims {
@@ -40,7 +51,7 @@ function isClaims(value: unknown): value is ImageClaims {
 	return (
 		typeof claims.i === "string" &&
 		claims.i.length > 0 &&
-		(claims.k === "d" || claims.k === "t") &&
+		(claims.k === "d" || claims.k === "t" || claims.k === "s") &&
 		typeof claims.e === "number" &&
 		Number.isFinite(claims.e)
 	);
@@ -50,7 +61,7 @@ export async function signImageToken(claims: ImageClaims, secret: string): Promi
 	const payload = toBase64Url(new TextEncoder().encode(JSON.stringify(claims)));
 	const signature = await crypto.subtle.sign(
 		"HMAC",
-		await hmacKey(secret, "sign"),
+		await hmacKey(secret),
 		new TextEncoder().encode(payload)
 	);
 	return `${payload}.${toBase64Url(new Uint8Array(signature))}`;
@@ -69,7 +80,7 @@ export async function verifyImageToken(
 	if (!signature || !fromBase64Url(payload)) return null;
 	const valid = await crypto.subtle.verify(
 		"HMAC",
-		await hmacKey(secret, "verify"),
+		await hmacKey(secret),
 		signature,
 		new TextEncoder().encode(payload)
 	);
