@@ -260,7 +260,7 @@ describe.each(PLATFORMS)("payment flow on %s", (platform) => {
 	});
 
 	describe("purchasing", () => {
-		it("grants Pro and writes the platform to the database", async () => {
+		it("grants Pro locally and writes only the platform to the database", async () => {
 			const { store } = await initializedStore(platform);
 			mockPurchasePackage.mockResolvedValue({ customerInfo: proCustomerInfo });
 
@@ -269,7 +269,7 @@ describe.each(PLATFORMS)("payment flow on %s", (platform) => {
 			expect(result.success).toBe(true);
 			expect(store.getState().isPro).toBe(true);
 			expect(store.getState().planId).toBe("pro");
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith({ subscription_tier: "pro" });
+			expect(mockSupabaseUpdate).not.toHaveBeenCalledWith({ subscription_tier: "pro" });
 			expect(mockSupabaseUpsert).toHaveBeenCalledWith(
 				expect.objectContaining({ subscription_platform: platform }),
 				{ onConflict: "user_id" }
@@ -381,7 +381,7 @@ describe.each(PLATFORMS)("payment flow on %s", (platform) => {
 
 			expect(purchased).toBe(true);
 			expect(store.getState().isPro).toBe(true);
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith({ subscription_tier: "pro" });
+			expect(mockSupabaseUpdate).not.toHaveBeenCalledWith({ subscription_tier: "pro" });
 		});
 
 		it("names this platform's store when the store fails", async () => {

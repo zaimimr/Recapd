@@ -165,27 +165,15 @@ export async function syncSubscriptionToDatabase(
 	const platform = Platform.OS === "ios" ? "ios" : "android";
 
 	try {
-		const [userUpdate, privateUpdate] = await Promise.all([
-			supabase
-				.from("users")
-				.update({
-					subscription_tier: status.isActive ? "pro" : "free",
-				})
-				.eq("id", userId),
-			supabase.from("user_private_data").upsert(
-				{
-					user_id: userId,
-					subscription_expires_at: status.expiresAt?.toISOString() || null,
-					subscription_platform: status.isActive ? platform : null,
-					subscription_id: customerInfo.originalAppUserId,
-				},
-				{ onConflict: "user_id" }
-			),
-		]);
-
-		if (userUpdate.error) {
-			throw userUpdate.error;
-		}
+		const privateUpdate = await supabase.from("user_private_data").upsert(
+			{
+				user_id: userId,
+				subscription_expires_at: status.expiresAt?.toISOString() || null,
+				subscription_platform: status.isActive ? platform : null,
+				subscription_id: customerInfo.originalAppUserId,
+			},
+			{ onConflict: "user_id" }
+		);
 
 		if (privateUpdate.error) {
 			throw privateUpdate.error;
