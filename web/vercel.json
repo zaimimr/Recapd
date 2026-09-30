@@ -5,6 +5,10 @@
 			"destination": "/api/join"
 		},
 		{
+			"source": "/kit/:code/print",
+			"destination": "/api/kit/print?code=:code"
+		},
+		{
 			"source": "/((?!api|assets|icon\\.png|app-store-badge\\.svg|google-play-badge\\.png|screenshots|robots\\.txt|sitemap\\.xml).*)",
 			"destination": "/index.html"
 		}
@@ -25,5 +29,10 @@
 			"destination": "/",
 			"permanent": true
 		}
-	]
+	],
+	"functions": {
+		"api/kit/image.ts": {
+			"includeFiles": "kit/fonts/**"
+		}
+	}
 }

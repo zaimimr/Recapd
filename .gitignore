@@ -25,3 +25,4 @@ node_modules/
 
 # Impeccable local design review evidence (the design sidecar itself is tracked)
 .impeccable/review/
+.vercel

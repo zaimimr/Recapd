@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { kitTheme } from "./theme";
+import { kitTheme } from "./theme.js";
 
 export async function qrDataUri(url: string): Promise<string> {
 	const svg = await QRCode.toString(url, {

@@ -1,8 +1,9 @@
+import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { KitData } from "./event";
-import type { PrintFormat } from "./formats";
-import { renderTemplate } from "./templates";
-import { kitTheme } from "./theme";
+import type { KitData } from "./event.js";
+import type { PrintFormat } from "./formats.js";
+import { renderTemplate } from "./templates/index.js";
+import { kitTheme } from "./theme.js";
 
 const CARDS_PER_SHEET: Record<PrintFormat, number> = { table: 4, poster: 1 };
 
@@ -17,12 +18,10 @@ function escapeHtml(value: string): string {
 
 export function renderPrintPage(format: PrintFormat, data: KitData): string {
 	const count = CARDS_PER_SHEET[format];
-	const cards = Array.from({ length: count }, (_, index) => (
-		<div key={index} className="slot">
-			{renderTemplate(format, data)}
-		</div>
-	));
-	const sheet = renderToStaticMarkup(<div className={`sheet sheet-${format}`}>{cards}</div>);
+	const cards = Array.from({ length: count }, (_, index) =>
+		h("div", { key: index, className: "slot" }, renderTemplate(format, data))
+	);
+	const sheet = renderToStaticMarkup(h("div", { className: `sheet sheet-${format}` }, cards));
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,7 +36,7 @@ export function renderPrintPage(format: PrintFormat, data: KitData): string {
 body { background: #E9E4E1; font-family: Inter, sans-serif; }
 .toolbar { display: flex; justify-content: center; padding: 16px; }
 .toolbar button { font: 800 16px Inter, sans-serif; color: #fff; background: ${kitTheme.gradient}; border: 0; border-radius: 999px; padding: 14px 28px; cursor: pointer; }
-.sheet { width: 794px; height: 1123px; margin: 0 auto 32px; background: #fff; display: flex; flex-wrap: wrap; align-content: flex-start; }
+.sheet { width: 794px; height: 1122px; overflow: hidden; margin: 0 auto 32px; background: #fff; display: flex; flex-wrap: wrap; align-content: flex-start; }
 .sheet-table .slot { outline: 1px dashed #BDB5B0; }
 @media print { body { background: #fff; } .toolbar { display: none; } .sheet { margin: 0; } }
 </style>
