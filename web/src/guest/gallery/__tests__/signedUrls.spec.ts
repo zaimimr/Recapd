@@ -3,6 +3,7 @@ import type { GalleryItem } from "../mediaList";
 import {
 	createSignedUrlResolver,
 	pickThumbSource,
+	REFRESH_BUFFER_MS,
 	SIGNED_URL_TTL_SECONDS,
 	THUMBNAIL_TRANSFORM,
 } from "../signedUrls";
@@ -112,19 +113,57 @@ describe("createSignedUrlResolver", () => {
 		expect(urls.h).toBeUndefined();
 	});
 
-	it("reuses cached urls until 60 s before they expire", async () => {
+	it("reuses cached urls until 10 minutes before they expire", async () => {
 		const fake = fakeStorage();
 		let now = 0;
 		const resolver = createSignedUrlResolver(fake.storage, () => now);
 		const first = await resolver.thumbnails([item()]);
-		now = SIGNED_URL_TTL_SECONDS * 1000 - 61_000;
+		now = SIGNED_URL_TTL_SECONDS * 1000 - REFRESH_BUFFER_MS - 1000;
 		const second = await resolver.thumbnails([item()]);
 		expect(fake.batch).toHaveBeenCalledTimes(1);
 		expect(second.a).toBe(first.a);
-		now = SIGNED_URL_TTL_SECONDS * 1000 - 59_000;
+		now = SIGNED_URL_TTL_SECONDS * 1000 - REFRESH_BUFFER_MS + 1000;
 		const third = await resolver.thumbnails([item()]);
 		expect(fake.batch).toHaveBeenCalledTimes(2);
 		expect(third.a).not.toBe(first.a);
+	});
+
+	it("keeps the refresh buffer longer than a 5 minute refresh tick", () => {
+		expect(REFRESH_BUFFER_MS).toBeGreaterThanOrEqual(10 * 60 * 1000);
+	});
+
+	it("re-signs an original with less than 10 minutes left", async () => {
+		const fake = fakeStorage();
+		let now = 0;
+		const resolver = createSignedUrlResolver(fake.storage, () => now);
+		const first = await resolver.original("e/u/v.mp4");
+		now = SIGNED_URL_TTL_SECONDS * 1000 - 9 * 60 * 1000;
+		const second = await resolver.original("e/u/v.mp4");
+		expect(fake.single).toHaveBeenCalledTimes(2);
+		expect(second).not.toBe(first);
+	});
+
+	it("signs at most 6 transformed originals at a time", async () => {
+		let active = 0;
+		let peak = 0;
+		const single = vi.fn(async (path: string) => {
+			active += 1;
+			peak = Math.max(peak, active);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			active -= 1;
+			return { data: { signedUrl: `https://o/${path}` }, error: null };
+		});
+		const storage = {
+			from: () => ({ createSignedUrls: vi.fn(), createSignedUrl: single }),
+		};
+		const resolver = createSignedUrlResolver(storage, () => 0);
+		const photos = Array.from({ length: 20 }, (_, index) =>
+			item({ id: `p${index}`, thumbnail_path: null, storage_path: `e/u/p${index}.jpg` })
+		);
+		const urls = await resolver.thumbnails(photos);
+		expect(single).toHaveBeenCalledTimes(20);
+		expect(peak).toBe(6);
+		expect(Object.keys(urls)).toHaveLength(20);
 	});
 
 	it("signs originals without a transform and caches them", async () => {

@@ -1,7 +1,8 @@
 import type { GalleryItem } from "./mediaList";
 
 export const SIGNED_URL_TTL_SECONDS = 60 * 60;
-const REFRESH_BUFFER_MS = 60 * 1000;
+export const REFRESH_BUFFER_MS = 10 * 60 * 1000;
+const TRANSFORM_CONCURRENCY = 6;
 
 export const THUMBNAIL_TRANSFORM = {
 	width: 720,
@@ -95,16 +96,18 @@ export function createSignedUrlResolver(storage: StorageSigner, now: () => numbe
 				for (const id of pending.get(entry.path) ?? []) urls[id] = entry.signedUrl;
 			}
 		}
+		let next = 0;
+		const worker = async () => {
+			while (next < transforms.length) {
+				const item = transforms[next++];
+				const url = await signOne("event-photos", item.storage_path, {
+					transform: THUMBNAIL_TRANSFORM,
+				}).catch(() => null);
+				if (url) urls[item.id] = url;
+			}
+		};
 		await Promise.all(
-			transforms.map(async (item) => {
-				try {
-					urls[item.id] = await signOne("event-photos", item.storage_path, {
-						transform: THUMBNAIL_TRANSFORM,
-					});
-				} catch {
-					return;
-				}
-			})
+			Array.from({ length: Math.min(TRANSFORM_CONCURRENCY, transforms.length) }, worker)
 		);
 		return urls;
 	}

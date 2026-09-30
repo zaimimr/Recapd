@@ -16,6 +16,7 @@ export type GalleryHandlers = {
 };
 
 const URL_REFRESH_MS = 5 * 60 * 1000;
+const UPLOAD_RELOAD_DEBOUNCE_MS = 2500;
 
 function PlaceholderIcon({ video }: { video: boolean }) {
 	return video ? (
@@ -98,10 +99,15 @@ export default function Gallery({
 
 	const doneCount = uploads.items.filter((item) => item.status === "done").length;
 	const seenDone = useRef(doneCount);
+	const reloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	useEffect(() => {
-		if (doneCount > seenDone.current) void reload();
+		const grew = doneCount > seenDone.current;
 		seenDone.current = doneCount;
+		if (!grew) return;
+		clearTimeout(reloadTimer.current);
+		reloadTimer.current = setTimeout(() => void reload(), UPLOAD_RELOAD_DEBOUNCE_MS);
 	}, [doneCount, reload]);
+	useEffect(() => () => clearTimeout(reloadTimer.current), []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -128,7 +134,7 @@ export default function Gallery({
 	if (open !== null && viewerIndex < 0) setOpen(null);
 
 	const dateLabel = formatDateLabel(event.starts_at, resolveTimeZone(event.timezone));
-	const counts = `${countLabel(items.length, "photo", "photos")} · ${countLabel(
+	const counts = `${countLabel(items.length, "item", "items")} · ${countLabel(
 		media.participantCount,
 		"guest",
 		"guests"

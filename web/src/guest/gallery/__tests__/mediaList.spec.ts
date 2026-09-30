@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	applyMediaChange,
 	countLabel,
+	createLoadBuffer,
 	formatDuration,
 	type GalleryItem,
 	sortNewestFirst,
@@ -136,5 +137,37 @@ describe("countLabel", () => {
 		expect(countLabel(1, "photo", "photos")).toBe("1 photo");
 		expect(countLabel(0, "photo", "photos")).toBe("0 photos");
 		expect(countLabel(12, "guest", "guests")).toBe("12 guests");
+	});
+});
+
+describe("createLoadBuffer", () => {
+	it("replays changes received during a load onto the fetched snapshot", () => {
+		const buffer = createLoadBuffer();
+		buffer.begin();
+		buffer.record({
+			type: "INSERT",
+			row: item({ id: "late", captured_at: "2026-09-30T12:00:00Z" }),
+		});
+		buffer.record({ type: "DELETE", id: "gone" });
+		const fetched = [item({ id: "gone" }), item({ id: "kept" })];
+		expect(buffer.finish(fetched).map((entry) => entry.id)).toEqual(["late", "kept"]);
+	});
+
+	it("does not replay a change twice when the snapshot already has it", () => {
+		const buffer = createLoadBuffer();
+		buffer.begin();
+		buffer.record({ type: "INSERT", row: item({ id: "a" }) });
+		expect(buffer.finish([item({ id: "a" })])).toHaveLength(1);
+	});
+
+	it("ignores changes recorded outside a load and starts empty on each load", () => {
+		const buffer = createLoadBuffer();
+		buffer.record({ type: "DELETE", id: "a" });
+		buffer.begin();
+		expect(buffer.finish([item({ id: "a" })])).toHaveLength(1);
+		buffer.begin();
+		buffer.record({ type: "DELETE", id: "a" });
+		buffer.begin();
+		expect(buffer.finish([item({ id: "a" })])).toHaveLength(1);
 	});
 });

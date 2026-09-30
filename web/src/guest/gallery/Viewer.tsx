@@ -15,6 +15,8 @@ type ViewerProps = {
 };
 
 const SWIPE_PX = 50;
+const FOCUSABLE =
+	"button:not([disabled]), video[controls], a[href], [tabindex]:not([tabindex='-1'])";
 
 function useOriginalUrl(item: GalleryItem, resolver: SignedUrlResolver) {
 	const [state, setState] = useState<{ path: string; url: string | null; failed: boolean }>({
@@ -120,6 +122,7 @@ export default function Viewer({
 }: ViewerProps) {
 	const item = items[index];
 	const closeRef = useRef<HTMLButtonElement>(null);
+	const dialogRef = useRef<HTMLDivElement>(null);
 	const swipe = useRef<{ x: number; y: number; id: number } | null>(null);
 	const [confirming, setConfirming] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState(false);
@@ -130,6 +133,29 @@ export default function Viewer({
 	const video = item.media_type === "video";
 	const noun = video ? "video" : "photo";
 
+	const trapTab = (event: KeyboardEvent) => {
+		const dialog = dialogRef.current;
+		if (!dialog) return;
+		const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+		if (focusables.length === 0) {
+			event.preventDefault();
+			return;
+		}
+		const first = focusables[0];
+		const last = focusables[focusables.length - 1];
+		const active = document.activeElement;
+		if (!dialog.contains(active)) {
+			event.preventDefault();
+			(event.shiftKey ? last : first).focus();
+		} else if (event.shiftKey && active === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && active === last) {
+			event.preventDefault();
+			first.focus();
+		}
+	};
+
 	const go = (delta: number) => {
 		const next = index + delta;
 		if (next < 0 || next >= items.length) return;
@@ -139,8 +165,16 @@ export default function Viewer({
 	};
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
-			if (event.key === "Escape") onClose();
-			else if (event.key === "ArrowLeft") go(-1);
+			if (event.key === "Escape") {
+				onClose();
+				return;
+			}
+			if (event.key === "Tab") {
+				trapTab(event);
+				return;
+			}
+			if (document.activeElement?.tagName === "VIDEO") return;
+			if (event.key === "ArrowLeft") go(-1);
 			else if (event.key === "ArrowRight") go(1);
 		};
 		window.addEventListener("keydown", onKey);
@@ -172,6 +206,10 @@ export default function Viewer({
 
 	function onPointerDown(event: PointerEvent<HTMLDivElement>) {
 		if (event.pointerType === "mouse") return;
+		if (event.target instanceof Element && event.target.closest("video")) {
+			swipe.current = null;
+			return;
+		}
 		swipe.current = { x: event.clientX, y: event.clientY, id: event.pointerId };
 	}
 
@@ -197,7 +235,13 @@ export default function Viewer({
 	const who = own ? "You" : (item.uploader?.display_name ?? "A guest");
 
 	return (
-		<div className="viewer" role="dialog" aria-modal="true" aria-label={`${noun} viewer`}>
+		<div
+			ref={dialogRef}
+			className="viewer"
+			role="dialog"
+			aria-modal="true"
+			aria-label={`${noun} viewer`}
+		>
 			<div className="viewer-top">
 				<button
 					ref={closeRef}

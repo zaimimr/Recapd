@@ -69,3 +69,23 @@ export function formatDuration(ms: number | null): string | null {
 export function countLabel(count: number, singular: string, plural: string): string {
 	return `${count} ${count === 1 ? singular : plural}`;
 }
+
+export function createLoadBuffer() {
+	let pending: MediaChange[] | null = null;
+	return {
+		begin() {
+			pending = [];
+		},
+		record(change: MediaChange) {
+			pending?.push(change);
+		},
+		finish(fetched: GalleryItem[]): GalleryItem[] {
+			const changes = pending ?? [];
+			pending = null;
+			return changes.reduce(applyMediaChange, fetched);
+		},
+		cancel() {
+			pending = null;
+		},
+	};
+}

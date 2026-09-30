@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { guestSupabase } from "../supabase";
-import { applyMediaChange, type GalleryItem, type MediaChange, sortNewestFirst } from "./mediaList";
+import {
+	applyMediaChange,
+	createLoadBuffer,
+	type GalleryItem,
+	type MediaChange,
+	sortNewestFirst,
+} from "./mediaList";
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -40,6 +46,7 @@ export function useEventMedia(eventId: string, initialParticipantCount: number) 
 	const [participantCount, setParticipantCount] = useState(initialParticipantCount);
 	const names = useRef(new Map<string, string>());
 	const loadSeq = useRef(0);
+	const buffer = useRef(createLoadBuffer());
 
 	const rememberNames = useCallback((list: GalleryItem[]) => {
 		for (const entry of list) {
@@ -57,20 +64,24 @@ export function useEventMedia(eventId: string, initialParticipantCount: number) 
 
 	const load = useCallback(async () => {
 		const seq = ++loadSeq.current;
+		buffer.current.begin();
 		try {
-			const list = await fetchMedia(eventId);
+			const fetched = await fetchMedia(eventId);
 			if (seq !== loadSeq.current) return;
-			rememberNames(list);
+			rememberNames(fetched);
+			const list = buffer.current.finish(fetched);
 			setItems(list);
 			setStatus("ready");
 		} catch {
 			if (seq !== loadSeq.current) return;
+			buffer.current.cancel();
 			setStatus((current) => (current === "ready" ? current : "error"));
 		}
 		refreshCount();
 	}, [eventId, rememberNames, refreshCount]);
 
 	const apply = useCallback((change: MediaChange) => {
+		buffer.current.record(change);
 		setItems((current) => applyMediaChange(current, change));
 	}, []);
 
@@ -173,11 +184,13 @@ export function useEventMedia(eventId: string, initialParticipantCount: number) 
 						.remove([target.thumbnail_path]);
 					if (thumbError) throw thumbError;
 				}
-				const { error: rowError } = await guestSupabase
+				const { data: deleted, error: rowError } = await guestSupabase
 					.from("media_items")
 					.delete()
-					.eq("id", target.id);
+					.eq("id", target.id)
+					.select("id");
 				if (rowError) throw rowError;
+				if (!deleted || deleted.length === 0) throw new Error("Media item was not deleted");
 				return true;
 			} catch {
 				apply({ type: "INSERT", row: target });
