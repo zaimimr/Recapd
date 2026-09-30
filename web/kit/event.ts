@@ -40,7 +40,9 @@ export function formatDateLabel(startsAt: string, timeZone: string): string {
 
 export function fitTitle(title: string, max = 60): string {
 	const characters = Array.from(title.trim());
-	return characters.length <= max ? characters.join("") : `${characters.slice(0, max - 1).join("")}…`;
+	return characters.length <= max
+		? characters.join("")
+		: `${characters.slice(0, max - 1).join("")}…`;
 }
 
 export function titleFontSize(title: string, base: number): number {
@@ -55,9 +57,12 @@ export function buildJoinUrl(code: string): string {
 }
 
 export async function fetchKitEvent(
-	code: string,
+	code: string
 ): Promise<{ title: string; starts_at: string } | null> {
-	const supabase = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_ANON_KEY ?? "");
+	const supabase = createClient(
+		process.env.SUPABASE_URL ?? "",
+		process.env.SUPABASE_ANON_KEY ?? ""
+	);
 	const { data, error } = await supabase.rpc("get_event_preview", { join_code_input: code });
 	if (error || !data?.[0]) return null;
 	return { title: data[0].title, starts_at: data[0].starts_at };
