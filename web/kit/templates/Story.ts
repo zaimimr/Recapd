@@ -36,7 +36,7 @@ export function Story({ title, dateLabel, code, qrSrc }: KitData) {
 					display: "flex",
 					fontSize: titleFontSize(fitted, 104),
 					fontWeight: 800,
-					wordBreak: "break-all",
+					wordBreak: "break-word",
 					lineHeight: 1.05,
 					marginTop: 40,
 				},

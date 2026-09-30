@@ -36,7 +36,7 @@ export function TableCard({ title, dateLabel, code, qrSrc }: KitData) {
 						display: "flex",
 						fontSize: titleFontSize(fitted, 28),
 						fontWeight: 800,
-						wordBreak: "break-all",
+						wordBreak: "break-word",
 					},
 				},
 				fitted
