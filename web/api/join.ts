@@ -69,7 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta property="og:description" content="${description}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://recapd.app/join/${code}">
-  <meta property="og:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social&amp;tz=Europe/Oslo">
+  <meta property="og:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social">
   <meta property="og:image:width" content="1920">
   <meta property="og:image:height" content="1005">
   <meta property="og:site_name" content="Recapd">
@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social&amp;tz=Europe/Oslo">
+  <meta name="twitter:image" content="https://recapd.app/api/kit/image?code=${code}&amp;format=social">
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }

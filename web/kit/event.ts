@@ -58,12 +58,16 @@ export function buildJoinUrl(code: string): string {
 
 export async function fetchKitEvent(
 	code: string
-): Promise<{ title: string; starts_at: string } | null> {
+): Promise<{ title: string; starts_at: string; timezone: string | null } | null> {
 	const supabase = createClient(
 		process.env.SUPABASE_URL ?? "",
 		process.env.SUPABASE_ANON_KEY ?? ""
 	);
 	const { data, error } = await supabase.rpc("get_event_preview", { join_code_input: code });
 	if (error || !data?.[0]) return null;
-	return { title: data[0].title, starts_at: data[0].starts_at };
+	return {
+		title: data[0].title,
+		starts_at: data[0].starts_at,
+		timezone: data[0].timezone ?? null,
+	};
 }

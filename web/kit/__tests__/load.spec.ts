@@ -24,11 +24,45 @@ describe("loadKitData", () => {
 	});
 
 	it("builds kit data with the https join url and local date", async () => {
-		fetchKitEvent.mockResolvedValue({ title: "Party", starts_at: "2026-10-10T22:30:00Z" });
+		fetchKitEvent.mockResolvedValue({
+			title: "Party",
+			starts_at: "2026-10-10T22:30:00Z",
+			timezone: null,
+		});
 		const data = await loadKitData({ code: "abc123", tz: "Europe/Oslo" });
 		expect(data?.code).toBe("ABC123");
 		expect(data?.joinUrl).toBe("https://recapd.app/join/ABC123");
 		expect(data?.dateLabel.startsWith("Sun, Oct 11")).toBe(true);
 		expect(data?.qrSrc.startsWith("data:image/svg+xml;base64,")).toBe(true);
+	});
+
+	it("prefers the event time zone over the query value", async () => {
+		fetchKitEvent.mockResolvedValue({
+			title: "Party",
+			starts_at: "2026-10-10T22:30:00Z",
+			timezone: "Europe/Oslo",
+		});
+		const data = await loadKitData({ code: "abc123", tz: "UTC" });
+		expect(data?.dateLabel.startsWith("Sun, Oct 11")).toBe(true);
+	});
+
+	it("falls back to the query time zone when the event has none", async () => {
+		fetchKitEvent.mockResolvedValue({
+			title: "Party",
+			starts_at: "2026-10-10T22:30:00Z",
+			timezone: null,
+		});
+		const data = await loadKitData({ code: "abc123", tz: "Europe/Oslo" });
+		expect(data?.dateLabel.startsWith("Sun, Oct 11")).toBe(true);
+	});
+
+	it("falls back to UTC for an invalid stored time zone", async () => {
+		fetchKitEvent.mockResolvedValue({
+			title: "Party",
+			starts_at: "2026-10-10T22:30:00Z",
+			timezone: "Mars/Base",
+		});
+		const data = await loadKitData({ code: "abc123" });
+		expect(data?.dateLabel.startsWith("Sat, Oct 10")).toBe(true);
 	});
 });

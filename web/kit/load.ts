@@ -23,7 +23,10 @@ export async function loadKitData(query: {
 	const joinUrl = buildJoinUrl(code);
 	return {
 		title: event.title,
-		dateLabel: formatDateLabel(event.starts_at, resolveTimeZone(single(query.tz))),
+		dateLabel: formatDateLabel(
+			event.starts_at,
+			resolveTimeZone(event.timezone ?? single(query.tz))
+		),
 		code,
 		joinUrl,
 		qrSrc: await qrDataUri(joinUrl),
