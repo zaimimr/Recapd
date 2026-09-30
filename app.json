@@ -16,6 +16,7 @@
 		"ios": {
 			"supportsTablet": true,
 			"bundleIdentifier": "com.zaimimran.recapd",
+			"associatedDomains": ["applinks:recapd.app"],
 			"infoPlist": {
 				"NSPhotoLibraryUsageDescription": "Recapd needs access to your photos to share them with your event group.",
 				"NSPhotoLibraryAddUsageDescription": "Recapd needs permission to save photos to your camera roll.",
@@ -30,6 +31,14 @@
 			},
 			"edgeToEdgeEnabled": true,
 			"package": "com.zaimimran.recapd",
+			"intentFilters": [
+				{
+					"action": "VIEW",
+					"autoVerify": true,
+					"data": [{ "scheme": "https", "host": "recapd.app", "pathPrefix": "/join" }],
+					"category": ["BROWSABLE", "DEFAULT"]
+				}
+			],
 			"googleServicesFile": "./google-services.json",
 			"permissions": [
 				"READ_EXTERNAL_STORAGE",
