@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import Viewer from "../../gallery/Viewer";
-import { VIDEO_NOTICE, VIEW_ONLY_BANNER, ViewOnlyGalleryView } from "../ViewOnlyGallery";
+import {
+	REFRESH_ERROR,
+	VIDEO_NOTICE,
+	VIEW_ONLY_BANNER,
+	ViewOnlyGalleryView,
+} from "../ViewOnlyGallery";
 import { parseViewResponse, thumbUrlMap } from "../viewModel";
 
 const data = parseViewResponse({
@@ -36,7 +41,7 @@ const data = parseViewResponse({
 const noop = () => undefined;
 const loadFull = () => Promise.resolve("https://x/display");
 
-function renderView() {
+function renderView(refreshFailed = false) {
 	return renderToStaticMarkup(
 		<ViewOnlyGalleryView
 			title={data.event.title}
@@ -46,6 +51,7 @@ function renderView() {
 			items={data.items}
 			participantCount={data.event.participant_count}
 			refreshing={false}
+			refreshFailed={refreshFailed}
 			onRefresh={noop}
 		/>
 	);
@@ -68,6 +74,13 @@ describe("view-only gallery", () => {
 		expect(html).not.toContain("Download all");
 		expect(html).not.toContain("Save");
 		expect(html).not.toContain("Delete");
+	});
+
+	it("shows an inline error only after a failed refresh", () => {
+		expect(renderView()).not.toContain(REFRESH_ERROR);
+		const html = renderView(true);
+		expect(html).toContain(REFRESH_ERROR);
+		expect(html).toContain("https://x/thumb-p1");
 	});
 
 	it("marks thumbnails as not draggable", () => {

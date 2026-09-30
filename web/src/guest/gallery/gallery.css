@@ -404,6 +404,13 @@
 	color: var(--g-muted);
 }
 
+.view-only-error {
+	display: block;
+	margin: 0;
+	font-size: 14px;
+	color: var(--g-error);
+}
+
 .view-only img {
 	-webkit-touch-callout: none;
 	-webkit-user-select: none;

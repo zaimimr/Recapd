@@ -16,6 +16,8 @@ import "../gallery/gallery.css";
 export const VIEW_ONLY_BANNER =
 	"This event is full. You can look, but only guests can add or save photos.";
 export const VIDEO_NOTICE = "Videos play for guests in the app";
+export const REFRESH_ERROR = "Could not refresh. Showing the photos loaded earlier.";
+export const AUTO_REFRESH_MS = 10 * 60 * 1000;
 
 type ViewStatus = GridStatus | "notFound";
 
@@ -36,6 +38,7 @@ export function ViewOnlyGalleryView({
 	items,
 	participantCount,
 	refreshing,
+	refreshFailed,
 	onRefresh,
 }: {
 	title: string;
@@ -45,6 +48,7 @@ export function ViewOnlyGalleryView({
 	items: ViewItem[];
 	participantCount: number;
 	refreshing: boolean;
+	refreshFailed: boolean;
 	onRefresh: () => void;
 }) {
 	const [open, setOpen] = useState<{ id: string; index: number } | null>(null);
@@ -84,6 +88,9 @@ export function ViewOnlyGalleryView({
 				</button>
 			</GalleryHeader>
 			<p className="view-only-banner">{VIEW_ONLY_BANNER}</p>
+			{refreshFailed && status === "ready" && (
+				<output className="view-only-error">{REFRESH_ERROR}</output>
+			)}
 			{status === "notFound" ? (
 				<div className="gallery-empty">
 					<p className="gallery-empty-title">Photos are not available</p>
@@ -119,6 +126,7 @@ export default function ViewOnlyGallery({ event }: { event: GuestEvent }) {
 	const [data, setData] = useState<ViewData | null>(null);
 	const [status, setStatus] = useState<ViewStatus>("loading");
 	const [refreshing, setRefreshing] = useState(false);
+	const [refreshFailed, setRefreshFailed] = useState(false);
 	const loadSeq = useRef(0);
 
 	const load = useCallback(async () => {
@@ -129,6 +137,7 @@ export default function ViewOnlyGallery({ event }: { event: GuestEvent }) {
 			if (seq !== loadSeq.current) return;
 			setData(next);
 			setStatus("ready");
+			setRefreshFailed(false);
 		} catch (error) {
 			if (seq !== loadSeq.current) return;
 			if (error instanceof ViewNotFoundError) {
@@ -136,6 +145,7 @@ export default function ViewOnlyGallery({ event }: { event: GuestEvent }) {
 				setStatus("notFound");
 			} else {
 				setStatus((current) => (current === "ready" ? current : "error"));
+				setRefreshFailed(true);
 			}
 		} finally {
 			if (seq === loadSeq.current) setRefreshing(false);
@@ -144,6 +154,20 @@ export default function ViewOnlyGallery({ event }: { event: GuestEvent }) {
 
 	useEffect(() => {
 		void load();
+	}, [load]);
+
+	useEffect(() => {
+		const timer = setInterval(() => {
+			if (document.visibilityState === "visible") void load();
+		}, AUTO_REFRESH_MS);
+		const onVisible = () => {
+			if (document.visibilityState === "visible") void load();
+		};
+		document.addEventListener("visibilitychange", onVisible);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener("visibilitychange", onVisible);
+		};
 	}, [load]);
 
 	return (
@@ -155,6 +179,7 @@ export default function ViewOnlyGallery({ event }: { event: GuestEvent }) {
 			items={data?.items ?? []}
 			participantCount={data?.event.participant_count ?? event.participant_count}
 			refreshing={refreshing}
+			refreshFailed={refreshFailed}
 			onRefresh={() => void load()}
 		/>
 	);
