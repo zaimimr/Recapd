@@ -43,5 +43,5 @@ export function injectJoinMeta(shell: string, meta: JoinMeta): string {
 		`<meta name="twitter:image" content="${image}">`,
 	].join("\n");
 	const stripped = REPLACED_TAGS.reduce((html, pattern) => html.replace(pattern, ""), shell);
-	return stripped.replace("</head>", `${tags}\n</head>`);
+	return stripped.replace("</head>", () => `${tags}\n</head>`);
 }

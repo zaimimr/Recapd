@@ -8,7 +8,7 @@ export type GuestState =
 	| { screen: "loading" }
 	| { screen: "error" }
 	| { screen: "notFound" }
-	| { screen: "welcome"; event: GuestEvent }
+	| { screen: "welcome"; event: GuestEvent; existingName: string | null }
 	| { screen: "full"; event: GuestEvent }
 	| { screen: "gallery"; event: GuestEvent; profileId: string; session: Session };
 
@@ -21,14 +21,20 @@ async function fetchPreview(code: string): Promise<GuestEvent | null> {
 	return row ? { ...row, participant_count: Number(row.participant_count) || 0 } : null;
 }
 
-async function findProfileId(authUserId: string): Promise<string | null> {
+async function findProfile(
+	authUserId: string
+): Promise<{ id: string; display_name: string } | null> {
 	const { data, error } = await guestSupabase
 		.from("users")
-		.select("id")
+		.select("id, display_name")
 		.eq("auth_user_id", authUserId)
 		.maybeSingle();
 	if (error) throw error;
-	return data?.id ?? null;
+	return data ?? null;
+}
+
+async function findProfileId(authUserId: string): Promise<string | null> {
+	return (await findProfile(authUserId))?.id ?? null;
 }
 
 async function isParticipantOf(eventId: string, profileId: string): Promise<boolean> {
@@ -71,14 +77,15 @@ async function ensureProfile(authUserId: string, displayName: string): Promise<s
 async function resolveInitial(code: string): Promise<GuestState> {
 	const event = await fetchPreview(code);
 	const session = event ? await currentSession() : null;
-	const profileId = session ? await findProfileId(session.user.id) : null;
+	const profile = session ? await findProfile(session.user.id) : null;
+	const profileId = profile?.id ?? null;
 	const isParticipant = event && profileId ? await isParticipantOf(event.id, profileId) : false;
 	const screen = decideScreen({ preview: event, isParticipant, now: new Date() });
 	if (!event || screen === "notFound") return { screen: "notFound" };
 	if (screen === "gallery" && session && profileId) {
 		return { screen: "gallery", event, profileId, session };
 	}
-	return { screen: "welcome", event };
+	return { screen: "welcome", event, existingName: profile?.display_name ?? null };
 }
 
 export function useGuestSession(code: string) {

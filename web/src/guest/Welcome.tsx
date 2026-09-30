@@ -5,6 +5,7 @@ import type { GuestEvent } from "./types";
 
 type WelcomeProps = {
 	event: GuestEvent;
+	existingName: string | null;
 	onJoin: (name: string) => Promise<string | null>;
 };
 
@@ -12,10 +13,10 @@ function peopleLabel(count: number): string {
 	return count === 1 ? "1 person is in" : `${count} people are in`;
 }
 
-export default function Welcome({ event, onJoin }: WelcomeProps) {
+export default function Welcome({ event, existingName, onJoin }: WelcomeProps) {
 	const inputId = useId();
 	const hintId = useId();
-	const [name, setName] = useState("");
+	const [name, setName] = useState(existingName ?? "");
 	const [error, setError] = useState<string | null>(null);
 	const [joining, setJoining] = useState(false);
 
@@ -47,7 +48,7 @@ export default function Welcome({ event, onJoin }: WelcomeProps) {
 
 			<form className="guest-form" onSubmit={handleSubmit} noValidate>
 				<label className="guest-label" htmlFor={inputId}>
-					Your first name
+					{existingName ? `Joining as ${existingName}` : "Your first name"}
 				</label>
 				<input
 					id={inputId}
@@ -60,6 +61,7 @@ export default function Welcome({ event, onJoin }: WelcomeProps) {
 					maxLength={NAME_MAX}
 					placeholder="e.g. Sara"
 					value={name}
+					readOnly={existingName !== null}
 					onChange={(changeEvent) => setName(changeEvent.target.value)}
 					aria-invalid={error ? true : undefined}
 					aria-describedby={hintId}
@@ -70,7 +72,10 @@ export default function Welcome({ event, onJoin }: WelcomeProps) {
 					className={error ? "guest-hint guest-hint-error" : "guest-hint"}
 					role={error ? "alert" : undefined}
 				>
-					{error ?? "Shown next to the photos you share. No account needed."}
+					{error ??
+						(existingName
+							? "This is the name from your earlier visit."
+							: "Shown next to the photos you share. No account needed.")}
 				</p>
 				<button type="submit" className="guest-button" disabled={joining}>
 					{joining ? "Joining..." : "Join event"}

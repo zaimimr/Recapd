@@ -40,3 +40,22 @@ describe("injectJoinMeta", () => {
 		expect(html).toContain('<div id="root"></div>');
 	});
 });
+
+describe("injectJoinMeta with replacement patterns in the title", () => {
+	const html = injectJoinMeta(shell, {
+		code: "ABC123",
+		title: "Cash $` and $& party $$",
+		description: "Sat",
+	});
+
+	it("keeps the head intact", () => {
+		expect(html.match(/<script type="module"/g)).toHaveLength(1);
+		expect(html.match(/<\/head>/g)).toHaveLength(1);
+		expect(html.match(/<title>/g)).toHaveLength(1);
+	});
+
+	it("writes the title verbatim", () => {
+		expect(html).toContain("<title>Cash $` and $&amp; party $$</title>");
+		expect(html).toContain('<meta property="og:title" content="Cash $` and $&amp; party $$">');
+	});
+});

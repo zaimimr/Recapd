@@ -312,3 +312,8 @@ body:has(.guest) {
 		transition: none;
 	}
 }
+
+.guest-input:read-only {
+	color: var(--g-muted);
+	cursor: default;
+}

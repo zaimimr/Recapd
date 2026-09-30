@@ -10,7 +10,7 @@ function headerValue(value: string | string[] | undefined): string | undefined {
 }
 
 async function fetchShell(req: VercelRequest): Promise<string | null> {
-	const host = headerValue(req.headers["x-forwarded-host"]) ?? req.headers.host;
+	const host = req.headers.host;
 	if (!host) return null;
 	const proto = headerValue(req.headers["x-forwarded-proto"]) ?? "https";
 	const headers: Record<string, string> = {};
@@ -19,7 +19,10 @@ async function fetchShell(req: VercelRequest): Promise<string | null> {
 	if (cookie) headers.cookie = cookie;
 	if (bypass) headers["x-vercel-protection-bypass"] = bypass;
 	try {
-		const response = await fetch(`${proto}://${host}/`, { headers });
+		const response = await fetch(`${proto}://${host}/`, {
+			headers,
+			signal: AbortSignal.timeout(5000),
+		});
 		if (!response.ok) return null;
 		const html = await response.text();
 		return html.includes('<div id="root">') ? html : null;

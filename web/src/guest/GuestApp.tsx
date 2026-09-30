@@ -39,7 +39,13 @@ function GuestScreens({ code, onRetry }: { code: string; onRetry: () => void }) 
 		case "full":
 			return <Full event={state.event} />;
 		case "welcome":
-			return <Welcome event={state.event} onJoin={(name) => join(state.event, name)} />;
+			return (
+				<Welcome
+					event={state.event}
+					existingName={state.existingName}
+					onJoin={(name) => join(state.event, name)}
+				/>
+			);
 		case "gallery":
 			return <Gallery event={state.event} profileId={state.profileId} session={state.session} />;
 	}

@@ -24,6 +24,6 @@ export function formatDateLabel(startsAt: string, timeZone: string): string {
 	});
 	const time = start
 		.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone })
-		.replace(/ /g, " ");
+		.replace(/\u202f/g, " ");
 	return `${date} · ${time}`;
 }
