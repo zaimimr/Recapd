@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	ActivityIndicator,
 	Alert,
@@ -35,6 +35,20 @@ const TILE_HEIGHT = 132;
 
 export default function InviteKit({ code }: { code: string }) {
 	const [busyFormat, setBusyFormat] = useState<KitFormat | null>(null);
+	const [copiedFormat, setCopiedFormat] = useState<KitFormat | null>(null);
+	const [loadedFormats, setLoadedFormats] = useState<Partial<Record<KitFormat, boolean>>>({});
+	const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(
+		() => () => {
+			if (copiedTimer.current) clearTimeout(copiedTimer.current);
+		},
+		[]
+	);
+
+	function setLoaded(format: KitFormat, loaded: boolean) {
+		setLoadedFormats((current) => ({ ...current, [format]: loaded }));
+	}
 
 	async function handlePress(format: KitFormat) {
 		setBusyFormat(format);
@@ -52,7 +66,14 @@ export default function InviteKit({ code }: { code: string }) {
 	}
 
 	async function handleCopyPrintLink(format: "table" | "poster") {
-		await Clipboard.setStringAsync(buildKitPrintUrl(code, format));
+		try {
+			await Clipboard.setStringAsync(buildKitPrintUrl(code, format));
+		} catch {
+			return;
+		}
+		setCopiedFormat(format);
+		if (copiedTimer.current) clearTimeout(copiedTimer.current);
+		copiedTimer.current = setTimeout(() => setCopiedFormat(null), 2000);
 	}
 
 	return (
@@ -81,8 +102,19 @@ export default function InviteKit({ code }: { code: string }) {
 										source={{ uri: buildKitImageUrl(code, tile.format) }}
 										style={StyleSheet.absoluteFill}
 										contentFit="cover"
-										cachePolicy="memory-disk"
+										cachePolicy="memory"
+										onLoad={() => setLoaded(tile.format, true)}
+										onError={() => setLoaded(tile.format, false)}
 									/>
+									{loadedFormats[tile.format] ? null : (
+										<View style={styles.placeholder}>
+											<Icon
+												name={isPrint ? "printer" : "share"}
+												size={28}
+												color={theme.textMuted}
+											/>
+										</View>
+									)}
 									{busyFormat === tile.format ? (
 										<View style={styles.busy}>
 											<ActivityIndicator color={theme.textPrimary} />
@@ -100,8 +132,11 @@ export default function InviteKit({ code }: { code: string }) {
 									accessibilityRole="button"
 									accessibilityLabel={`Copy ${tile.label} print link`}
 									hitSlop={8}
+									style={styles.copyTarget}
 								>
-									<Text style={styles.copyLink}>Copy link</Text>
+									<Text style={styles.copyLink}>
+										{copiedFormat === tile.format ? "Copied" : "Copy link"}
+									</Text>
 								</Pressable>
 							) : null}
 						</View>
@@ -129,6 +164,15 @@ const styles = StyleSheet.create({
 		backgroundColor: theme.cardElevated,
 		borderWidth: 1,
 		borderColor: theme.border,
+	},
+	placeholder: {
+		...StyleSheet.absoluteFillObject,
+		alignItems: "center",
+		justifyContent: "center",
+	},
+	copyTarget: {
+		minHeight: 44,
+		justifyContent: "center",
 	},
 	busy: {
 		...StyleSheet.absoluteFillObject,

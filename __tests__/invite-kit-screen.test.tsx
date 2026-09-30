@@ -84,6 +84,12 @@ describe("InviteKit", () => {
 		);
 	});
 
+	it("shows Copied after copying the poster print link", async () => {
+		const { getByLabelText, findByText } = render(<InviteKit code="ABC123" />);
+		fireEvent.press(getByLabelText("Copy Poster print link"));
+		expect(await findByText("Copied")).toBeTruthy();
+	});
+
 	it("alerts when the image cannot be loaded", async () => {
 		const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
 		mockShareKitImage.mockRejectedValue(new Error("offline"));
