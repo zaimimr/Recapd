@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { normalizeCode } from "../kit/event.js";
 
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 
@@ -30,7 +31,7 @@ function formatDate(startsAt: string, endsAt: string): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-	const code = req.url?.split("/join/")[1]?.split("?")[0]?.toUpperCase();
+	const code = normalizeCode(req.url?.split("/join/")[1]?.split("?")[0]);
 
 	if (!code) {
 		return res.redirect(302, "https://recapd.app");
@@ -68,14 +69,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   <meta property="og:description" content="${description}">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://recapd.app/join/${code}">
-  <meta property="og:image" content="https://recapd.app/icon.png">
+  <meta property="og:image" content="https://recapd.app/api/kit/image?code=${code}&format=social">
+  <meta property="og:image:width" content="1920">
+  <meta property="og:image:height" content="1005">
   <meta property="og:site_name" content="Recapd">
 
   <!-- Twitter -->
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="https://recapd.app/icon.png">
+  <meta name="twitter:image" content="https://recapd.app/api/kit/image?code=${code}&format=social">
 
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -95,12 +98,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .date { font-size: 18px; color: rgba(255,255,255,0.6); margin-bottom: 32px; }
     .code-label { font-size: 14px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
     .code {
-      font-size: 36px;
-      font-weight: 700;
+      font-size: 48px;
+      font-weight: 800;
       font-family: 'SF Mono', Monaco, monospace;
-      letter-spacing: 4px;
-      margin-bottom: 48px;
+      letter-spacing: 8px;
+      margin-bottom: 12px;
     }
+    .copy {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+    .howto { font-size: 16px; color: rgba(255,255,255,0.8); margin-bottom: 32px; line-height: 1.5; }
     .btn {
       display: block;
       background: #22c55e;
@@ -144,6 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <p class="date">${description}</p>
     <p class="code-label">Join Code</p>
     <p class="code">${code}</p>
+    <button class="copy" id="copyCode" type="button">Copy code</button>
+    <p class="howto">Get Recapd, then tap <strong>Join with code</strong> and enter <strong>${code}</strong>.</p>
 
     <div id="loading">
       <div class="spinner"></div>
@@ -164,6 +181,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     (function() {
       var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       var isAndroid = /Android/.test(navigator.userAgent);
+
+      document.getElementById('copyCode').addEventListener('click', function() {
+        navigator.clipboard.writeText('${code}').then(function() {
+          document.getElementById('copyCode').textContent = 'Copied';
+        });
+      });
 
       // Try to open the app
       window.location = '${deepLink}';
