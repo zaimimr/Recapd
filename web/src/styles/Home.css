@@ -432,7 +432,7 @@ a {
 }
 
 .hero-phone-main {
-	width: min(100%, 460px);
+	width: min(100%, 340px);
 	transform: rotate(4deg);
 }
 
@@ -447,111 +447,13 @@ a {
 .hero-screen {
 	border-radius: 30px;
 	overflow: hidden;
-	background: #111;
+	background: #0b0b12;
 }
 
-.hero-feed-screen {
-	padding: 14px;
-	display: grid;
-	gap: 14px;
-}
-
-.feed-post {
-	background: rgba(255, 255, 255, 0.06);
-	backdrop-filter: blur(20px);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 24px;
-	padding: 14px;
-}
-
-.feed-post-compact {
-	transform: translateY(-4px);
-}
-
-.feed-post-floating {
-	transform: translateX(18px);
-}
-
-.feed-post-header {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	margin-bottom: 12px;
-}
-
-.avatar {
-	width: 42px;
-	height: 42px;
-	border-radius: 50%;
-	display: grid;
-	place-items: center;
-	font-weight: 800;
-	color: white;
-}
-
-.avatar-teal {
-	background: linear-gradient(135deg, #ff5e62, #ff2d8e);
-}
-
-.avatar-coral {
-	background: linear-gradient(135deg, #ff2d8e, #8b2fe0);
-}
-
-.feed-name {
-	color: #fff;
-	font-weight: 800;
-	font-size: 0.98rem;
-}
-
-.feed-meta {
-	color: rgba(255, 255, 255, 0.7);
-	font-size: 0.84rem;
-	margin-top: 2px;
-}
-
-.feed-media {
-	position: relative;
-	border-radius: 18px;
-	overflow: hidden;
-	background: #000;
-	border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.feed-media-hero {
-	aspect-ratio: 4 / 5;
-}
-
-.feed-media-grid {
-	aspect-ratio: 1.08 / 1;
-}
-
-.feed-media img {
+.hero-screen img {
+	display: block;
 	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.media-badge {
-	position: absolute;
-	left: 12px;
-	bottom: 12px;
-	padding: 8px 10px;
-	border-radius: 999px;
-	background: var(--brand-gradient);
-	color: #fff;
-	font-size: 0.78rem;
-	font-weight: 800;
-	letter-spacing: 0.08em;
-}
-
-.feed-actions {
-	display: flex;
-	justify-content: space-between;
-	gap: 8px;
-	padding-top: 10px;
-	color: rgba(255, 255, 255, 0.5);
-	font-size: 0.76rem;
-	font-weight: 700;
+	aspect-ratio: 1179 / 2556;
 }
 
 .hero-stat {
@@ -577,14 +479,14 @@ a {
 }
 
 .hero-stat-top {
-	top: 92px;
-	left: -20px;
+	top: 38%;
+	left: -40px;
 	animation: float 7s ease-in-out infinite;
 }
 
 .hero-stat-bottom {
-	right: -10px;
-	bottom: 92px;
+	right: -30px;
+	bottom: 120px;
 	animation: float 7s ease-in-out infinite reverse;
 }
 
@@ -721,7 +623,15 @@ a {
 }
 
 .proof-grid {
-	grid-template-columns: 1.1fr 0.85fr;
+	grid-template-columns: 1.1fr 0.9fr;
+	gap: 56px;
+}
+
+.proof-shots {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 300px));
+	justify-content: center;
+	gap: 22px;
 }
 
 .proof-tile {
@@ -733,51 +643,20 @@ a {
 }
 
 .proof-tile img {
+	display: block;
 	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.proof-tile-large {
-	aspect-ratio: 1.15 / 1;
+	aspect-ratio: 1179 / 2556;
 }
 
 .proof-tile-side {
-	aspect-ratio: 0.88 / 1;
 	transform: translateY(46px);
 }
 
-.proof-overlay {
-	position: absolute;
-	left: 18px;
-	right: 18px;
-	bottom: 18px;
-	padding: 16px;
-	border-radius: 22px;
-	background: linear-gradient(135deg, rgba(255, 45, 142, 0.82), rgba(139, 47, 224, 0.82));
-	backdrop-filter: blur(18px);
-	color: white;
-}
 
-.proof-overlay span {
-	display: block;
-	font-size: 0.72rem;
-	font-weight: 800;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
-	opacity: 0.85;
-	margin-bottom: 6px;
-}
 
-.proof-overlay strong {
-	font-size: 1.02rem;
-	line-height: 1.45;
-}
 
 .proof-copy {
-	grid-column: 1 / -1;
-	max-width: 720px;
-	margin-top: 12px;
+	max-width: 520px;
 }
 
 .features {
@@ -937,8 +816,7 @@ a {
 
 .story-strip img {
 	width: 100%;
-	aspect-ratio: 0.78 / 1;
-	object-fit: cover;
+	aspect-ratio: 1179 / 2556;
 	border-radius: 24px;
 	border: 1px solid var(--line);
 	box-shadow: var(--shadow);
@@ -1350,7 +1228,6 @@ a {
 	.workflow-grid,
 	.feature-grid,
 	.pricing-grid,
-	.story-strip,
 	.use-case-grid {
 		grid-template-columns: 1fr 1fr;
 	}
@@ -1408,14 +1285,22 @@ a {
 	.workflow-grid,
 	.feature-grid,
 	.pricing-grid,
-	.story-strip,
 	.use-case-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.story-strip img:nth-child(2) {
-		transform: none;
+	.story-strip {
+		gap: 8px;
 	}
+
+	.story-strip img {
+		border-radius: 14px;
+	}
+
+	.proof-shots {
+		gap: 12px;
+	}
+
 
 	.hero-stat {
 		position: static;
@@ -1428,11 +1313,8 @@ a {
 	}
 
 	.hero-phone-main {
-		width: 100%;
-	}
-
-	.feed-post-floating {
-		transform: none;
+		width: min(100%, 300px);
+		margin: 0 auto;
 	}
 
 	.final-cta-shell {

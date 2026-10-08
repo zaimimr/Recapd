@@ -7,8 +7,8 @@ const features = [
 		copy: "Set the event start and end time. Recapd only pulls photos and videos from that window, so guests skip the endless camera roll dig.",
 	},
 	{
-		title: "No more tiny thumbnails you can't see",
-		copy: "Full-width cards, pinch-to-zoom on every photo, video durations visible upfront. The feed feels like a social app, not a file dump.",
+		title: "Original quality, not compressed copies",
+		copy: "Scroll a fast grid, then open any photo at full resolution. Pinch to zoom, swipe to browse, save what you love.",
 	},
 	{
 		title: "No app install for guests",
@@ -169,56 +169,12 @@ export default function Home() {
 							<div className="orbit-ring orbit-ring-two" aria-hidden="true" />
 							<div className="hero-phone hero-phone-main">
 								<div className="hero-phone-topbar" aria-hidden="true" />
-								<div className="hero-screen hero-feed-screen">
-									<div className="feed-post feed-post-compact">
-										<div className="feed-post-header">
-											<div className="avatar avatar-teal" aria-hidden="true">
-												R
-											</div>
-											<div>
-												<div className="feed-name">Recapd Live</div>
-												<div className="feed-meta">The feed updates as uploads finish</div>
-											</div>
-										</div>
-										<div className="feed-media feed-media-hero">
-											<img
-												src="/screenshots/timeline.png"
-												alt="Recapd event feed showing photos and videos in a scrollable timeline"
-												fetchPriority="high"
-											/>
-											<div
-												className="media-badge"
-												role="img"
-												aria-label="Video duration: 1 minute 5 seconds"
-											>
-												VIDEO 00:01:05
-											</div>
-										</div>
-										<div className="feed-actions" aria-hidden="true">
-											<span>Pinch to zoom</span>
-											<span>Pan while zoomed</span>
-										</div>
-									</div>
-
-									<div className="feed-post feed-post-floating">
-										<div className="feed-post-header">
-											<div className="avatar avatar-coral" aria-hidden="true">
-												Z
-											</div>
-											<div>
-												<div className="feed-name">Zaim&apos;s Birthday</div>
-												<div className="feed-meta">67 media items from 9 guests</div>
-											</div>
-										</div>
-										<div className="feed-media feed-media-grid">
-											<img
-												src="/screenshots/found-photos.png"
-												alt="Grid of auto-discovered photos from an event"
-												loading="lazy"
-												decoding="async"
-											/>
-										</div>
-									</div>
+								<div className="hero-screen">
+									<img
+										src="/screenshots/timeline.jpg"
+										alt="Recapd event album with a feed of photos and videos from every guest"
+										fetchPriority="high"
+									/>
 								</div>
 							</div>
 
@@ -328,38 +284,32 @@ export default function Home() {
 
 				<section className="proof" aria-labelledby="proof-heading">
 					<div className="container proof-grid">
-						<div className="proof-tile proof-tile-large">
-							<img
-								src="/screenshots/home.png"
-								alt="Recapd home screen showing event list with stats and quick sharing"
-								loading="lazy"
-								decoding="async"
-							/>
-							<div className="proof-overlay">
-								<span>Host view</span>
-								<strong>Clean stats, quick sharing, and a feed that feels alive.</strong>
+						<div className="proof-shots">
+							<div className="proof-tile">
+								<img
+									src="/screenshots/home.jpg"
+									alt="Recapd home screen with a list of event albums"
+									loading="lazy"
+									decoding="async"
+								/>
 							</div>
-						</div>
-						<div className="proof-tile proof-tile-side">
-							<img
-								src="/screenshots/select-photos.png"
-								alt="Guest photo selection screen with thumbnail grid and upload controls"
-								loading="lazy"
-								decoding="async"
-							/>
-							<div className="proof-overlay">
-								<span>Guest flow</span>
-								<strong>Fast selection with thumbnails and clear media identity.</strong>
+							<div className="proof-tile proof-tile-side">
+								<img
+									src="/screenshots/select-photos.jpg"
+									alt="Guest picking photos from the night to add to the album"
+									loading="lazy"
+									decoding="async"
+								/>
 							</div>
 						</div>
 						<div className="proof-copy">
 							<div className="section-kicker">What it feels like</div>
 							<h2 id="proof-heading">
-								A feed that feels like scrolling Instagram, not digging through a folder.
+								The whole night in one album, from every phone in the room.
 							</h2>
 							<p>
-								Full-width cards, zoomable media, video thumbnails with durations - not a grid of
-								tiny squares you can't make out. Every memory gets the space it deserves.
+								Recapd finds the photos from the night on each guest's phone. They tap share, and
+								everything lands in one album you can browse, zoom and download in full quality.
 							</p>
 						</div>
 					</div>
@@ -418,27 +368,27 @@ export default function Home() {
 					<div className="container story-grid">
 						<div className="story-copy">
 							<div className="section-kicker">The feed</div>
-							<h2 id="story-heading">Every photo gets the space it deserves.</h2>
+							<h2 id="story-heading">Browse fast. Open in full quality.</h2>
 							<p>
-								No cramped grids. No thumbnails you have to squint at. Recapd gives every shot a
-								full card - tap to zoom, swipe to browse, download what you want to keep.
+								A quick grid to scan hundreds of shots, then tap any photo to see the original.
+								Swipe to browse, save what you want to keep, and invite more guests with a QR code.
 							</p>
 						</div>
 						<div className="story-strip">
 							<img
-								src="/screenshots/timeline.png"
-								alt="Timeline feed showing full-width photo cards"
+								src="/screenshots/timeline.jpg"
+								alt="Event feed with photos and videos from every guest"
 								loading="lazy"
 								decoding="async"
 							/>
 							<img
-								src="/screenshots/found-photos.png"
-								alt="Auto-discovered photos ready for review"
+								src="/screenshots/viewer.jpg"
+								alt="A wedding photo opened full screen in original quality"
 								loading="lazy"
 								decoding="async"
 							/>
 							<img
-								src="/screenshots/share.png"
+								src="/screenshots/share.jpg"
 								alt="Event sharing screen with QR code and invite link"
 								loading="lazy"
 								decoding="async"
