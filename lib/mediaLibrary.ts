@@ -280,6 +280,84 @@ export interface PickMediaResult {
 	error?: string;
 }
 
+function toPickResult(
+	assets: ImagePicker.ImagePickerAsset[],
+	includeVideos: boolean,
+	normalizedMaxVideoDurationMs: number,
+	maxFileSizeBytes: number
+): PickMediaResult {
+	let videosTooLong = 0;
+	let filesTooLarge = 0;
+	const validAssets = assets.filter((asset) => {
+		if (asset.type === "video" && !includeVideos) {
+			return false;
+		}
+		if (asset.type === "video" && normalizedMaxVideoDurationMs > 0) {
+			const durationMs = durationToMs(asset.duration || 0);
+			if (durationMs > normalizedMaxVideoDurationMs) {
+				videosTooLong++;
+				return false;
+			}
+		}
+		if (
+			maxFileSizeBytes > 0 &&
+			typeof asset.fileSize === "number" &&
+			asset.fileSize > maxFileSizeBytes
+		) {
+			filesTooLarge++;
+			return false;
+		}
+		return true;
+	});
+
+	const videosFiltered = !includeVideos && assets.some((a) => a.type === "video");
+
+	const media = validAssets.map((asset, index) => {
+		let creationTime = Date.now();
+		let latitude: number | undefined;
+		let longitude: number | undefined;
+
+		if (asset.exif) {
+			const exifDate =
+				asset.exif.DateTimeOriginal || asset.exif.DateTimeDigitized || asset.exif.DateTime;
+
+			if (exifDate && typeof exifDate === "string") {
+				const isoDate = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3").replace(" ", "T");
+				const parsed = new Date(isoDate).getTime();
+				if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 8640000000000000) {
+					creationTime = parsed;
+				}
+			}
+
+			const rawLat = asset.exif.GPSLatitude;
+			const rawLng = asset.exif.GPSLongitude;
+			if (typeof rawLat === "number" && typeof rawLng === "number") {
+				latitude = asset.exif.GPSLatitudeRef === "S" ? -rawLat : rawLat;
+				longitude = asset.exif.GPSLongitudeRef === "W" ? -rawLng : rawLng;
+			}
+		}
+
+		const isVideo = asset.type === "video";
+		const defaultExt = isVideo ? "mp4" : "jpg";
+
+		return {
+			id: asset.assetId ?? `manual-${Date.now()}-${index}`,
+			uri: asset.uri,
+			filename: asset.fileName || `${isVideo ? "video" : "photo"}-${index}.${defaultExt}`,
+			creationTime,
+			width: asset.width,
+			height: asset.height,
+			duration: durationToMs(asset.duration || 0),
+			fileSize: asset.fileSize,
+			mediaType: (isVideo ? "video" : "photo") as "photo" | "video",
+			latitude,
+			longitude,
+		};
+	});
+
+	return { media, videosFiltered, videosTooLong, filesTooLarge, iCloudUnavailable: 0 };
+}
+
 export async function pickMediaFromLibrary(
 	options: PickMediaOptions = {}
 ): Promise<PickMediaResult> {
@@ -312,78 +390,12 @@ export async function pickMediaFromLibrary(
 			};
 		}
 
-		let videosTooLong = 0;
-		let filesTooLarge = 0;
-		const validAssets = result.assets.filter((asset) => {
-			if (asset.type === "video" && !includeVideos) {
-				return false;
-			}
-			if (asset.type === "video" && normalizedMaxVideoDurationMs > 0) {
-				const durationMs = durationToMs(asset.duration || 0);
-				if (durationMs > normalizedMaxVideoDurationMs) {
-					videosTooLong++;
-					return false;
-				}
-			}
-			if (
-				maxFileSizeBytes > 0 &&
-				typeof asset.fileSize === "number" &&
-				asset.fileSize > maxFileSizeBytes
-			) {
-				filesTooLarge++;
-				return false;
-			}
-			return true;
-		});
-
-		const videosFiltered = !includeVideos && result.assets.some((a) => a.type === "video");
-
-		const media = validAssets.map((asset, index) => {
-			let creationTime = Date.now();
-			let latitude: number | undefined;
-			let longitude: number | undefined;
-
-			if (asset.exif) {
-				const exifDate =
-					asset.exif.DateTimeOriginal || asset.exif.DateTimeDigitized || asset.exif.DateTime;
-
-				if (exifDate && typeof exifDate === "string") {
-					const isoDate = exifDate
-						.replace(/^(\d{4}):(\d{2}):(\d{2})/, "$1-$2-$3")
-						.replace(" ", "T");
-					const parsed = new Date(isoDate).getTime();
-					if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 8640000000000000) {
-						creationTime = parsed;
-					}
-				}
-
-				const rawLat = asset.exif.GPSLatitude;
-				const rawLng = asset.exif.GPSLongitude;
-				if (typeof rawLat === "number" && typeof rawLng === "number") {
-					latitude = asset.exif.GPSLatitudeRef === "S" ? -rawLat : rawLat;
-					longitude = asset.exif.GPSLongitudeRef === "W" ? -rawLng : rawLng;
-				}
-			}
-
-			const isVideo = asset.type === "video";
-			const defaultExt = isVideo ? "mp4" : "jpg";
-
-			return {
-				id: asset.assetId ?? `manual-${Date.now()}-${index}`,
-				uri: asset.uri,
-				filename: asset.fileName || `${isVideo ? "video" : "photo"}-${index}.${defaultExt}`,
-				creationTime,
-				width: asset.width,
-				height: asset.height,
-				duration: durationToMs(asset.duration || 0),
-				fileSize: asset.fileSize,
-				mediaType: (isVideo ? "video" : "photo") as "photo" | "video",
-				latitude,
-				longitude,
-			};
-		});
-
-		return { media, videosFiltered, videosTooLong, filesTooLarge, iCloudUnavailable: 0 };
+		return toPickResult(
+			result.assets,
+			includeVideos,
+			normalizedMaxVideoDurationMs,
+			maxFileSizeBytes
+		);
 	} catch (error) {
 		logger.error("Manual media picking failed", error, {
 			includeVideos,
@@ -401,6 +413,39 @@ export async function pickMediaFromLibrary(
 			iCloudUnavailable: 0,
 			error: message,
 		};
+	}
+}
+
+export async function captureWithCamera(options: PickMediaOptions = {}): Promise<PickMediaResult> {
+	const { maxVideoDuration = 0, maxFileSizeBytes = 0 } = options;
+	const normalizedMaxVideoDurationMs = normalizeMaxVideoDurationMs(maxVideoDuration);
+	const empty: PickMediaResult = {
+		media: [],
+		videosFiltered: false,
+		videosTooLong: 0,
+		filesTooLarge: 0,
+		iCloudUnavailable: 0,
+	};
+
+	try {
+		const result = await ImagePicker.launchCameraAsync({
+			mediaTypes: ["images", "videos"],
+			quality: 1,
+			exif: true,
+			videoMaxDuration:
+				normalizedMaxVideoDurationMs > 0
+					? Math.floor(normalizedMaxVideoDurationMs / 1000)
+					: undefined,
+		});
+
+		if (result.canceled || !result.assets) return empty;
+
+		return toPickResult(result.assets, true, normalizedMaxVideoDurationMs, maxFileSizeBytes);
+	} catch (error) {
+		logger.error("Camera capture failed", error, {
+			maxVideoDuration: normalizedMaxVideoDurationMs,
+		});
+		return { ...empty, error: "We couldn't open the camera. Please try again." };
 	}
 }
 

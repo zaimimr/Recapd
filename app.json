@@ -20,7 +20,8 @@
 			"infoPlist": {
 				"NSPhotoLibraryUsageDescription": "Recapd needs access to your photos to share them with your event group.",
 				"NSPhotoLibraryAddUsageDescription": "Recapd needs permission to save photos to your camera roll.",
-				"NSCameraUsageDescription": "Recapd needs camera access to scan QR codes.",
+				"NSCameraUsageDescription": "Recapd uses your camera to scan QR codes and to take photos and videos for your event album.",
+				"NSMicrophoneUsageDescription": "Recapd uses your microphone to record sound in videos you take for your event album.",
 				"ITSAppUsesNonExemptEncryption": false
 			}
 		},
@@ -72,7 +73,8 @@
 			[
 				"expo-camera",
 				{
-					"cameraPermission": "Allow Recapd to use your camera to scan QR codes."
+					"cameraPermission": "Recapd uses your camera to scan QR codes and to take photos and videos for your event album.",
+					"microphonePermission": "Recapd uses your microphone to record sound in videos you take for your event album."
 				}
 			],
 			[

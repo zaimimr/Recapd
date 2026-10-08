@@ -15,6 +15,7 @@ jest.mock("expo-media-library", () => ({
 }));
 jest.mock("expo-image-picker", () => ({
 	launchImageLibraryAsync: jest.fn(),
+	launchCameraAsync: jest.fn(),
 	UIImagePickerPreferredAssetRepresentationMode: {
 		Automatic: "automatic",
 		Current: "current",
@@ -24,6 +25,7 @@ jest.mock("expo-image-picker", () => ({
 import * as ImagePicker from "expo-image-picker";
 import * as MediaLibrary from "expo-media-library";
 import {
+	captureWithCamera,
 	FREE_MAX_VIDEO_DURATION_MS,
 	getMediaInTimeRange,
 	getPhotosInTimeRange,
@@ -35,6 +37,7 @@ const mockRequestPermissions = MediaLibrary.requestPermissionsAsync as jest.Mock
 const mockGetAssets = MediaLibrary.getAssetsAsync as jest.Mock;
 const mockGetAssetInfo = MediaLibrary.getAssetInfoAsync as jest.Mock;
 const mockLaunchImageLibrary = ImagePicker.launchImageLibraryAsync as jest.Mock;
+const mockLaunchCamera = ImagePicker.launchCameraAsync as jest.Mock;
 
 const generateAssets = (count: number, startTime: number) =>
 	Array.from({ length: count }, (_, i) => ({
@@ -619,5 +622,71 @@ describe("pickMediaFromLibrary", () => {
 
 		expect(result.media[0].filename).toBe("photo-0.jpg");
 		expect(result.media[1].filename).toBe("video-1.mp4");
+	});
+});
+
+describe("captureWithCamera", () => {
+	beforeEach(() => {
+		mockLaunchCamera.mockReset();
+	});
+
+	it("caps recording length and returns the captured photo", async () => {
+		mockLaunchCamera.mockResolvedValue({
+			canceled: false,
+			assets: [
+				{
+					assetId: null,
+					uri: "file:///cache/camera.jpg",
+					fileName: null,
+					width: 3024,
+					height: 4032,
+					type: "image",
+					fileSize: 2_000_000,
+					exif: { DateTimeOriginal: "2026:10:08 21:15:00" },
+				},
+			],
+		});
+
+		const result = await captureWithCamera({
+			maxVideoDuration: FREE_MAX_VIDEO_DURATION_MS,
+			maxFileSizeBytes: 500 * 1024 * 1024,
+		});
+
+		expect(mockLaunchCamera).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mediaTypes: ["images", "videos"],
+				videoMaxDuration: FREE_MAX_VIDEO_DURATION_MS / 1000,
+			})
+		);
+		expect(result.media).toHaveLength(1);
+		expect(result.media[0]).toMatchObject({
+			uri: "file:///cache/camera.jpg",
+			mediaType: "photo",
+			filename: "photo-0.jpg",
+			creationTime: new Date("2026-10-08T21:15:00").getTime(),
+		});
+		expect(result.media[0].id).toMatch(/^manual-/);
+	});
+
+	it("skips videos over the plan limit", async () => {
+		mockLaunchCamera.mockResolvedValue({
+			canceled: false,
+			assets: [{ uri: "file:///cache/v.mov", width: 1, height: 1, type: "video", duration: 45000 }],
+		});
+
+		const result = await captureWithCamera({ maxVideoDuration: FREE_MAX_VIDEO_DURATION_MS });
+
+		expect(result.media).toHaveLength(0);
+		expect(result.videosTooLong).toBe(1);
+	});
+
+	it("returns nothing when cancelled and an error when the camera throws", async () => {
+		mockLaunchCamera.mockResolvedValueOnce({ canceled: true, assets: null });
+		expect((await captureWithCamera()).media).toEqual([]);
+
+		mockLaunchCamera.mockRejectedValueOnce(new Error("boom"));
+		const failed = await captureWithCamera();
+		expect(failed.media).toEqual([]);
+		expect(failed.error).toBeDefined();
 	});
 });
