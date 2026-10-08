@@ -1,13 +1,8 @@
 import { useEffect } from "react";
 import { LogoLockup, LogoMark } from "../components/Logo";
-import { type Occasion as OccasionData, occasions } from "../occasions";
+import { hub, labels, type Occasion as OccasionData, occasionBySlug } from "../occasions";
 import { StoreBadges } from "./Home";
 import "../styles/Home.css";
-
-const labels = {
-	en: { faq: "FAQ", getApp: "Get the app", privacy: "Privacy Policy", more: "More occasions" },
-	nb: { faq: "Spørsmål", getApp: "Last ned appen", privacy: "Personvern", more: "Flere anledninger" },
-};
 
 export default function Occasion({ occasion }: { occasion: OccasionData }) {
 	const text = labels[occasion.lang];
@@ -28,6 +23,11 @@ export default function Occasion({ occasion }: { occasion: OccasionData }) {
 						<LogoLockup size={34} />
 					</a>
 					<nav className="nav-links" aria-label="Primary">
+						{occasion.alternate && (
+							<a href={`/${occasion.alternate}`} hrefLang={occasionBySlug(occasion.alternate).lang}>
+								{text.switchLang}
+							</a>
+						)}
 						<a href="#faq">{text.faq}</a>
 						<a href="#download" className="nav-cta">
 							{text.getApp}
@@ -93,6 +93,22 @@ export default function Occasion({ occasion }: { occasion: OccasionData }) {
 					</div>
 				</section>
 
+				<section className="use-cases" aria-labelledby="related-heading">
+					<div className="container">
+						<div className="section-heading">
+							<h2 id="related-heading">{text.more}</h2>
+						</div>
+						<div className="use-case-grid">
+							{occasion.related.map(occasionBySlug).map((other) => (
+								<a key={other.slug} href={`/${other.slug}`} className="use-case-card">
+									<div className="use-case-label">{other.kicker}</div>
+									<p>{other.h1}</p>
+								</a>
+							))}
+						</div>
+					</div>
+				</section>
+
 				<section className="final-cta" id="download" aria-labelledby="download-heading">
 					<div className="container final-cta-shell">
 						<div className="final-copy">
@@ -108,14 +124,8 @@ export default function Occasion({ occasion }: { occasion: OccasionData }) {
 			<footer className="footer">
 				<div className="container footer-content">
 					<LogoLockup size={40} />
-					<nav aria-label={text.more} className="footer-links">
-						{occasions
-							.filter((other) => other.slug !== occasion.slug && other.lang === occasion.lang)
-							.map((other) => (
-								<a key={other.slug} href={`/${other.slug}`}>
-									{other.kicker}
-								</a>
-							))}
+					<nav aria-label={text.all} className="footer-links">
+						<a href={`/${hub.slug}`}>{text.all}</a>
 					</nav>
 					<nav aria-label="Footer links" className="footer-links">
 						<a href="/privacy">{text.privacy}</a>
