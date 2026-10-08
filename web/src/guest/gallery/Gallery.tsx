@@ -8,6 +8,7 @@ import UploadTray, { AddMediaButton } from "../upload/UploadTray";
 import { useUploadQueue } from "../upload/useUploadQueue";
 import MediaGrid, { GalleryHeader } from "./MediaGrid";
 import { countLabel, type GalleryItem } from "./mediaList";
+import EventInfo from "./EventInfo";
 import { createSignedUrlResolver, type StorageSigner } from "./signedUrls";
 import { useEventMedia } from "./useEventMedia";
 import Viewer from "./Viewer";
@@ -132,6 +133,7 @@ export default function Gallery({
 				</button>
 				</div>
 			</GalleryHeader>
+			<EventInfo event={event} />
 			<AddMediaButton onFiles={uploads.add} />
 			<UploadTray queue={uploads} />
 			<MediaGrid

@@ -12,7 +12,13 @@ export type GuestEvent = {
 	expires_at: string | null;
 	participant_count: number;
 	host_is_pro: boolean;
+	location?: string | null;
+	dress_code?: string | null;
+	details?: string | null;
+	schedule?: unknown;
 };
+
+export type ScheduleItem = { time: string; title: string };
 
 export type GalleryProps = {
 	event: GuestEvent;
