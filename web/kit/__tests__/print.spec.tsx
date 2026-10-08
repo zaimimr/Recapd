@@ -35,6 +35,30 @@ describe("renderPrintPage", () => {
 	});
 });
 
+describe("renderPrintPage with an occasion style", () => {
+	it("renders the occasion sign with QR and code", () => {
+		const html = renderPrintPage("poster", data, "halloween");
+		expect(html).toContain("Who has the pics?");
+		expect(html).toContain(data.qrSrc);
+		expect(html).toContain("Code: ABC123");
+	});
+	it("keeps four cards on a table sheet", () => {
+		const html = renderPrintPage("table", data, "julebord");
+		expect(html.match(/data-kit-card/g)?.length).toBe(4);
+		expect(html).toContain("Kode: ABC123");
+	});
+	it("uses the classic template without a style", () => {
+		const html = renderPrintPage("poster", data);
+		expect(html).not.toContain("Who has the pics?");
+		expect(html).toContain('class="chip active" href="?format=poster">Classic');
+	});
+	it("links every occasion while keeping the format", () => {
+		const html = renderPrintPage("table", data, "wedding");
+		expect(html).toContain('href="?format=table&amp;style=bryllup"');
+		expect(html).toContain('href="?format=poster&amp;style=wedding"');
+	});
+});
+
 describe("renderTemplate", () => {
 	it.each([
 		"social",
