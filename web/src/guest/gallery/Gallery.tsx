@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { guestSupabase } from "../supabase";
 import HostCta from "../HostCta";
 import { RECAP_MAX_TILES } from "../recap/recapLayout";
 import { renderRecap, shareRecap } from "../recap/shareRecap";
+import { guestSupabase } from "../supabase";
 import type { GalleryProps } from "../types";
 import UploadTray, { AddMediaButton } from "../upload/UploadTray";
 import { useUploadQueue } from "../upload/useUploadQueue";
+import EventInfo from "./EventInfo";
 import MediaGrid, { GalleryHeader } from "./MediaGrid";
 import { countLabel, type GalleryItem } from "./mediaList";
-import EventInfo from "./EventInfo";
 import { createSignedUrlResolver, type StorageSigner } from "./signedUrls";
 import { useEventMedia } from "./useEventMedia";
 import Viewer from "./Viewer";
@@ -93,7 +93,11 @@ export default function Gallery({
 	const onShareRecap = async () => {
 		setRecapBusy(true);
 		try {
-			const blob = await renderRecap({ title: event.title, subtitle: counts, thumbUrls: recapUrls });
+			const blob = await renderRecap({
+				title: event.title,
+				subtitle: counts,
+				thumbUrls: recapUrls,
+			});
 			await shareRecap(blob, "recap.png");
 		} finally {
 			setRecapBusy(false);
@@ -109,28 +113,28 @@ export default function Gallery({
 				counts={media.status === "loading" ? " " : counts}
 			>
 				<div className="gallery-actions">
-				<button
-					type="button"
-					className="gallery-download"
-					onClick={onShareRecap}
-					disabled={recapUrls.length === 0 || recapBusy}
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13v6h14v-6" />
-					</svg>
-					{recapBusy ? "Making recap" : "Share recap"}
-				</button>
-				<button
-					type="button"
-					className="gallery-download"
-					onClick={() => onDownloadAll?.(items)}
-					disabled={items.length === 0}
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" />
-					</svg>
-					Download all
-				</button>
+					<button
+						type="button"
+						className="gallery-download"
+						onClick={onShareRecap}
+						disabled={recapUrls.length === 0 || recapBusy}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13v6h14v-6" />
+						</svg>
+						{recapBusy ? "Making recap" : "Share recap"}
+					</button>
+					<button
+						type="button"
+						className="gallery-download"
+						onClick={() => onDownloadAll?.(items)}
+						disabled={items.length === 0}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" />
+						</svg>
+						Download all
+					</button>
 				</div>
 			</GalleryHeader>
 			<EventInfo event={event} />
