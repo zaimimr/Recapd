@@ -12,4 +12,36 @@
     <loc>https://recapd.app/support</loc>
     <priority>0.5</priority>
   </url>
+  <url>
+    <loc>https://recapd.app/wedding-photo-sharing</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/halloween-party-photos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/birthday-party-photos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/christmas-party-photos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/graduation-party-photos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/qr-code-event-photos</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/bryllup-bildedeling</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://recapd.app/julebord-bilder</loc>
+    <priority>0.8</priority>
+  </url>
 </urlset>

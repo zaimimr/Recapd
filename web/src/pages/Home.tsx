@@ -1,4 +1,5 @@
 import { LogoLockup, LogoMark } from "../components/Logo";
+import { occasions } from "../occasions";
 import "../styles/Home.css";
 
 const features = [
@@ -61,7 +62,7 @@ const useCases = [
 const faqs = [
 	{
 		q: "Do guests need to download the app?",
-		a: "Yes, guests download the app to contribute photos and videos. But they don't need to create an account. They just open the invite link, pick their media, and contribute. Takes about 30 seconds.",
+		a: "No. Guests scan the QR code or open the invite link and add photos straight from the browser, no account needed. They can also use the app if they prefer. Takes about 30 seconds.",
 	},
 	{
 		q: "How does the auto-scan work?",
@@ -85,7 +86,7 @@ const faqs = [
 	},
 ];
 
-function StoreBadges({ size = "default" }: { size?: "default" | "large" }) {
+export function StoreBadges({ size = "default" }: { size?: "default" | "large" }) {
 	const cls = size === "large" ? "store-badges store-badges-large" : "store-badges";
 	return (
 		<div className={cls}>
@@ -507,6 +508,15 @@ export default function Home() {
 						<LogoLockup size={40} />
 						<p className="footer-tagline">Shared event memories, built for photos and videos.</p>
 					</div>
+					<nav aria-label="Occasions" className="footer-links">
+						{occasions
+							.filter((occasion) => occasion.lang === "en")
+							.map((occasion) => (
+								<a key={occasion.slug} href={`/${occasion.slug}`}>
+									{occasion.kicker}
+								</a>
+							))}
+					</nav>
 					<nav aria-label="Footer links" className="footer-links">
 						<a href="/privacy">Privacy Policy</a>
 						<a href="/support">Support</a>
