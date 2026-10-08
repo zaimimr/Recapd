@@ -1066,7 +1066,15 @@ a {
 }
 
 .pricing-price span {
+	white-space: nowrap;
 	font-size: 0.95rem;
+	font-weight: 700;
+	color: var(--text-muted);
+	-webkit-text-fill-color: var(--text-muted);
+}
+
+.pricing-price .pricing-was {
+	font-size: 0.5em;
 	font-weight: 700;
 	color: var(--text-muted);
 	-webkit-text-fill-color: var(--text-muted);

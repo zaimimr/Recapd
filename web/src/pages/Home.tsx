@@ -73,7 +73,7 @@ const faqs = [
 	},
 	{
 		q: "Is Recapd free?",
-		a: "Yes, for events up to 12 people, which is you plus 11 guests. If you're hosting something bigger, Pro is $2.99/month and only the host needs it. Every guest always joins free.",
+		a: "Yes, for events up to 12 people, which is you plus 11 guests. If you're hosting something bigger, Pro is $39.99 for the first year with our launch offer, and only the host needs it. Every guest always joins free.",
 	},
 	{
 		q: "Does it work on both iPhone and Android?",
@@ -468,7 +468,7 @@ export default function Home() {
 					<div className="container">
 						<div className="section-heading">
 							<div className="section-kicker">Pricing</div>
-							<h2 id="pricing-heading">Less than a coffee. And guests are always free.</h2>
+							<h2 id="pricing-heading">Only the host pays. Guests are always free.</h2>
 						</div>
 						<div className="pricing-grid">
 							<div className="pricing-card">
@@ -477,11 +477,11 @@ export default function Home() {
 									<div className="pricing-price">$0</div>
 								</div>
 								<p className="pricing-description">
-									Everything you need for a small get-together. Up to 10 friends, all photos
+									Everything you need for a small get-together. Up to 12 people, all photos
 									included.
 								</p>
 								<ul className="pricing-features">
-									<li>Up to 10 participants</li>
+									<li>Up to 12 participants</li>
 									<li>Unlimited photos and videos</li>
 									<li>Full-resolution downloads</li>
 									<li>14-day storage</li>
@@ -489,11 +489,11 @@ export default function Home() {
 								</ul>
 							</div>
 							<div className="pricing-card pricing-card-featured">
-								<div className="pricing-badge">Recommended</div>
+								<div className="pricing-badge">Launch offer</div>
 								<div className="pricing-head">
 									<h3>Pro</h3>
 									<div className="pricing-price">
-										$2.99 <span>/ month</span>
+										<s className="pricing-was">$59.99</s> $39.99 <span>/ first year</span>
 									</div>
 								</div>
 								<p className="pricing-description">
@@ -510,9 +510,8 @@ export default function Home() {
 							</div>
 						</div>
 						<div className="pricing-note">
-							$2.99/mo is less than one drink at the bar. And unlike that drink, you'll actually
-							remember the night. Only the host needs Pro - every guest joins free, without creating
-							an account.
+							Launch offer: $39.99 for your first year, then $59.99/year. Or $19.99/month. Only the
+							host needs Pro - every guest joins free, without creating an account.
 						</div>
 						<div className="mid-cta">
 							<a href="#download" className="primary-cta">
