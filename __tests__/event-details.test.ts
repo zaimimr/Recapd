@@ -3,8 +3,10 @@ import {
 	buildMapsUrl,
 	emptyToNull,
 	formatCountdown,
+	fromEventDetailsDraft,
 	hasEventDetails,
 	normalizeSchedule,
+	toEventDetailsDraft,
 } from "@/lib/eventDetails";
 
 describe("formatCountdown", () => {
@@ -133,5 +135,27 @@ describe("buildIcs", () => {
 			expect(line.length).toBeLessThanOrEqual(75);
 		}
 		expect(ics).toContain("\r\n a");
+	});
+});
+
+describe("event details draft", () => {
+	it("round-trips and cleans fields for saving", () => {
+		const draft = toEventDetailsDraft({ location: null, dress_code: "Smart", schedule: [] });
+		expect(draft).toEqual({ location: "", dressCode: "Smart", details: "", schedule: [] });
+		expect(
+			fromEventDetailsDraft({
+				...draft,
+				location: "  Oslo ",
+				schedule: [
+					{ time: "2026-10-08T18:00:00Z", title: "" },
+					{ time: "2026-10-08T19:00:00Z", title: "Toast" },
+				],
+			})
+		).toEqual({
+			location: "Oslo",
+			dress_code: "Smart",
+			details: null,
+			schedule: [{ time: "2026-10-08T19:00:00.000Z", title: "Toast" }],
+		});
 	});
 });

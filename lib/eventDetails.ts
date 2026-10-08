@@ -1,5 +1,6 @@
 import { cacheDirectory, EncodingType, writeAsStringAsync } from "expo-file-system/legacy";
 import { shareAsync } from "expo-sharing";
+import { formatLocalizedTime } from "@/lib/utils";
 import type { Event, EventScheduleItem } from "@/types/database";
 
 export const EVENT_DETAIL_LIMITS = {
@@ -47,6 +48,38 @@ export function hasEventDetails(event: Partial<EventDetailFields>): boolean {
 		!!event.details?.trim() ||
 		normalizeSchedule(event.schedule).length > 0
 	);
+}
+
+export interface EventDetailsDraft {
+	location: string;
+	dressCode: string;
+	details: string;
+	schedule: EventScheduleItem[];
+}
+
+export const EMPTY_EVENT_DETAILS: EventDetailsDraft = {
+	location: "",
+	dressCode: "",
+	details: "",
+	schedule: [],
+};
+
+export function toEventDetailsDraft(event: Partial<EventDetailFields>): EventDetailsDraft {
+	return {
+		location: event.location ?? "",
+		dressCode: event.dress_code ?? "",
+		details: event.details ?? "",
+		schedule: normalizeSchedule(event.schedule),
+	};
+}
+
+export function fromEventDetailsDraft(draft: EventDetailsDraft): EventDetailFields {
+	return {
+		location: emptyToNull(draft.location, EVENT_DETAIL_LIMITS.location),
+		dress_code: emptyToNull(draft.dressCode, EVENT_DETAIL_LIMITS.dressCode),
+		details: emptyToNull(draft.details, EVENT_DETAIL_LIMITS.details),
+		schedule: normalizeSchedule(draft.schedule),
+	};
 }
 
 export function formatCountdown(startsAt: string | Date, now: Date = new Date()): string | null {
@@ -104,12 +137,7 @@ export function buildIcs(
 	const schedule = normalizeSchedule(event.schedule);
 	if (schedule.length > 0) {
 		descriptionParts.push(
-			schedule
-				.map(
-					(item) =>
-						`${new Date(item.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ${item.title}`
-				)
-				.join("\n")
+			schedule.map((item) => `${formatLocalizedTime(item.time)} ${item.title}`).join("\n")
 		);
 	}
 

@@ -12,6 +12,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import EventDetailsForm from "@/components/EventDetailsForm";
 import {
 	Button,
 	Card,
@@ -26,6 +27,11 @@ import {
 import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { computeEventExpiry } from "@/lib/dateUtils";
+import {
+	EMPTY_EVENT_DETAILS,
+	fromEventDetailsDraft,
+	toEventDetailsDraft,
+} from "@/lib/eventDetails";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
@@ -43,6 +49,7 @@ export default function EditEventScreen() {
 	const [tempDate, setTempDate] = useState<Date>(new Date());
 	const [androidPickerMode, setAndroidPickerMode] = useState<"date" | "time">("date");
 	const [error, setError] = useState("");
+	const [details, setDetails] = useState(EMPTY_EVENT_DETAILS);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isLoadingEvent, setIsLoadingEvent] = useState(true);
@@ -55,6 +62,7 @@ export default function EditEventScreen() {
 					setTitle(event.title);
 					setStartDate(new Date(event.starts_at));
 					setEndDate(new Date(event.ends_at));
+					setDetails(toEventDetailsDraft(event));
 				}
 				setIsLoadingEvent(false);
 			}
@@ -142,6 +150,7 @@ export default function EditEventScreen() {
 			title: trimmedTitle,
 			starts_at: startDate.toISOString(),
 			ends_at: endDate.toISOString(),
+			...fromEventDetailsDraft(details),
 		});
 
 		setIsSaving(false);
@@ -234,6 +243,8 @@ export default function EditEventScreen() {
 						last
 					/>
 				</Card>
+
+				<EventDetailsForm value={details} onChange={setDetails} defaultTime={startDate} />
 
 				{error ? (
 					<Text style={styles.errorText} accessibilityLiveRegion="polite">
