@@ -435,3 +435,11 @@
 		animation: none;
 	}
 }
+
+.gallery-actions {
+	flex-shrink: 0;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}

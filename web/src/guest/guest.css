@@ -283,6 +283,47 @@ body:has(.guest) {
 	text-underline-offset: 3px;
 }
 
+.host-cta {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 16px;
+	border: 1px solid var(--g-border);
+	border-radius: 16px;
+	background: var(--g-surface);
+	text-align: left;
+}
+
+.host-cta-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 700;
+	color: var(--g-text);
+}
+
+.host-cta-body {
+	margin: 0;
+	font-size: 14px;
+	color: var(--g-muted);
+}
+
+.host-cta-link {
+	align-self: flex-start;
+	margin-top: 8px;
+	padding: 10px 16px;
+	border-radius: 999px;
+	background: var(--g-gradient);
+	color: #ffffff;
+	font-size: 15px;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.host-cta-link:focus-visible {
+	outline: 2px solid #ffffff;
+	outline-offset: 3px;
+}
+
 .guest-page {
 	max-width: 960px;
 	margin: 0 auto;

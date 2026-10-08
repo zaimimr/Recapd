@@ -2,6 +2,7 @@ import { type SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState 
 import MediaGrid, { GalleryHeader, type GridStatus } from "../gallery/MediaGrid";
 import { countLabel } from "../gallery/mediaList";
 import Viewer from "../gallery/Viewer";
+import HostCta from "../HostCta";
 import type { GuestEvent } from "../types";
 import {
 	fetchGuestView,
@@ -107,6 +108,7 @@ export function ViewOnlyGalleryView({
 					onRetry={onRefresh}
 				/>
 			)}
+			<HostCta placement="view_only" />
 			{viewerIndex >= 0 && (
 				<Viewer
 					items={items}

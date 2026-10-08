@@ -2,6 +2,7 @@ import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useStat
 import { resolveTimeZone } from "../../../kit/format";
 import { countLabel } from "../gallery/mediaList";
 import { createSignedUrlResolver, type StorageSigner } from "../gallery/signedUrls";
+import HostCta from "../HostCta";
 import { guestSupabase } from "../supabase";
 import type { GuestEvent } from "../types";
 import {
@@ -163,6 +164,7 @@ function Summary({ stats, verb }: { stats: Stats; verb: string }) {
 			{stats.skipped > 0 && (
 				<p className="download-body">{countLabel(stats.skipped, "item", "items")} skipped.</p>
 			)}
+			<HostCta placement="download" />
 		</div>
 	);
 }

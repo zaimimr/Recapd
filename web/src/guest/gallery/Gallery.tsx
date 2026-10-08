@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { guestSupabase } from "../supabase";
+import HostCta from "../HostCta";
+import { RECAP_MAX_TILES } from "../recap/recapLayout";
+import { renderRecap, shareRecap } from "../recap/shareRecap";
 import type { GalleryProps } from "../types";
 import UploadTray, { AddMediaButton } from "../upload/UploadTray";
 import { useUploadQueue } from "../upload/useUploadQueue";
@@ -80,6 +83,22 @@ export default function Gallery({
 		"guests"
 	)}`;
 
+	const [recapBusy, setRecapBusy] = useState(false);
+	const recapUrls = items
+		.map((item) => thumbUrls[item.id])
+		.filter((url): url is string => Boolean(url))
+		.slice(0, RECAP_MAX_TILES);
+
+	const onShareRecap = async () => {
+		setRecapBusy(true);
+		try {
+			const blob = await renderRecap({ title: event.title, subtitle: counts, thumbUrls: recapUrls });
+			await shareRecap(blob, "recap.png");
+		} finally {
+			setRecapBusy(false);
+		}
+	};
+
 	return (
 		<main className="guest-page">
 			<GalleryHeader
@@ -88,6 +107,18 @@ export default function Gallery({
 				timezone={event.timezone}
 				counts={media.status === "loading" ? " " : counts}
 			>
+				<div className="gallery-actions">
+				<button
+					type="button"
+					className="gallery-download"
+					onClick={onShareRecap}
+					disabled={recapUrls.length === 0 || recapBusy}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13v6h14v-6" />
+					</svg>
+					{recapBusy ? "Making recap" : "Share recap"}
+				</button>
 				<button
 					type="button"
 					className="gallery-download"
@@ -99,6 +130,7 @@ export default function Gallery({
 					</svg>
 					Download all
 				</button>
+				</div>
 			</GalleryHeader>
 			<AddMediaButton onFiles={uploads.add} />
 			<UploadTray queue={uploads} />
@@ -110,6 +142,7 @@ export default function Gallery({
 				onOpen={(item, index) => setOpen({ id: item.id, index })}
 				onRetry={() => void reload()}
 			/>
+			{items.length > 0 && <HostCta placement="gallery" />}
 			{viewerIndex >= 0 && (
 				<Viewer
 					items={items}
