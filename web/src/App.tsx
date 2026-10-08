@@ -2,9 +2,10 @@ import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { clearChunkReloadFlag } from "./chunkReload";
 import ChunkReloadBoundary from "./components/ChunkReloadBoundary";
-import { occasions } from "./occasions";
+import { hub, occasions } from "./occasions";
 import Home from "./pages/Home";
 import Occasion from "./pages/Occasion";
+import Occasions from "./pages/Occasions";
 import Privacy from "./pages/Privacy";
 import Support from "./pages/Support";
 import Terms from "./pages/Terms";
@@ -23,6 +24,7 @@ export default function App() {
 			<Route path="/privacy" element={<Privacy />} />
 			<Route path="/support" element={<Support />} />
 			<Route path="/terms" element={<Terms />} />
+			<Route path={`/${hub.slug}`} element={<Occasions />} />
 			{occasions.map((occasion) => (
 				<Route
 					key={occasion.slug}

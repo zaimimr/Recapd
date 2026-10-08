@@ -1,5 +1,5 @@
 import { LogoLockup, LogoMark } from "../components/Logo";
-import { occasions } from "../occasions";
+import { hub, occasions } from "../occasions";
 import "../styles/Home.css";
 
 const features = [
@@ -19,6 +19,14 @@ const features = [
 		title: "No lost uploads on bad wifi",
 		copy: "Uploads stay visible while syncing. If one gets stuck on spotty venue wifi, skip it or retry. Nothing disappears silently.",
 	},
+	{
+		title: "Every event detail in one place",
+		copy: "Add the location, dress code, schedule and a note. Guests add it to their calendar and watch the countdown.",
+	},
+	{
+		title: "Shoot straight into the album",
+		copy: "The in-app camera saves photos and videos right into the event, so nothing needs sharing later.",
+	},
 ];
 
 const steps = [
@@ -34,8 +42,8 @@ const steps = [
 	},
 	{
 		step: "03",
-		title: "Collect automatically",
-		copy: "When the event ends, Recapd scans the matching media and surfaces the right shots and clips.",
+		title: "Recapd finds the photos",
+		copy: "When the event ends, Recapd scans each guest's camera roll for that time window and preselects the right shots and clips.",
 	},
 	{
 		step: "04",
@@ -142,20 +150,19 @@ export default function Home() {
 						<div className="hero-copy">
 							<div className="eyebrow">
 								<span className="eyebrow-dot" aria-hidden="true" />
-								Shared event memories, without the chaos
+								Automatic event photo sharing
 							</div>
 							<div className="hero-mark" aria-hidden="true">
 								<LogoMark size={84} />
 							</div>
 							<h1>
-								See your party from everyone's eyes.{" "}
-								<span className="h1-fade">Not just yours.</span>
+								We find your event photos for you.{" "}
+								<span className="h1-fade">Every guest, one tap.</span>
 							</h1>
 							<p className="hero-subtitle">
-								10 phones at every party, but you only see your own shots. Recapd gives every event
-								one shared feed - guests contribute from their phones, the app collects the right
-								photos and videos automatically, and nobody has to ask "can you send me that?" ever
-								again.
+								Recapd scans each guest's camera roll for the photos and videos taken during your
+								event and preselects them. One tap to share, and everything lands in one private
+								album in full quality. Nobody has to ask "can you send me that?" ever again.
 							</p>
 							<div className="hero-actions">
 								<a href="#download" className="primary-cta">
@@ -180,8 +187,8 @@ export default function Home() {
 							</div>
 
 							<div className="hero-stat hero-stat-top">
-								<span className="stat-label">Auto-scan</span>
-								<span className="stat-value">Finds the right event window</span>
+								<span className="stat-label">Auto-find</span>
+								<span className="stat-value">Event photos preselected for you</span>
 							</div>
 							<div className="hero-stat hero-stat-bottom">
 								<span className="stat-label">Feed behavior</span>
@@ -509,13 +516,12 @@ export default function Home() {
 						<p className="footer-tagline">Shared event memories, built for photos and videos.</p>
 					</div>
 					<nav aria-label="Occasions" className="footer-links">
-						{occasions
-							.filter((occasion) => occasion.lang === "en")
-							.map((occasion) => (
-								<a key={occasion.slug} href={`/${occasion.slug}`}>
-									{occasion.kicker}
-								</a>
-							))}
+						<a href={`/${hub.slug}`}>All occasions</a>
+						{occasions.map((occasion) => (
+							<a key={occasion.slug} href={`/${occasion.slug}`} hrefLang={occasion.lang}>
+								{occasion.kicker}
+							</a>
+						))}
 					</nav>
 					<nav aria-label="Footer links" className="footer-links">
 						<a href="/privacy">Privacy Policy</a>

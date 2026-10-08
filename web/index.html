@@ -3,13 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Recapd | See your party from everyone's eyes</title>
-    <meta name="description" content="10 phones at every party, but you only see your own shots. Recapd gives every event one shared feed - guests contribute photos and videos automatically. No account needed for guests. Free for events up to 12 people." />
-    <meta name="keywords" content="event photo sharing, shared event memories, wedding photo app, party photo sharing, group photo app, event photos, photo and video sharing, event media app, shared album alternative, event feed" />
+    <title>Recapd | We find your event photos for you</title>
+    <meta name="description" content="Recapd finds the photos and videos every guest took during your event and collects them in one private album. Guests join by QR code, no account needed. Free for events up to 12 people." />
     <meta name="robots" content="index, follow" />
     <meta name="author" content="Recapd" />
+    <meta name="apple-itunes-app" content="app-id=6758083751" />
+    <meta name="google-play-app" content="app-id=com.zaimimran.recapd" />
     <link rel="canonical" href="https://recapd.app/" />
     <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -18,15 +20,16 @@
     />
 
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Recapd | See your party from everyone's eyes" />
-    <meta property="og:description" content="One shared feed that collects the right photos and videos from every guest's phone. Automatically. No chasing, no group chats, no forgotten uploads." />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Recapd | We find your event photos for you" />
+    <meta property="og:description" content="Recapd finds the photos and videos every guest took during your event and preselects them. One tap to share, one private album for everyone." />
     <meta property="og:image" content="https://recapd.app/screenshots/home.png" />
     <meta property="og:url" content="https://recapd.app/" />
     <meta property="og:site_name" content="Recapd" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Recapd | See your party from everyone's eyes" />
-    <meta name="twitter:description" content="One shared feed that collects the right photos and videos from every guest's phone. Automatically. No chasing, no group chats, no forgotten uploads." />
+    <meta name="twitter:title" content="Recapd | We find your event photos for you" />
+    <meta name="twitter:description" content="Recapd finds the photos and videos every guest took during your event and preselects them. One tap to share, one private album for everyone." />
     <meta name="twitter:image" content="https://recapd.app/screenshots/home.png" />
 
     <script type="application/ld+json">
@@ -34,18 +37,63 @@
       "@context": "https://schema.org",
       "@type": "MobileApplication",
       "name": "Recapd",
+      "url": "https://recapd.app/",
+      "image": "https://recapd.app/icon.png",
       "operatingSystem": "iOS, Android",
       "applicationCategory": "PhotographyApplication",
-      "description": "A shared event memory app that automatically collects photos and videos from weddings, parties, concerts, and festivals into one feed. No account needed for guests.",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
+      "description": "Recapd finds the photos and videos each guest took during an event and collects them in one private album. Guests join by QR code or a 6-character code, no account needed.",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro yearly",
+          "price": "59.99",
+          "priceCurrency": "USD"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro monthly",
+          "price": "19.99",
+          "priceCurrency": "USD"
+        }
+      ],
       "downloadUrl": [
         "https://apps.apple.com/no/app/recapd/id6758083751",
         "https://play.google.com/store/apps/details?id=com.zaimimran.recapd"
+      ],
+      "publisher": { "@id": "https://recapd.app/#organization" }
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://recapd.app/#organization",
+      "name": "Recapd",
+      "url": "https://recapd.app/",
+      "logo": "https://recapd.app/icon.png",
+      "sameAs": [
+        "https://apps.apple.com/no/app/recapd/id6758083751",
+        "https://play.google.com/store/apps/details?id=com.zaimimran.recapd",
+        "https://www.instagram.com/recapdapp",
+        "https://www.tiktok.com/@recapdapp"
       ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Recapd",
+      "url": "https://recapd.app/",
+      "publisher": { "@id": "https://recapd.app/#organization" }
     }
     </script>
 
