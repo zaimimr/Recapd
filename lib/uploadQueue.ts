@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import {
 	enqueueRecapdUploads,
 	type RecapdUploaderItemArgs,
@@ -127,7 +128,8 @@ function buildItem(upload: PendingUpload): RecapdUploaderItemArgs {
 	const extension = getPathExtension(upload.localUri, upload.mediaType);
 	const objectName = `${upload.eventId}/${upload.userId}/${timestamp}_${uniqueSuffix}.${extension}`;
 	const contentType = getContentType(extension, upload.mediaType);
-	const isAsset = Boolean(upload.assetId);
+	const isAsset =
+		Platform.OS === "ios" && Boolean(upload.assetId) && !upload.assetId?.startsWith("manual-");
 	return {
 		uploadId: upload.id,
 		assetIdentifier: isAsset ? upload.assetId : undefined,
