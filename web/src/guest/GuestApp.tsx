@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { normalizeCode } from "../../kit/format";
+import AppPrompt from "./AppPrompt";
 import DownloadSheet from "./download/DownloadSheet";
 import Full from "./Full";
 import Gallery from "./gallery/Gallery";
@@ -78,11 +79,14 @@ export default function GuestApp() {
 	return (
 		<div className="guest">
 			{code ? (
-				<GuestScreens
-					key={`${code}-${attempt}`}
-					code={code}
-					onRetry={() => setAttempt((value) => value + 1)}
-				/>
+				<>
+					<GuestScreens
+						key={`${code}-${attempt}`}
+						code={code}
+						onRetry={() => setAttempt((value) => value + 1)}
+					/>
+					<AppPrompt code={code} />
+				</>
 			) : (
 				<NotFound />
 			)}
