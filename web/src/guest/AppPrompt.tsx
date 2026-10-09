@@ -72,6 +72,14 @@ export default function AppPrompt({ code }: { code: string }) {
 				>
 					Continue in browser
 				</button>
+				{platform === "ios" && (
+					<p className="guest-app-link">
+						Have the app?{" "}
+						<a href={`recapd://join/${code}`} onClick={rememberDismissed}>
+							Open in Recapd
+						</a>
+					</p>
+				)}
 			</div>
 		</div>
 	);
