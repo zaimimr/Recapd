@@ -14,7 +14,7 @@ function toBase64Url(bytes: Uint8Array): string {
 	return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function fromBase64Url(value: string): Uint8Array | null {
+function fromBase64Url(value: string): Uint8Array<ArrayBuffer> | null {
 	if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
 	try {
 		const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
