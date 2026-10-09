@@ -110,7 +110,8 @@ export default function JoinEventScreen() {
 	}
 
 	function formatCode(text: string) {
-		return text
+		const pasted = text.match(/\/join\/([A-Z0-9]{6})/i) ?? text.match(/code:?\s*([A-Z0-9]{6})\b/i);
+		return (pasted ? pasted[1] : text)
 			.toUpperCase()
 			.replace(/[^A-Z0-9]/g, "")
 			.slice(0, 6);
@@ -278,7 +279,6 @@ export default function JoinEventScreen() {
 							onChangeText={(text) => setCode(formatCode(text))}
 							autoCapitalize="characters"
 							autoCorrect={false}
-							maxLength={6}
 							returnKeyType="go"
 							onSubmitEditing={() => handleLookup()}
 							accessibilityLabel="Album code"

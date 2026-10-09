@@ -52,7 +52,7 @@ export default function ShareEventScreen() {
 			weekday: "short",
 			month: "short",
 			day: "numeric",
-		})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at, " – ")}\n\nJoin code: ${currentEvent.join_code}\nJoin the event here: ${buildJoinUrl(currentEvent.join_code)}`;
+		})} · ${formatLocalizedTimeRange(currentEvent.starts_at, currentEvent.ends_at, " – ")}\n\nJoin the event here: ${buildJoinUrl(currentEvent.join_code)}\n\nJoin code:\n${currentEvent.join_code}`;
 
 		try {
 			await Share.share({
