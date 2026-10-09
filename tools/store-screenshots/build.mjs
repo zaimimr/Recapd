@@ -6,7 +6,7 @@ import { SCREENS } from "./screens.mjs";
 import { C, GRAD, icon, photo, SCREEN_CSS } from "./ui.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const LOGO = fs.readFileSync(path.join(here, "../../assets/recapd-logo.svg"), "utf8");
+export const LOGO = fs.readFileSync(path.join(here, "../../assets/recapd-logo.svg"), "utf8");
 
 export const VARIANTS = {
 	iphone: {
@@ -63,9 +63,45 @@ export const VARIANTS = {
 		radius: 46,
 		cls: "ipad",
 	},
+	duoInner: {
+		w: 669,
+		h: 951,
+		dsf: 3,
+		sw: 540,
+		sh: 768,
+		cols: 4,
+		h1: 54,
+		sub: 19,
+		eb: 13,
+		pad: 50,
+		top: 52,
+		gap: 30,
+		bottom: 30,
+		bezel: 14,
+		radius: 52,
+		cls: "ios duo",
+	},
+	duoOuter: {
+		w: 466,
+		h: 678,
+		dsf: 3,
+		sw: 390,
+		sh: 568,
+		cols: 3,
+		h1: 36,
+		sub: 14,
+		eb: 10.5,
+		pad: 24,
+		top: 34,
+		gap: 20,
+		bottom: 16,
+		bezel: 10,
+		radius: 50,
+		cls: "ios",
+	},
 };
 
-const BASE_CSS = `
+export const BASE_CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:var(--pw);height:var(--ph);overflow:hidden;background:${C.page}}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;color:#fff;-webkit-font-smoothing:antialiased;position:relative}
@@ -85,7 +121,7 @@ function posterCSS(v) {
 .eb i{width:${v.eb * 0.6}px;height:${v.eb * 0.6}px;border-radius:9px;background:${GRAD}}
 h1{margin-top:${v.eb * 1.5}px;font-size:${v.h1}px;line-height:1.04;font-weight:800;letter-spacing:-.035em;text-align:center;width:100%}
 h1 span{display:block;white-space:nowrap}
-.sub{margin-top:${v.h1 * 0.36}px;font-size:${v.sub}px;line-height:1.42;font-weight:500;color:${C.muted};text-align:center;max-width:${v.cls === "ipad" ? 720 : 360}px}
+.sub{margin-top:${v.h1 * 0.36}px;font-size:${v.sub}px;line-height:1.42;font-weight:500;color:${C.muted};text-align:center;max-width:${v.cls === "ipad" ? 720 : v.w > 600 ? 520 : 360}px}
 .stage{flex:1;width:100%;margin-top:${v.gap}px;position:relative;min-height:0}
 .fit{position:absolute;left:50%;top:0;transform-origin:top left}
 .dev{position:relative;padding:${v.bezel}px;border-radius:${v.radius}px;background:linear-gradient(160deg,#2B2B38,#14141C 40%,#1D1D27);box-shadow:0 0 0 1.5px rgba(255,255,255,.12) inset,0 40px 90px -20px rgba(0,0,0,.8),0 0 0 1px #000}
@@ -95,6 +131,7 @@ h1 span{display:block;white-space:nowrap}
 .co.l{left:-26px}.co.r{right:-26px}
 body.ipad .co{font-size:19px;padding:12px 20px 12px 13px;gap:11px}
 body.ipad .co b{width:34px;height:34px}
+body.duo .dev .screen:after{content:'';position:absolute;top:0;bottom:0;left:50%;width:14px;margin-left:-7px;z-index:30;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.07) 45%,rgba(0,0,0,.18) 55%,rgba(0,0,0,0))}
 ${SCREEN_CSS}`;
 }
 

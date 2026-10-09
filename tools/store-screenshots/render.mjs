@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { featureHTML, posterHTML, VARIANTS } from "./build.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.join(here, "out");
+const OUT = process.env.OUT || path.join(here, "out");
 const CHROME =
 	process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const langs = (process.env.LANGS || "en,nb").split(",");
@@ -43,7 +43,7 @@ for (const lang of langs) {
 		if (!only.includes(vk)) continue;
 		const v = VARIANTS[vk];
 		for (const n of slides) {
-			const file = path.join(OUT, lang, vk, `${String(n).padStart(2, "0")}.png`);
+			const file = path.join(OUT, lang, vk === "duoInner" ? "duo-inner" : vk === "duoOuter" ? "duo-outer" : vk, `${String(n).padStart(2, "0")}.png`);
 			await shoot(await posterHTML(n - 1, lang, vk), v.w, v.h, v.dsf, file);
 			if (vk === "iphone") {
 				const f65 = path.join(OUT, lang, "iphone65", path.basename(file));
