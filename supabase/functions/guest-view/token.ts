@@ -84,7 +84,7 @@ export async function verifyImageToken(
 	const valid = await crypto.subtle.verify(
 		"HMAC",
 		await hmacKey(secret),
-		signature,
+		signature as BufferSource,
 		new TextEncoder().encode(payload)
 	);
 	if (!valid) return null;
