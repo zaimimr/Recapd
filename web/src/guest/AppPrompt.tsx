@@ -41,7 +41,7 @@ export default function AppPrompt({ code }: { code: string }) {
 	const [platform] = useState(detectPlatform);
 	const [open, setOpen] = useState(() => platform !== null && !wasDismissed());
 
-	if (!open || !platform) return null;
+	if (!open || !platform || platform === "android") return null;
 
 	function continueInBrowser() {
 		rememberDismissed();

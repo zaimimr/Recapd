@@ -42,6 +42,16 @@ export default function App() {
 					</ChunkReloadBoundary>
 				}
 			/>
+			<Route
+				path="/guest/:code"
+				element={
+					<ChunkReloadBoundary>
+						<Suspense fallback={<div style={{ minHeight: "100vh", background: "#0b0b12" }} />}>
+							<GuestApp />
+						</Suspense>
+					</ChunkReloadBoundary>
+				}
+			/>
 		</Routes>
 	);
 }
