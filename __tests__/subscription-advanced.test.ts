@@ -451,7 +451,7 @@ describe("subscription status details", () => {
 });
 
 describe("syncing subscription to database", () => {
-	test("updates the user record with subscription details", async () => {
+	test("writes subscription details without the server-owned tier", async () => {
 		const consoleSpy = jest.spyOn(console, "log").mockImplementation(() => {});
 		const { configureRevenueCat, syncSubscriptionToDatabase } = require("@/lib/subscription");
 		await configureRevenueCat("user-1");
@@ -460,13 +460,9 @@ describe("syncing subscription to database", () => {
 
 		await syncSubscriptionToDatabase("user-1", info);
 
-		expect(require("@/lib/supabase").supabase.from).toHaveBeenCalledWith("users");
+		expect(require("@/lib/supabase").supabase.from).not.toHaveBeenCalledWith("users");
 		expect(require("@/lib/supabase").supabase.from).toHaveBeenCalledWith("user_private_data");
-		expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subscription_tier: "pro",
-			})
-		);
+		expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 		expect(mockSupabaseUpsert).toHaveBeenCalledWith(
 			expect.objectContaining({
 				user_id: "user-1",
@@ -478,17 +474,13 @@ describe("syncing subscription to database", () => {
 		consoleSpy.mockRestore();
 	});
 
-	test("sets tier to 'free' when subscription is inactive", async () => {
+	test("clears the platform when subscription is inactive", async () => {
 		const { syncSubscriptionToDatabase } = require("@/lib/subscription");
 		const info = makeCustomerInfo({ isPro: false });
 
 		await syncSubscriptionToDatabase("user-1", info);
 
-		expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				subscription_tier: "free",
-			})
-		);
+		expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 		expect(mockSupabaseUpsert).toHaveBeenCalledWith(
 			expect.objectContaining({
 				user_id: "user-1",

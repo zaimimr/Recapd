@@ -218,6 +218,10 @@ export interface Database {
 					updated_at: string;
 					last_host_reminder_at: string | null;
 					deletion_delayed_at: string | null;
+					location: string | null;
+					dress_code: string | null;
+					details: string | null;
+					schedule: EventScheduleItem[];
 				};
 				Insert: {
 					id?: string;
@@ -233,6 +237,10 @@ export interface Database {
 					updated_at?: string;
 					last_host_reminder_at?: string | null;
 					deletion_delayed_at?: string | null;
+					location?: string | null;
+					dress_code?: string | null;
+					details?: string | null;
+					schedule?: EventScheduleItem[];
 				};
 				Update: {
 					id?: string;
@@ -248,6 +256,10 @@ export interface Database {
 					updated_at?: string;
 					last_host_reminder_at?: string | null;
 					deletion_delayed_at?: string | null;
+					location?: string | null;
+					dress_code?: string | null;
+					details?: string | null;
+					schedule?: EventScheduleItem[];
 				};
 				Relationships: [
 					{
@@ -431,6 +443,11 @@ export interface Database {
 export type User = Database["public"]["Tables"]["users"]["Row"];
 export type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
 export type UserPrivateData = Database["public"]["Tables"]["user_private_data"]["Row"];
+export interface EventScheduleItem {
+	time: string;
+	title: string;
+}
+
 export type Event = Database["public"]["Tables"]["events"]["Row"];
 export type EventParticipant = Database["public"]["Tables"]["event_participants"]["Row"];
 export type MediaItem = Database["public"]["Tables"]["media_items"]["Row"];

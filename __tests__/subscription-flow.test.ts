@@ -408,18 +408,14 @@ describe("lib/subscription", () => {
 	});
 
 	describe("syncSubscriptionToDatabase", () => {
-		it("updates database with pro tier for active subscriber", async () => {
+		it("syncs private subscription data without writing the server-owned tier", async () => {
 			const { syncSubscriptionToDatabase } = require("@/lib/subscription");
 
 			await syncSubscriptionToDatabase("user-1", proCustomerInfo);
 
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).not.toHaveBeenCalledWith("users");
 			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-				expect.objectContaining({
-					subscription_tier: "pro",
-				})
-			);
+			expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 			expect(mockSupabaseUpsert).toHaveBeenCalledWith(
 				expect.objectContaining({
 					user_id: "user-1",
@@ -428,19 +424,14 @@ describe("lib/subscription", () => {
 				}),
 				{ onConflict: "user_id" }
 			);
-			expect(mockSupabaseEq).toHaveBeenCalledWith("id", "user-1");
 		});
 
-		it("updates database with free tier for inactive subscriber", async () => {
+		it("clears the platform for an inactive subscriber", async () => {
 			const { syncSubscriptionToDatabase } = require("@/lib/subscription");
 
 			await syncSubscriptionToDatabase("user-1", freeCustomerInfo);
 
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-				expect.objectContaining({
-					subscription_tier: "free",
-				})
-			);
+			expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 			expect(mockSupabaseUpsert).toHaveBeenCalledWith(
 				expect.objectContaining({
 					user_id: "user-1",
@@ -451,7 +442,7 @@ describe("lib/subscription", () => {
 		});
 
 		it("does not throw when supabase returns an error", async () => {
-			mockSupabaseEq.mockResolvedValue({ error: { message: "DB error" } });
+			mockSupabaseUpsert.mockResolvedValue({ error: { message: "DB error" } });
 			const { syncSubscriptionToDatabase } = require("@/lib/subscription");
 
 			await expect(syncSubscriptionToDatabase("user-1", proCustomerInfo)).resolves.not.toThrow();
@@ -569,10 +560,8 @@ describe("store/subscriptionStore", () => {
 			expect(state.isPro).toBe(true);
 			expect(state.userId).toBe("user-1");
 			expect(state.customerInfo).toBe(proCustomerInfo);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-				expect.objectContaining({ subscription_tier: "pro" })
-			);
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
+			expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 		});
 
 		it("returns early when already initialized", async () => {
@@ -648,10 +637,8 @@ describe("store/subscriptionStore", () => {
 
 			expect(result.success).toBe(true);
 			expect(store.getState().isPro).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
-			expect(mockSupabaseUpdate).toHaveBeenCalledWith(
-				expect.objectContaining({ subscription_tier: "pro" })
-			);
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
+			expect(mockSupabaseUpdate).not.toHaveBeenCalled();
 		});
 
 		it("sets error on failed purchase", async () => {
@@ -720,7 +707,7 @@ describe("store/subscriptionStore", () => {
 
 			expect(result.success).toBe(true);
 			expect(store.getState().isPro).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 		});
 
 		it("succeeds via fallback when activeSubscriptions exist but entitlement mismatches", async () => {
@@ -736,7 +723,7 @@ describe("store/subscriptionStore", () => {
 			const result = await store.getState().restore();
 
 			expect(result.success).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 		});
 
 		it("does not grant pro when restore succeeds via activeSubscriptions but entitlement is mismatched", async () => {
@@ -788,7 +775,7 @@ describe("store/subscriptionStore", () => {
 
 			expect(result).toBe(true);
 			expect(store.getState().isPro).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 		});
 
 		it("does not change state when paywall is cancelled", async () => {
@@ -923,7 +910,7 @@ describe("store/subscriptionStore", () => {
 			await store.getState().refreshSubscription();
 
 			expect(store.getState().isPro).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 		});
 
 		it("handles null customerInfo without error", async () => {
@@ -966,7 +953,7 @@ describe("store/subscriptionStore", () => {
 			const result = await store.getState().showPaywallIfNeeded();
 
 			expect(result).toBe(true);
-			expect(mockSupabaseFrom).toHaveBeenCalledWith("users");
+			expect(mockSupabaseFrom).toHaveBeenCalledWith("user_private_data");
 		});
 	});
 });

@@ -272,7 +272,7 @@ class UploadWorker(
     val out = File(cacheDir, "$uploadId.$ext")
     val resolver = applicationContext.contentResolver
     val stream: InputStream = when {
-      assetIdentifier.isNotEmpty() -> resolver.openInputStream(Uri.parse(assetIdentifier))
+      assetIdentifier.startsWith("content://") -> resolver.openInputStream(Uri.parse(assetIdentifier))
         ?: throw RuntimeException("cannot open assetIdentifier $assetIdentifier")
       fileUri.startsWith("content://") -> resolver.openInputStream(Uri.parse(fileUri))
         ?: throw RuntimeException("cannot open content URI $fileUri")

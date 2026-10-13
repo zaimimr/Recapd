@@ -12,6 +12,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import EventInfoCard from "@/components/EventInfoCard";
 import GuestSheet from "@/components/GuestSheet";
 import MasonryGrid from "@/components/MasonryGrid";
 import NotificationPromptModal from "@/components/NotificationPromptModal";
@@ -40,9 +41,10 @@ import {
 } from "@/lib/eventDeletion";
 import { getEventStatus } from "@/lib/eventStatus";
 import { logger } from "@/lib/logger";
-import { saveToLibrary } from "@/lib/mediaLibrary";
+import { captureWithCamera, saveToLibrary } from "@/lib/mediaLibrary";
 import { markNotificationPromptSeen, shouldShowNotificationPrompt } from "@/lib/notificationPrompt";
 import { registerForPushNotifications, savePushToken } from "@/lib/notifications";
+import { openSystemSettings, requestCameraAccess } from "@/lib/permissions";
 import {
 	clearRecapdQueue,
 	getRecapdQueueCounts,
@@ -60,7 +62,14 @@ import {
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
+import { useIsPro, useSubscriptionPlans } from "@/store/subscriptionStore";
 import type { MergedMediaItem } from "@/types/media";
+import {
+	formatFileSizeLabel,
+	formatVideoDurationLabel,
+	getMaxFileSizeBytes,
+	getMaxVideoDurationMs,
+} from "@/types/subscription";
 
 const HERO_TITLE_OFFSET = 120;
 
@@ -185,7 +194,11 @@ export default function EventScreen() {
 		getNoPhotosToUpload,
 		leaveEvent,
 		removeParticipant,
+		addPendingUploads,
 	} = useEventStore();
+	const isPro = useIsPro();
+	const plans = useSubscriptionPlans();
+	const [capturing, setCapturing] = useState(false);
 
 	const [titleInNav, setTitleInNav] = useState(false);
 	const [viewerVisible, setViewerVisible] = useState(false);
@@ -339,6 +352,51 @@ export default function EventScreen() {
 
 	function handleShare() {
 		router.push(`/event/share/${id}`);
+	}
+
+	async function handleTakePhoto() {
+		if (!user || !id || capturing) return;
+		const access = await requestCameraAccess();
+		if (access !== "granted") {
+			Alert.alert("Camera access needed", "Turn on camera access to take photos for the album.", [
+				{ text: "Not now", style: "cancel" },
+				{ text: "Open Settings", onPress: openSystemSettings },
+			]);
+			return;
+		}
+
+		const hostIsPro = currentEvent?.hostIsPro || false;
+		const maxVideoDuration = getMaxVideoDurationMs(isPro, hostIsPro, plans);
+		const maxFileSizeBytes = getMaxFileSizeBytes(isPro, hostIsPro, plans);
+		setCapturing(true);
+		try {
+			const { media, videosTooLong, filesTooLarge, error } = await captureWithCamera({
+				maxVideoDuration,
+				maxFileSizeBytes,
+			});
+			if (error) {
+				Alert.alert("Camera Error", error);
+				return;
+			}
+			if (videosTooLong > 0) {
+				Alert.alert(
+					"Video Too Long",
+					`Videos can be up to ${formatVideoDurationLabel(maxVideoDuration)} on this album.`
+				);
+			}
+			if (filesTooLarge > 0) {
+				Alert.alert(
+					"File Too Large",
+					`Files can be up to ${formatFileSizeLabel(maxFileSizeBytes)} on this album.`
+				);
+			}
+			if (media.length > 0) await addPendingUploads(media, id, user.id);
+		} catch (error) {
+			logger.error("Failed to queue camera capture", error, { eventId: id });
+			Alert.alert("Upload Error", "We couldn't prepare your upload. Please try again.");
+		} finally {
+			setCapturing(false);
+		}
 	}
 
 	function handleDelayDeletion() {
@@ -738,6 +796,18 @@ export default function EventScreen() {
 								style={styles.primaryAction}
 							/>
 
+							{status.key !== "expired" ? (
+								<Button
+									label="Take a photo"
+									icon="camera"
+									variant="secondary"
+									loading={capturing}
+									onPress={handleTakePhoto}
+									accessibilityHint="Opens the camera and adds what you take to the album"
+									style={styles.secondaryAction}
+								/>
+							) : null}
+
 							{mediaItems.length > 0 ? (
 								<Button
 									label={
@@ -753,6 +823,8 @@ export default function EventScreen() {
 								/>
 							) : null}
 						</Card>
+
+						<EventInfoCard event={currentEvent} />
 
 						{isEnded && daysUntilExpiry > 0 ? (
 							<Card accent style={styles.expiryCard}>

@@ -12,6 +12,7 @@ import {
 	Text,
 	View,
 } from "react-native";
+import EventDetailsForm from "@/components/EventDetailsForm";
 import {
 	Button,
 	Card,
@@ -25,6 +26,7 @@ import {
 import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
+import { EMPTY_EVENT_DETAILS, fromEventDetailsDraft } from "@/lib/eventDetails";
 import { formatLocalizedDate, formatLocalizedTime } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useEventStore } from "@/store/eventStore";
@@ -52,6 +54,7 @@ export default function CreateEventScreen() {
 	const [tempDate, setTempDate] = useState<Date>(defaultStart);
 	const [androidPickerMode, setAndroidPickerMode] = useState<"date" | "time">("date");
 	const [error, setError] = useState("");
+	const [details, setDetails] = useState(EMPTY_EVENT_DETAILS);
 
 	useEffect(() => {
 		if (isInitialized && !user) {
@@ -138,6 +141,7 @@ export default function CreateEventScreen() {
 				starts_at: startDate.toISOString(),
 				ends_at: endDate.toISOString(),
 				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+				...fromEventDetailsDraft(details),
 			},
 			user!.id
 		);
@@ -196,6 +200,8 @@ export default function CreateEventScreen() {
 						last
 					/>
 				</Card>
+
+				<EventDetailsForm value={details} onChange={setDetails} defaultTime={startDate} />
 
 				{error ? (
 					<Text style={styles.errorText} accessibilityLiveRegion="polite">

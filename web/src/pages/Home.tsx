@@ -1,4 +1,5 @@
 import { LogoLockup, LogoMark } from "../components/Logo";
+import { hub, occasions } from "../occasions";
 import "../styles/Home.css";
 
 const features = [
@@ -7,8 +8,8 @@ const features = [
 		copy: "Set the event start and end time. Recapd only pulls photos and videos from that window, so guests skip the endless camera roll dig.",
 	},
 	{
-		title: "No more tiny thumbnails you can't see",
-		copy: "Full-width cards, pinch-to-zoom on every photo, video durations visible upfront. The feed feels like a social app, not a file dump.",
+		title: "Original quality, not compressed copies",
+		copy: "Scroll a fast grid, then open any photo at full resolution. Pinch to zoom, swipe to browse, save what you love.",
 	},
 	{
 		title: "No app install for guests",
@@ -17,6 +18,14 @@ const features = [
 	{
 		title: "No lost uploads on bad wifi",
 		copy: "Uploads stay visible while syncing. If one gets stuck on spotty venue wifi, skip it or retry. Nothing disappears silently.",
+	},
+	{
+		title: "Every event detail in one place",
+		copy: "Add the location, dress code, schedule and a note. Guests add it to their calendar and watch the countdown.",
+	},
+	{
+		title: "Shoot straight into the album",
+		copy: "The in-app camera saves photos and videos right into the event, so nothing needs sharing later.",
 	},
 ];
 
@@ -33,8 +42,8 @@ const steps = [
 	},
 	{
 		step: "03",
-		title: "Collect automatically",
-		copy: "When the event ends, Recapd scans the matching media and surfaces the right shots and clips.",
+		title: "Recapd finds the photos",
+		copy: "When the event ends, Recapd scans each guest's camera roll for that time window and preselects the right shots and clips.",
 	},
 	{
 		step: "04",
@@ -61,7 +70,7 @@ const useCases = [
 const faqs = [
 	{
 		q: "Do guests need to download the app?",
-		a: "Yes, guests download the app to contribute photos and videos. But they don't need to create an account. They just open the invite link, pick their media, and contribute. Takes about 30 seconds.",
+		a: "No. Guests scan the QR code or open the invite link and add photos straight from the browser, no account needed. They can also use the app if they prefer. Takes about 30 seconds.",
 	},
 	{
 		q: "How does the auto-scan work?",
@@ -73,7 +82,7 @@ const faqs = [
 	},
 	{
 		q: "Is Recapd free?",
-		a: "Yes, for events up to 12 people, which is you plus 11 guests. If you're hosting something bigger, Pro is $2.99/month and only the host needs it. Every guest always joins free.",
+		a: "Yes, for events up to 12 people, which is you plus 11 guests. If you're hosting something bigger, Pro is $39.99 for the first year with our launch offer, and only the host needs it. Every guest always joins free.",
 	},
 	{
 		q: "Does it work on both iPhone and Android?",
@@ -85,7 +94,7 @@ const faqs = [
 	},
 ];
 
-function StoreBadges({ size = "default" }: { size?: "default" | "large" }) {
+export function StoreBadges({ size = "default" }: { size?: "default" | "large" }) {
 	const cls = size === "large" ? "store-badges store-badges-large" : "store-badges";
 	return (
 		<div className={cls}>
@@ -141,20 +150,19 @@ export default function Home() {
 						<div className="hero-copy">
 							<div className="eyebrow">
 								<span className="eyebrow-dot" aria-hidden="true" />
-								Shared event memories, without the chaos
+								Automatic event photo sharing
 							</div>
 							<div className="hero-mark" aria-hidden="true">
 								<LogoMark size={84} />
 							</div>
 							<h1>
-								See your party from everyone's eyes.{" "}
-								<span className="h1-fade">Not just yours.</span>
+								We find your event photos for you.{" "}
+								<span className="h1-fade">Every guest, one tap.</span>
 							</h1>
 							<p className="hero-subtitle">
-								10 phones at every party, but you only see your own shots. Recapd gives every event
-								one shared feed - guests contribute from their phones, the app collects the right
-								photos and videos automatically, and nobody has to ask "can you send me that?" ever
-								again.
+								Recapd scans each guest's camera roll for the photos and videos taken during your
+								event and preselects them. One tap to share, and everything lands in one private
+								album in full quality. Nobody has to ask "can you send me that?" ever again.
 							</p>
 							<div className="hero-actions">
 								<a href="#download" className="primary-cta">
@@ -169,62 +177,18 @@ export default function Home() {
 							<div className="orbit-ring orbit-ring-two" aria-hidden="true" />
 							<div className="hero-phone hero-phone-main">
 								<div className="hero-phone-topbar" aria-hidden="true" />
-								<div className="hero-screen hero-feed-screen">
-									<div className="feed-post feed-post-compact">
-										<div className="feed-post-header">
-											<div className="avatar avatar-teal" aria-hidden="true">
-												R
-											</div>
-											<div>
-												<div className="feed-name">Recapd Live</div>
-												<div className="feed-meta">The feed updates as uploads finish</div>
-											</div>
-										</div>
-										<div className="feed-media feed-media-hero">
-											<img
-												src="/screenshots/timeline.png"
-												alt="Recapd event feed showing photos and videos in a scrollable timeline"
-												fetchPriority="high"
-											/>
-											<div
-												className="media-badge"
-												role="img"
-												aria-label="Video duration: 1 minute 5 seconds"
-											>
-												VIDEO 00:01:05
-											</div>
-										</div>
-										<div className="feed-actions" aria-hidden="true">
-											<span>Pinch to zoom</span>
-											<span>Pan while zoomed</span>
-										</div>
-									</div>
-
-									<div className="feed-post feed-post-floating">
-										<div className="feed-post-header">
-											<div className="avatar avatar-coral" aria-hidden="true">
-												Z
-											</div>
-											<div>
-												<div className="feed-name">Zaim&apos;s Birthday</div>
-												<div className="feed-meta">67 media items from 9 guests</div>
-											</div>
-										</div>
-										<div className="feed-media feed-media-grid">
-											<img
-												src="/screenshots/found-photos.png"
-												alt="Grid of auto-discovered photos from an event"
-												loading="lazy"
-												decoding="async"
-											/>
-										</div>
-									</div>
+								<div className="hero-screen">
+									<img
+										src="/screenshots/timeline.jpg"
+										alt="Recapd event album with a feed of photos and videos from every guest"
+										fetchPriority="high"
+									/>
 								</div>
 							</div>
 
 							<div className="hero-stat hero-stat-top">
-								<span className="stat-label">Auto-scan</span>
-								<span className="stat-value">Finds the right event window</span>
+								<span className="stat-label">Auto-find</span>
+								<span className="stat-value">Event photos preselected for you</span>
 							</div>
 							<div className="hero-stat hero-stat-bottom">
 								<span className="stat-label">Feed behavior</span>
@@ -328,38 +292,32 @@ export default function Home() {
 
 				<section className="proof" aria-labelledby="proof-heading">
 					<div className="container proof-grid">
-						<div className="proof-tile proof-tile-large">
-							<img
-								src="/screenshots/home.png"
-								alt="Recapd home screen showing event list with stats and quick sharing"
-								loading="lazy"
-								decoding="async"
-							/>
-							<div className="proof-overlay">
-								<span>Host view</span>
-								<strong>Clean stats, quick sharing, and a feed that feels alive.</strong>
+						<div className="proof-shots">
+							<div className="proof-tile">
+								<img
+									src="/screenshots/home.jpg"
+									alt="Recapd home screen with a list of event albums"
+									loading="lazy"
+									decoding="async"
+								/>
 							</div>
-						</div>
-						<div className="proof-tile proof-tile-side">
-							<img
-								src="/screenshots/select-photos.png"
-								alt="Guest photo selection screen with thumbnail grid and upload controls"
-								loading="lazy"
-								decoding="async"
-							/>
-							<div className="proof-overlay">
-								<span>Guest flow</span>
-								<strong>Fast selection with thumbnails and clear media identity.</strong>
+							<div className="proof-tile proof-tile-side">
+								<img
+									src="/screenshots/select-photos.jpg"
+									alt="Guest picking photos from the night to add to the album"
+									loading="lazy"
+									decoding="async"
+								/>
 							</div>
 						</div>
 						<div className="proof-copy">
 							<div className="section-kicker">What it feels like</div>
 							<h2 id="proof-heading">
-								A feed that feels like scrolling Instagram, not digging through a folder.
+								The whole night in one album, from every phone in the room.
 							</h2>
 							<p>
-								Full-width cards, zoomable media, video thumbnails with durations - not a grid of
-								tiny squares you can't make out. Every memory gets the space it deserves.
+								Recapd finds the photos from the night on each guest's phone. They tap share, and
+								everything lands in one album you can browse, zoom and download in full quality.
 							</p>
 						</div>
 					</div>
@@ -418,27 +376,27 @@ export default function Home() {
 					<div className="container story-grid">
 						<div className="story-copy">
 							<div className="section-kicker">The feed</div>
-							<h2 id="story-heading">Every photo gets the space it deserves.</h2>
+							<h2 id="story-heading">Browse fast. Open in full quality.</h2>
 							<p>
-								No cramped grids. No thumbnails you have to squint at. Recapd gives every shot a
-								full card - tap to zoom, swipe to browse, download what you want to keep.
+								A quick grid to scan hundreds of shots, then tap any photo to see the original.
+								Swipe to browse, save what you want to keep, and invite more guests with a QR code.
 							</p>
 						</div>
 						<div className="story-strip">
 							<img
-								src="/screenshots/timeline.png"
-								alt="Timeline feed showing full-width photo cards"
+								src="/screenshots/timeline.jpg"
+								alt="Event feed with photos and videos from every guest"
 								loading="lazy"
 								decoding="async"
 							/>
 							<img
-								src="/screenshots/found-photos.png"
-								alt="Auto-discovered photos ready for review"
+								src="/screenshots/viewer.jpg"
+								alt="A wedding photo opened full screen in original quality"
 								loading="lazy"
 								decoding="async"
 							/>
 							<img
-								src="/screenshots/share.png"
+								src="/screenshots/share.jpg"
 								alt="Event sharing screen with QR code and invite link"
 								loading="lazy"
 								decoding="async"
@@ -468,7 +426,7 @@ export default function Home() {
 					<div className="container">
 						<div className="section-heading">
 							<div className="section-kicker">Pricing</div>
-							<h2 id="pricing-heading">Less than a coffee. And guests are always free.</h2>
+							<h2 id="pricing-heading">Only the host pays. Guests are always free.</h2>
 						</div>
 						<div className="pricing-grid">
 							<div className="pricing-card">
@@ -477,11 +435,11 @@ export default function Home() {
 									<div className="pricing-price">$0</div>
 								</div>
 								<p className="pricing-description">
-									Everything you need for a small get-together. Up to 10 friends, all photos
+									Everything you need for a small get-together. Up to 12 people, all photos
 									included.
 								</p>
 								<ul className="pricing-features">
-									<li>Up to 10 participants</li>
+									<li>Up to 12 participants</li>
 									<li>Unlimited photos and videos</li>
 									<li>Full-resolution downloads</li>
 									<li>14-day storage</li>
@@ -489,11 +447,11 @@ export default function Home() {
 								</ul>
 							</div>
 							<div className="pricing-card pricing-card-featured">
-								<div className="pricing-badge">Recommended</div>
+								<div className="pricing-badge">Launch offer</div>
 								<div className="pricing-head">
 									<h3>Pro</h3>
 									<div className="pricing-price">
-										$2.99 <span>/ month</span>
+										<s className="pricing-was">$59.99</s> $39.99 <span>/ first year</span>
 									</div>
 								</div>
 								<p className="pricing-description">
@@ -510,9 +468,8 @@ export default function Home() {
 							</div>
 						</div>
 						<div className="pricing-note">
-							$2.99/mo is less than one drink at the bar. And unlike that drink, you'll actually
-							remember the night. Only the host needs Pro - every guest joins free, without creating
-							an account.
+							Launch offer: $39.99 for your first year, then $59.99/year. Or $19.99/month. Only the
+							host needs Pro - every guest joins free, without creating an account.
 						</div>
 						<div className="mid-cta">
 							<a href="#download" className="primary-cta">
@@ -558,6 +515,14 @@ export default function Home() {
 						<LogoLockup size={40} />
 						<p className="footer-tagline">Shared event memories, built for photos and videos.</p>
 					</div>
+					<nav aria-label="Occasions" className="footer-links">
+						<a href={`/${hub.slug}`}>All occasions</a>
+						{occasions.map((occasion) => (
+							<a key={occasion.slug} href={`/${occasion.slug}`} hrefLang={occasion.lang}>
+								{occasion.kicker}
+							</a>
+						))}
+					</nav>
 					<nav aria-label="Footer links" className="footer-links">
 						<a href="/privacy">Privacy Policy</a>
 						<a href="/support">Support</a>

@@ -1,1 +1,1 @@
-npx biome check --unsafe --write --staged
+npx biome check --unsafe --write --staged --no-errors-on-unmatched

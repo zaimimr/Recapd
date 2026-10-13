@@ -551,7 +551,11 @@ export const useEventStore = create<EventState>((set, get) => {
 				}
 
 				const eventWithCount: EventWithParticipants = {
-					...(preview as Event),
+					location: null,
+					dress_code: null,
+					details: null,
+					schedule: [],
+					...(preview as Omit<Event, "location" | "dress_code" | "details" | "schedule">),
 					participant_count: preview.participant_count || 0,
 					hostIsPro: preview.host_is_pro,
 				};
