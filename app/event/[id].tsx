@@ -873,6 +873,8 @@ export default function EventScreen() {
 							participantCount={currentEvent.participant_count || 0}
 							hostIsPro={currentEvent.hostIsPro || false}
 							isHost={isHost || false}
+							eventId={currentEvent.id}
+							onEventPassActivated={() => fetchEventById(currentEvent.id)}
 						/>
 
 						{isEnded && myMediaCount === 0 && !hasMarkedNoPhotos ? (

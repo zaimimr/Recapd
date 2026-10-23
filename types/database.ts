@@ -218,6 +218,7 @@ export interface Database {
 					updated_at: string;
 					last_host_reminder_at: string | null;
 					deletion_delayed_at: string | null;
+					event_pass_at?: string | null;
 					location: string | null;
 					dress_code: string | null;
 					details: string | null;

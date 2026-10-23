@@ -1,7 +1,10 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import type { PurchasesPackage } from "react-native-purchases";
 import { Button, Card } from "@/components/ui";
 import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
+import { getEventPassPackage, purchaseEventPass } from "@/lib/eventPass";
 import { useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
 import { getParticipantLimit, getParticipantWarningThreshold } from "@/types/subscription";
 
@@ -9,20 +12,65 @@ interface ParticipantLimitBannerProps {
 	participantCount: number;
 	hostIsPro: boolean;
 	isHost: boolean;
+	eventId: string;
+	onEventPassActivated: () => void;
 }
 
 export default function ParticipantLimitBanner({
 	participantCount,
 	hostIsPro,
 	isHost,
+	eventId,
+	onEventPassActivated,
 }: ParticipantLimitBannerProps) {
 	const { showPaywall } = useSubscriptionStore();
 	const plans = useSubscriptionPlans();
 	const participantLimit = getParticipantLimit(hostIsPro, plans);
 	const warningThreshold = getParticipantWarningThreshold(hostIsPro, plans);
+	const isVisible = !hostIsPro && participantCount >= warningThreshold;
+	const [eventPassPackage, setEventPassPackage] = useState<PurchasesPackage | null>(null);
+	const [buyingEventPass, setBuyingEventPass] = useState(false);
 
-	if (hostIsPro) return null;
-	if (participantCount < warningThreshold) return null;
+	useEffect(() => {
+		if (!isHost || !isVisible) {
+			return;
+		}
+		let active = true;
+		getEventPassPackage()
+			.then((pkg) => {
+				if (active) {
+					setEventPassPackage(pkg);
+				}
+			})
+			.catch(() => {});
+		return () => {
+			active = false;
+		};
+	}, [isHost, isVisible]);
+
+	if (!isVisible) return null;
+
+	const handleBuyEventPass = async () => {
+		if (!eventPassPackage) {
+			return;
+		}
+		setBuyingEventPass(true);
+		const outcome = await purchaseEventPass(eventId, eventPassPackage);
+		setBuyingEventPass(false);
+		if (outcome.ok) {
+			onEventPassActivated();
+			return;
+		}
+		if (outcome.reason === "cancelled") {
+			return;
+		}
+		Alert.alert(
+			outcome.reason === "not_redeemed" ? "Payment received" : "Purchase failed",
+			outcome.reason === "not_redeemed"
+				? "We couldn't unlock the album yet. Pull to refresh in a minute, or contact support."
+				: (outcome.message ?? "Please try again.")
+		);
+	};
 
 	const isAtLimit = participantCount >= participantLimit;
 	const remaining = participantLimit - participantCount;
@@ -51,6 +99,16 @@ export default function ParticipantLimitBanner({
 					<Text style={styles.body}>{body}</Text>
 				</View>
 			</View>
+			{isHost && eventPassPackage ? (
+				<Button
+					label={`Unlock this album · ${eventPassPackage.product.priceString}`}
+					icon="unlock"
+					size="md"
+					loading={buyingEventPass}
+					onPress={handleBuyEventPass}
+					style={styles.action}
+				/>
+			) : null}
 			{isHost ? (
 				<Button
 					label="Upgrade to Pro"

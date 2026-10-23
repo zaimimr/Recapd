@@ -586,7 +586,7 @@ export const useEventStore = create<EventState>((set, get) => {
 					.eq("event_id", eventId);
 
 				const host = participants?.find((p) => p.role === "host");
-				let hostIsPro = false;
+				let hostIsPro = Boolean((data as Event).event_pass_at);
 				let hostDisplayName = "the host";
 
 				if (host) {
@@ -597,7 +597,7 @@ export const useEventStore = create<EventState>((set, get) => {
 						.single();
 
 					if (hostUser) {
-						hostIsPro = hostUser.subscription_tier === "pro";
+						hostIsPro = hostIsPro || hostUser.subscription_tier === "pro";
 						hostDisplayName = hostUser.display_name || "the host";
 					}
 				}
