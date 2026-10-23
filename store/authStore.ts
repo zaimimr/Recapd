@@ -316,14 +316,14 @@ export const useAuthStore = create<AuthState>()(
 							return;
 						}
 
-						set({ user: null, isLoading: false, isInitialized: true });
+						set({ user: get().user, isLoading: false, isInitialized: true });
 					} catch (error) {
 						if (isStaleRefreshTokenError(error)) {
 							logger.warn("Auth initialization recovered from stale session", error);
 						} else {
 							logger.error("Auth initialization failed", error);
 						}
-						set({ user: null, isLoading: false, isInitialized: true });
+						set({ user: get().user, isLoading: false, isInitialized: true });
 					}
 				})();
 

@@ -122,6 +122,20 @@ export default function JoinByCodeScreen() {
 		);
 	}
 
+	if (lookupDone && !eventPreview && error && error !== EVENT_NOT_FOUND_ERROR) {
+		return (
+			<Screen edges="both">
+				<NavBar title="Join album" onBack={handleEnterDifferentCode} />
+				<EmptyState
+					icon="wifi-off"
+					title="Couldn't load the album"
+					body="Check your connection and try again."
+					action={<Button label="Try again" onPress={() => setLookupDone(false)} />}
+				/>
+			</Screen>
+		);
+	}
+
 	if (lookupDone && !eventPreview) {
 		return (
 			<Screen edges="both">
@@ -129,11 +143,7 @@ export default function JoinByCodeScreen() {
 				<EmptyState
 					icon="alert-circle"
 					title="No album with that code"
-					body={
-						error && error !== EVENT_NOT_FOUND_ERROR
-							? error
-							: `Nothing matches "${code}". It may have expired, or the code was mistyped.`
-					}
+					body={`Nothing matches "${code}". It may have expired, or the code was mistyped.`}
 					action={<Button label="Enter a different code" onPress={handleEnterDifferentCode} />}
 				/>
 			</Screen>

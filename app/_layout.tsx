@@ -199,6 +199,9 @@ function RootLayoutNav() {
 			traceEvent("app.state.changed", { state });
 			if (state === "active") {
 				void flushTelemetryQueue();
+				if (!useAuthStore.getState().user) {
+					void useAuthStore.getState().initializeAuth();
+				}
 			}
 			if (state === "background" || state === "inactive") {
 				void flushTelemetryQueue(true);

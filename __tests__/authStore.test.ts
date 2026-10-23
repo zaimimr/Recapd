@@ -280,6 +280,33 @@ describe("first-time user opens the app", () => {
 		expect(state.isLoading).toBe(false);
 		consoleSpy.mockRestore();
 	});
+
+	test("recovers the user on a later retry after launching offline", async () => {
+		supabase.from.mockReturnValue(
+			buildChain({ data: null, error: { message: "TypeError: Network request failed" } })
+		);
+		await useAuthStore.getState().initializeAuth();
+		expect(useAuthStore.getState().user).toBeNull();
+
+		supabase.from.mockReturnValue(buildChain({ data: mockUser, error: null }));
+		await useAuthStore.getState().initializeAuth();
+
+		expect(useAuthStore.getState().user).toEqual(mockUser);
+	});
+
+	test("keeps an existing user when a retry fails", async () => {
+		useAuthStore.setState({ user: mockUser as any, isInitialized: true });
+		supabase.from.mockReturnValue(
+			buildChain({ data: null, error: { message: "TypeError: Network request failed" } })
+		);
+
+		await useAuthStore.getState().initializeAuth();
+
+		const state = useAuthStore.getState();
+		expect(state.user).toEqual(mockUser);
+		expect(state.isInitialized).toBe(true);
+		expect(state.isLoading).toBe(false);
+	});
 });
 
 describe("device identity persistence", () => {

@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View } from "react-native";
 import AlbumCard from "@/components/AlbumCard";
 import { Button, Pill, Screen, ScreenScroll, SectionHeader } from "@/components/ui";
 import { CONTENT_MAX_WIDTH, space, theme, type } from "@/constants/theme";
@@ -28,6 +28,19 @@ export default function HomeScreen() {
 			}
 		}, [user?.id, fetchUserEvents])
 	);
+
+	useEffect(() => {
+		if (!user?.id) {
+			return;
+		}
+		const userId = user.id;
+		const subscription = AppState.addEventListener("change", (state) => {
+			if (state === "active") {
+				fetchUserEvents(userId);
+			}
+		});
+		return () => subscription.remove();
+	}, [user?.id, fetchUserEvents]);
 
 	useEffect(() => {
 		if (user?.id) {
