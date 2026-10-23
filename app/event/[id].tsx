@@ -701,6 +701,8 @@ export default function EventScreen() {
 	const uploaded = mergedPhotos.filter((p) => !p.isPending);
 	const photoCount = uploaded.filter((p) => p.media_type !== "video").length;
 	const videoCount = uploaded.filter((p) => p.media_type === "video").length;
+	const needsGuests =
+		isHost && (currentEvent.participant_count ?? 0) <= 1 && status.key !== "expired";
 	const guestNames = (currentEvent.participants ?? [])
 		.map((p) => p.nickname || p.user?.display_name || "")
 		.filter((name) => name.length > 0);
@@ -789,11 +791,21 @@ export default function EventScreen() {
 								]}
 							/>
 
+							{needsGuests ? (
+								<Button
+									label="Invite guests"
+									icon="share"
+									onPress={handleShare}
+									style={styles.primaryAction}
+								/>
+							) : null}
+
 							<Button
 								label="Add your photos"
 								icon="plus"
+								variant={needsGuests ? "secondary" : "primary"}
 								onPress={handleContribute}
-								style={styles.primaryAction}
+								style={needsGuests ? styles.secondaryAction : styles.primaryAction}
 							/>
 
 							{status.key !== "expired" ? (
