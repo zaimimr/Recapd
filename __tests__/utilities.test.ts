@@ -1,5 +1,6 @@
 jest.mock("@/lib/storage", () => ({ uploadMedia: jest.fn() }));
 
+import { addDays } from "date-fns";
 import { getAvatarColor } from "@/lib/colors";
 import { computeEventExpiry, EVENT_RETENTION_DAYS, safeDate } from "@/lib/dateUtils";
 import { FREE_MAX_VIDEO_DURATION_MS, PRO_MAX_VIDEO_DURATION_MS } from "@/lib/mediaLibrary";
@@ -70,7 +71,10 @@ describe("computeEventExpiry", () => {
 
 	function isRecentExpiry(date: Date, before: number) {
 		const t = date.getTime();
-		return t >= before + retentionMs && t <= Date.now() + retentionMs;
+		return (
+			t >= addDays(before, EVENT_RETENTION_DAYS).getTime() &&
+			t <= addDays(Date.now(), EVENT_RETENTION_DAYS).getTime()
+		);
 	}
 
 	it("adds EVENT_RETENTION_DAYS to endsAt when it is later than createdAt", () => {
