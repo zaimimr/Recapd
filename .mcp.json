@@ -1,15 +1,17 @@
 {
   "mcpServers": {
     "supabase": {
-      "command": "npx",
+      "command": "withkeys",
       "args": [
+        "npx",
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--project-ref=zfrpwfuihfpoqyexbwng"
-      ],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
-      }
+      ]
+    },
+    "sentry": {
+      "type": "http",
+      "url": "https://mcp.sentry.dev/mcp"
     }
   }
 }
