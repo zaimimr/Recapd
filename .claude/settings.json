@@ -1,10 +1,7 @@
 {
-  "enabledPlugins": {
-    "mobile@zaim": true,
-    "growth@zaim": true
-  },
-  "enabledMcpjsonServers": [
-    "sentry",
-    "supabase"
-  ]
+	"enabledPlugins": {
+		"mobile@zaim": true,
+		"growth@zaim": true
+	},
+	"enabledMcpjsonServers": ["sentry", "supabase"]
 }

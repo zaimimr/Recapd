@@ -1,17 +1,17 @@
 {
-  "mcpServers": {
-    "supabase": {
-      "command": "withkeys",
-      "args": [
-        "npx",
-        "-y",
-        "@supabase/mcp-server-supabase@latest",
-        "--project-ref=zfrpwfuihfpoqyexbwng"
-      ]
-    },
-    "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp"
-    }
-  }
+	"mcpServers": {
+		"supabase": {
+			"command": "withkeys",
+			"args": [
+				"npx",
+				"-y",
+				"@supabase/mcp-server-supabase@latest",
+				"--project-ref=zfrpwfuihfpoqyexbwng"
+			]
+		},
+		"sentry": {
+			"type": "http",
+			"url": "https://mcp.sentry.dev/mcp"
+		}
+	}
 }
