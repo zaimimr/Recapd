@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
+import { track } from "@/lib/analytics";
 import { SUBSCRIPTIONS_ENABLED } from "@/lib/billing/config";
 import { computeEventExpiry, safeDate } from "@/lib/dateUtils";
 import { logger } from "@/lib/logger";
@@ -657,6 +658,7 @@ export const useEventStore = create<EventState>((set, get) => {
 				}
 
 				set({ isLoading: false });
+				track("event_created");
 				return createdEvent;
 			} catch (error) {
 				logger.error("Create event error", error, { userId });
@@ -769,6 +771,7 @@ export const useEventStore = create<EventState>((set, get) => {
 				}
 
 				set({ isLoading: false });
+				track("event_joined");
 				return true;
 			} catch (error) {
 				logger.error("Join event error", error, { eventId, userId });

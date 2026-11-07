@@ -91,13 +91,13 @@ export default function SettingsScreen() {
 			return;
 		}
 
-		void showPaywall();
+		void showPaywall("settings");
 	}, [router, showPaywall, user]);
 
 	useEffect(() => {
 		if (upgrade !== "1" || !user || hasResumedUpgrade.current) return;
 		hasResumedUpgrade.current = true;
-		void showPaywall();
+		void showPaywall("settings");
 	}, [upgrade, user, showPaywall]);
 
 	const [isEditingName, setIsEditingName] = useState(false);

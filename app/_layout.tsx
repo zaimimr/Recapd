@@ -20,11 +20,13 @@ import "react-native-reanimated";
 import "react-native-url-polyfill/auto";
 
 import { theme } from "@/constants/theme";
+import { identifyUser, trackScreen } from "@/lib/analytics";
 import { installBackgroundUploadTask } from "@/lib/backgroundUpload";
 import {
 	flushTelemetryQueue,
 	installTelemetry,
 	logger,
+	normalizeRoute,
 	setTelemetryContext,
 	traceEvent,
 	traceScreen,
@@ -136,6 +138,7 @@ function RootLayoutNav() {
 	useEffect(() => {
 		setTelemetryContext({ userId: user?.id ?? null });
 		setSentryUser(user?.id ?? null);
+		identifyUser(user?.id ?? null);
 		if (user?.id) {
 			traceEvent("app.user_context.ready", { userId: user.id });
 		}
@@ -143,6 +146,7 @@ function RootLayoutNav() {
 
 	useEffect(() => {
 		traceScreen(pathname);
+		trackScreen(normalizeRoute(pathname));
 	}, [pathname]);
 
 	useEffect(() => {

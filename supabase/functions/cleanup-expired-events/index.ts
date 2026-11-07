@@ -42,6 +42,11 @@ Deno.serve(async (req) => {
 		};
 
 		// Find all events that have expired
+		const { error: extendError } = await supabase.rpc("extend_pro_host_events");
+		if (extendError) {
+			throw new Error(`Failed to extend Pro host events: ${extendError.message}`);
+		}
+
 		const { data: expiredEvents, error: eventsError } = await supabase
 			.from("events")
 			.select("id, title, expires_at, status")

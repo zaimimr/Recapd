@@ -1,6 +1,7 @@
 import { Alert, Platform } from "react-native";
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from "react-native-purchases";
 import { create } from "zustand";
+import { track } from "@/lib/analytics";
 import {
 	classifyPaywallFailure,
 	describePaywallFailure,
@@ -55,8 +56,8 @@ interface SubscriptionState {
 	refreshSubscription: () => Promise<void>;
 	purchase: (pkg: PurchasesPackage) => Promise<PurchaseResult>;
 	restore: () => Promise<PurchaseResult>;
-	showPaywall: () => Promise<boolean>;
-	showPaywallIfNeeded: () => Promise<boolean>;
+	showPaywall: (source?: unknown) => Promise<boolean>;
+	showPaywallIfNeeded: (source?: string) => Promise<boolean>;
 	showCustomerCenter: () => Promise<boolean>;
 	getMonthlyPackage: () => PurchasesPackage | null;
 	getYearlyPackage: () => PurchasesPackage | null;
@@ -365,8 +366,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		return result;
 	},
 
-	showPaywall: async () => {
+	showPaywall: async (source?: unknown) => {
 		const { userId } = get();
+		const paywallSource = typeof source === "string" ? source : "unknown";
 		if (!(await ensureRevenueCatConfigured(userId))) {
 			const errorMessage = getLastRevenueCatError() || "RevenueCat not configured";
 			set({ error: errorMessage });
@@ -384,6 +386,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		const offering = await resolvePaywallOffering(get, set);
 		const { entitlementId } = getProPlanRevenueCatConfig(get().plans);
 		const result = await presentPaywall(offering, entitlementId);
+		track("paywall_result", {
+			source: paywallSource,
+			presented: result.presented,
+			purchased: result.purchased,
+		});
 
 		if (!result.presented) {
 			const errorMessage =
@@ -429,7 +436,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		return result.purchased;
 	},
 
-	showPaywallIfNeeded: async () => {
+	showPaywallIfNeeded: async (source?: string) => {
 		const { isPro } = get();
 		if (isPro) return false;
 
@@ -448,6 +455,11 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
 		const offering = await resolvePaywallOffering(get, set);
 		const { entitlementId } = getProPlanRevenueCatConfig(get().plans);
 		const result = await presentPaywallIfNeeded(offering, entitlementId);
+		track("paywall_result", {
+			source: source ?? "if_needed",
+			presented: result.presented,
+			purchased: result.purchased,
+		});
 
 		if (!result.presented && result.error) {
 			logger.error("Paywall failed to present when needed", result.error, {

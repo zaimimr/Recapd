@@ -4,6 +4,7 @@ import type { PurchasesPackage } from "react-native-purchases";
 import { Button, Card } from "@/components/ui";
 import Icon from "@/components/ui/Icon";
 import { radius, space, theme, type } from "@/constants/theme";
+import { track } from "@/lib/analytics";
 import { getEventPassPackage, purchaseEventPass } from "@/lib/eventPass";
 import { useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
 import { getParticipantLimit, getParticipantWarningThreshold } from "@/types/subscription";
@@ -58,6 +59,7 @@ export default function ParticipantLimitBanner({
 		const outcome = await purchaseEventPass(eventId, eventPassPackage);
 		setBuyingEventPass(false);
 		if (outcome.ok) {
+			track("event_pass_purchased", { source: "participant_limit" });
 			onEventPassActivated();
 			return;
 		}
@@ -115,7 +117,7 @@ export default function ParticipantLimitBanner({
 					icon="zap"
 					size="md"
 					variant="secondary"
-					onPress={showPaywall}
+					onPress={() => showPaywall("participant_limit")}
 					style={styles.action}
 				/>
 			) : null}

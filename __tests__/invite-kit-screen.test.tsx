@@ -47,6 +47,12 @@ jest.mock("@/store/eventStore", () => ({
 		},
 	}),
 }));
+jest.mock("@/store/subscriptionStore", () => ({
+	useSubscriptionStore: (
+		selector: (state: { showPaywallIfNeeded: () => Promise<boolean> }) => unknown
+	) => selector({ showPaywallIfNeeded: jest.fn() }),
+}));
+jest.mock("@/lib/analytics", () => ({ track: jest.fn() }));
 
 import ShareEventScreen from "@/app/event/share/[id]";
 import InviteKit from "@/components/InviteKit";

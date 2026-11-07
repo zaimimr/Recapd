@@ -62,7 +62,7 @@ import {
 import { formatLocalizedDate, formatLocalizedTimeRange } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { buildMergedTimeline, type ParticipantWithStats, useEventStore } from "@/store/eventStore";
-import { useIsPro, useSubscriptionPlans } from "@/store/subscriptionStore";
+import { useIsPro, useSubscriptionPlans, useSubscriptionStore } from "@/store/subscriptionStore";
 import type { MergedMediaItem } from "@/types/media";
 import {
 	formatFileSizeLabel,
@@ -175,6 +175,7 @@ export default function EventScreen() {
 	}>();
 	const router = useRouter();
 	const user = useAuthStore((state) => state.user);
+	const showPaywall = useSubscriptionStore((state) => state.showPaywall);
 	const {
 		currentEvent,
 		mediaItems,
@@ -695,6 +696,7 @@ export default function EventScreen() {
 		!currentEvent.deletion_delayed_at &&
 		daysUntilExpiry > 0 &&
 		daysUntilExpiry <= DELETION_DELAY_WINDOW_DAYS;
+	const keptByPro = Boolean(currentEvent.hostIsPro && !currentEvent.event_pass_at);
 	const myMediaCount = mergedPhotos.filter((p) => p.uploaded_by_user_id === user?.id).length;
 
 	const status = getEventStatus(currentEvent);
@@ -838,7 +840,7 @@ export default function EventScreen() {
 
 						<EventInfoCard event={currentEvent} />
 
-						{isEnded && daysUntilExpiry > 0 ? (
+						{isEnded && daysUntilExpiry > 0 && !keptByPro ? (
 							<Card accent style={styles.expiryCard}>
 								<View style={styles.expiryRow}>
 									<View style={styles.expiryIcon}>
@@ -863,6 +865,15 @@ export default function EventScreen() {
 										size="md"
 										loading={delayingDeletion}
 										onPress={handleDelayDeletion}
+										style={styles.expiryAction}
+									/>
+								) : null}
+								{isHost && !currentEvent.hostIsPro ? (
+									<Button
+										label="Keep this album with Pro"
+										icon="zap"
+										size="md"
+										onPress={() => showPaywall("album_expiry")}
 										style={styles.expiryAction}
 									/>
 								) : null}

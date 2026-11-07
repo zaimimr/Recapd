@@ -147,7 +147,7 @@ export default function CreateEventScreen() {
 		);
 
 		if (event) {
-			router.replace(`/event/share/${event.id}`);
+			router.replace(`/event/share/${event.id}?new=1`);
 		} else {
 			Alert.alert("Error", "Failed to create event. Please try again.");
 		}
