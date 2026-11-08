@@ -1,7 +1,7 @@
 import { useState } from "react";
 import "./download/download.css";
 
-const APP_STORE_URL = "https://apps.apple.com/no/app/recapd/id6758083751";
+const APP_STORE_URL = "https://apps.apple.com/app/recapd/id6758083751";
 const ANDROID_PACKAGE = "com.zaimimran.recapd";
 const DISMISS_KEY = "recapd-app-prompt-dismissed";
 

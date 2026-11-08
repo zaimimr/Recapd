@@ -99,7 +99,7 @@ export function StoreBadges({ size = "default" }: { size?: "default" | "large" }
 	return (
 		<div className={cls}>
 			<a
-				href="https://apps.apple.com/no/app/recapd/id6758083751"
+				href="https://apps.apple.com/app/recapd/id6758083751"
 				className="store-badge"
 				target="_blank"
 				rel="noopener noreferrer"
