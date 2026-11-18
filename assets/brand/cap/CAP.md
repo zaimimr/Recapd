@@ -73,6 +73,7 @@
 Pose: [Standing upright facing forward, right arm (viewer's left) bent with paw resting casually on hip, left arm (viewer's right) raised with paw tucked gently near the right cheek/bow tie.]
 Props: [None.]
 Expression: [Open left eye, winking right eye. Change with every occasion: eyes, mouth and brows must match the mood.]
+Outfit: [None by default. Cap is a she. Formal occasions like weddings get a dress, e.g. a flat #55263D party dress with puff sleeves and a knee-length flared skirt. Bow tie stays at the collar.]
 Body language: [Change with every occasion together with the expression. Never reuse the reference pose.]
 Framing: [Full-body centered shot with generous #F4EBE3 margin around the character and #D5CBC3 ground shadow beneath feet.]
 ```
