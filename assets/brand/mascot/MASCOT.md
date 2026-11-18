@@ -82,3 +82,13 @@ Framing: [Full-body centered shot with generous #F4EBE3 margin around the charac
 ```
 
 ![Mascot reference](mascot-reference.jpg)
+
+---
+
+## 6. OCCASION REFERENCES
+
+| Occasion | Reference | Outfit |
+| :--- | :--- | :--- |
+| Wedding | `occasions/wedding.jpg` | `#55263D` wrap dress with tie waist and ruffled hem, pearl necklace, pearl earrings on both ears, scrunchie OFF. Both eyes open, waving. |
+
+![Wedding](occasions/wedding.jpg)
